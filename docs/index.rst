@@ -15,5 +15,8 @@ documentation for details.
    :maxdepth: 2
    :caption: Contents:
 
+   installation
+   developer_guide
    examples
+
 

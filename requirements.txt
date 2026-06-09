@@ -6,6 +6,10 @@ scipy
 pytest
 sphinx
 sphinx_rtd_theme
+nbsphinx
+jupyterlab
+jupytext
+pandoc
 # FEniCS dependencies are usually handled via Conda, but listed here for completeness
 # fenics-dolfin
 # fenics-dolfin-adjoint

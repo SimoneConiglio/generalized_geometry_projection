@@ -19,6 +19,7 @@ release = '0.1.0'
 extensions = [
     'sphinx.ext.autodoc',
     'sphinx.ext.viewcode',
+    'nbsphinx',
 ]
 
 templates_path = ['_templates']
@@ -31,6 +32,9 @@ exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
 html_theme = 'sphinx_rtd_theme'
 html_static_path = ['_static']
+
+nbsphinx_execute = 'never'
+
 
 html_theme = 'alabaster'
 html_static_path = ['_static']
