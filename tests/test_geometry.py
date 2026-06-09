@@ -20,19 +20,26 @@ def test_geometry_initial_design():
     assert len(x_init) == 12
     
 def test_map_to_density():
-    mesh = df.UnitSquareMesh(4, 4)
+    mesh = df.UnitSquareMesh(10, 10)
     mapper = GeometryFactory.create_mapper("2D_Free", mesh=mesh, num_components=1)
-    
+
     import dolfin_adjoint as da
+    # Test with component that definitely has material
     ctrls = [da.Constant(0.5), da.Constant(0.5), da.Constant(0.2), da.Constant(0.2), da.Constant(0.0), da.Constant(1.0)]
-    
+
     rho_ufl = mapper.map_to_density(ctrls)
-    
-    # Project to verify it compiles correctly
-    V = df.FunctionSpace(mesh, "CG", 1)
+
+    # Project to DG0 (Discontinuous Galerkin 0)
+    # DG0 takes the average over each element. Since the underlying function
+    # is bounded [0, 1], its average over any subdomain must also be [0, 1].
+    # This avoids the Gibbs overshoots/undershoots of CG1 projection.
+    V = df.FunctionSpace(mesh, "DG", 0)
     rho_func = df.project(rho_ufl, V)
-    
-    # Values should be roughly between 0 and 1
-    min_val, max_val = rho_func.vector().get_local().min(), rho_func.vector().get_local().max()
-    assert min_val >= -0.1
-    assert max_val <= 1.1
+
+    # Values must be strictly between 0 and 1
+    # We use a very tight tolerance only for machine epsilon
+    min_val = rho_func.vector().get_local().min()
+    max_val = rho_func.vector().get_local().max()
+
+    assert min_val >= 0.0
+    assert max_val <= 1.0

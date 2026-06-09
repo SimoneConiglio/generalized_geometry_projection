@@ -37,4 +37,5 @@ jobs:
       env:
         PYTHONPATH: .
       run: |
+        pip install "setuptools<70"
         pytest --cov=samo_ggp tests/
