@@ -1,0 +1,40 @@
+name: Tests
+
+on:
+  push:
+    branches: [ master, main ]
+  pull_request:
+    branches: [ master, main ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        shell: bash -el {0}
+
+    steps:
+    - uses: actions/checkout@v4
+
+    - name: Cache Conda
+      uses: actions/cache@v3
+      env:
+        CACHE_NUMBER: 1
+      with:
+        path: ~/conda_pkgs_dir
+        key: ${{ runner.os }}-conda-${{ env.CACHE_NUMBER }}-${{ hashFiles('environment.yml') }}
+
+    - name: Set up Conda Environment
+      uses: conda-incubator/setup-miniconda@v3
+      with:
+        activate-environment: samo_agents
+        environment-file: environment.yml
+        auto-activate-base: false
+        miniforge-version: latest
+        use-mamba: true
+
+    - name: Run Pytest with Coverage
+      env:
+        PYTHONPATH: .
+      run: |
+        pytest --cov=samo_ggp tests/

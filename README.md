@@ -1,5 +1,10 @@
 # Generalized Geometry Projection (GGP) for Additive Manufacturing
 
+[![Tests](https://github.com/SimoneConiglio/generalized_geometry_projection/actions/workflows/tests.yml/badge.svg)](https://github.com/SimoneConiglio/generalized_geometry_projection/actions/workflows/tests.yml)
+[![Docs](https://github.com/SimoneConiglio/generalized_geometry_projection/actions/workflows/docs.yml/badge.svg)](https://simoneconiglio.github.io/generalized_geometry_projection/)
+[![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
+[![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
+
 This repository contains a modular Python framework for Topology Optimization using the **Generalized Geometry Projection (GGP)** method, built on top of **FEniCS** (`dolfin-adjoint`) and **GEMSEO**.
 
 This framework focuses on extending structural topology optimization to include Additive Layer Manufacturing (ALM) constraints, specifically focusing on layer-by-layer parameterization and overhang angle restrictions to ensure 3D printability.
