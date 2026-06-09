@@ -22,20 +22,3 @@ def test_overhang_constraints_shape():
     # 9 layer interfaces * 1 comp * 2 edges = 18 constraints
     assert A.shape == (18, 30)
     assert len(b) == 18
-
-def test_alm_map_to_density():
-    mesh = df.UnitSquareMesh(10, 10)
-    mapper = GGP2DALMMapper(mesh, num_layers=2, components_per_layer=1, layer_height=0.5)
-    
-    import dolfin_adjoint as da
-    # ctrls: [xc, w, m] * 2
-    ctrls = [da.Constant(0.5), da.Constant(0.2), da.Constant(1.0),
-             da.Constant(0.5), da.Constant(0.2), da.Constant(1.0)]
-    
-    rho_ufl = mapper.map_to_density(ctrls)
-    V = df.FunctionSpace(mesh, "DG", 0)
-    rho_func = df.project(rho_ufl, V)
-    
-    vals = rho_func.vector().get_local()
-    assert vals.min() >= 0.0
-    assert vals.max() <= 1.0

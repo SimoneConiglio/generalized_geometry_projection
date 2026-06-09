@@ -19,17 +19,17 @@ def run_alm_cantilever(max_iter=50):
     num_layers = 30
     comp_per_layer = 1
     layer_height = H / num_layers
-    alpha_deg = 45.0 # Max overhang angle
+    alpha_deg = 45.0
     
     # Mesh and Spaces
     mesh = RectangleMesh(df.Point(0, 0), df.Point(L, H), nelx, nely)
     V_u = df.VectorFunctionSpace(mesh, "CG", 1)
     
-    # BCs: Left fixed
+    # BCs
     def left_boundary(x, on_boundary): return on_boundary and df.near(x[0], 0.0)
     bc = [DirichletBC(V_u, Constant((0.0, 0.0)), left_boundary)]
     
-    # Load: Bottom right corner
+    # Load
     boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     boundaries.set_all(0)
     class BottomRight(df.SubDomain):
@@ -38,7 +38,7 @@ def run_alm_cantilever(max_iter=50):
     ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
     L_rhs_vec = Constant((0.0, -1.0))
 
-    # Solver and Mapper Setup
+    # Solver
     solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
     mapper = GeometryFactory.create_mapper("2D_ALM", mesh=mesh, num_layers=num_layers, 
                                           components_per_layer=comp_per_layer, layer_height=layer_height)
@@ -51,9 +51,9 @@ def run_alm_cantilever(max_iter=50):
         mesh, mapper.num_components, mode='ALM', 
         num_layers=num_layers, comp_per_layer=comp_per_layer, layer_height=layer_height
     )
-    phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H)
+    phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H, volfrac=volfrac)
     
-    # Add Overhang Constraints Discipline
+    # Overhang Constraints
     from gemseo.core.discipline.discipline import Discipline
     class ALMConstraintsDiscipline(Discipline):
         def __init__(self, A, b):
@@ -78,7 +78,7 @@ def run_alm_cantilever(max_iter=50):
     
     scenario = create_scenario(disciplines=[chain, cons_disc], objective_name="compliance", 
                                design_space=design_space, formulation_name="DisciplinaryOpt")
-    scenario.add_constraint("volume", "ineq", positive=False, value=volfrac)
+    scenario.add_constraint("volume", "ineq", positive=False, value=0.0)
     scenario.add_constraint("overhang_cons", "ineq", positive=False, value=0.0)
     
     scenario.execute(algo_name="MMA", max_iter=max_iter, max_optimization_step=0.1)
@@ -90,7 +90,8 @@ def run_alm_cantilever(max_iter=50):
     
     with stop_annotating():
         V_rho = df.FunctionSpace(mesh, "DG", 0)
-        rho_opt_arr = geom_disc._map_logic(opt_x)
+        # Show rho_V (Physical Density)
+        rho_opt_arr = geom_disc._map_logic(opt_x, power=1.0)
         rho_opt = df.Function(V_rho)
         rho_opt.vector()[:] = rho_opt_arr
         

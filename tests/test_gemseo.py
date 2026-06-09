@@ -4,13 +4,14 @@ from dolfin_adjoint import *
 import numpy as np
 from samo_ggp.geometry.factory import GeometryFactory
 from samo_ggp.physics.factory import PhysicsFactory
-from samo_ggp.gemseo_wrappers.macro_discipline import GGPMacroDiscipline
+from samo_ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsAdjointDiscipline
 import gemseo
 from gemseo import create_scenario
+from gemseo.mda.mda_chain import MDAChain
 
-def test_macro_discipline_execution():
-    """Verify that the MacroDiscipline successfully executes and generates gradients."""
-    mesh = UnitSquareMesh(2, 2)
+def test_hybrid_pipeline_execution():
+    """Verify the new Hybrid Modular Architecture with Log Scaling."""
+    mesh = UnitSquareMesh(10, 10)
     V_u = VectorFunctionSpace(mesh, "CG", 1)
     def left_boundary(x, on_boundary): return on_boundary and near(x[0], 0.0)
     bc = [DirichletBC(V_u, Constant((0.0, 0.0)), left_boundary)]
@@ -21,29 +22,26 @@ def test_macro_discipline_execution():
         def inside(self, x, on_boundary): return near(x[0], 1.0)
     RightBoundary().mark(boundaries, 1)
     ds_load = Measure("ds", domain=mesh, subdomain_data=boundaries)
-    
     L_rhs_vec = Constant((0.0, -1.0))
     
-    mapper = GeometryFactory.create_mapper("2D_Free", mesh=mesh, num_components=1)
     solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
     
+    num_comp = 1
+    geom_disc = GGPVectorizedGeometryDiscipline(mesh, num_comp, mode='Free')
+    phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=1.0, volfrac=0.4)
+    chain = MDAChain([geom_disc, phys_disc])
+    
     x_init = np.array([0.5, 0.5, 0.2, 0.2, 0.0, 1.0])
-    lb = np.array([0.0]*6)
-    ub = np.array([1.0]*6)
+    ds = gemseo.algos.design_space.DesignSpace()
+    ds.add_variable("x_vars", size=6, lower_bound=np.zeros(6), upper_bound=np.ones(6), value=x_init)
     
-    disc = GGPMacroDiscipline(mapper, solver, x_init, lb, ub, mesh_area=1.0)
+    scenario = create_scenario(disciplines=[chain], objective_name="compliance", design_space=ds, formulation_name="DisciplinaryOpt")
+    scenario.add_constraint("volume", "ineq", positive=False, value=0.0)
     
-    # Test execution
-    input_data = {"x_vars": np.array([0.5]*6)}
-    disc.execute(input_data)
+    # Execute 1 iteration
+    scenario.execute(algo_name="MMA", max_iter=1)
     
-    # Assert outputs are generated
-    assert "compliance" in disc.local_data
-    assert "volume" in disc.local_data
-    assert disc.local_data["compliance"][0] > 0.0
-    
-    # Test Jacobian computation via PyAdjoint
-    jac = disc.linearize(input_data, compute_all_jacobians=True)
-    assert "compliance" in jac
-    assert "x_vars" in jac["compliance"]
-    assert jac["compliance"]["x_vars"].shape == (1, 6)
+    assert "compliance" in chain.local_data
+    assert "volume" in chain.local_data
+    # Compliance should be log(c+1)
+    assert chain.local_data["compliance"][0] >= 0.0

@@ -20,7 +20,7 @@ def run_mbb_beam(max_iter=50):
     mesh = RectangleMesh(df.Point(0, 0), df.Point(L, H), nelx, nely)
     V_u = df.VectorFunctionSpace(mesh, "CG", 1)
     
-    # BCs: Left symmetry, Bottom right point supported
+    # BCs
     def left_symmetry(x, on_boundary): return on_boundary and df.near(x[0], 0.0)
     def bottom_right_support(x, on_boundary): return on_boundary and df.near(x[0], L, 1.0) and df.near(x[1], 0.0, 1.0)
     bc = [
@@ -28,7 +28,7 @@ def run_mbb_beam(max_iter=50):
         DirichletBC(V_u.sub(1), Constant(0.0), bottom_right_support, method="pointwise")
     ]
     
-    # Load: Top left corner
+    # Load
     boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     boundaries.set_all(0)
     class TopLeftArea(df.SubDomain):
@@ -37,7 +37,6 @@ def run_mbb_beam(max_iter=50):
     ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
     L_rhs_vec = Constant((0.0, -1.0))
 
-    # Solver and Mapper
     solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
     mapper = GeometryFactory.create_mapper("2D_Free", mesh=mesh, num_components=num_components, method='GP')
     x_init = mapper.get_initial_design(L, H)
@@ -45,15 +44,15 @@ def run_mbb_beam(max_iter=50):
     ub = np.array([L, H, L*1.5, H, 2*np.pi, 1.0] * num_components)
 
     # --- Hybrid Modular Architecture ---
-    geom_disc = GGPVectorizedGeometryDiscipline(mesh, num_components, mode='Free')
-    phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H)
+    geom_disc = GGPVectorizedGeometryDiscipline(mesh, num_components, mode='Free', L_domain=L, H_domain=H)
+    phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H, volfrac=volfrac)
     chain = MDAChain([geom_disc, phys_disc])
     
     design_space = gemseo.algos.design_space.DesignSpace()
     design_space.add_variable("x_vars", size=len(x_init), lower_bound=lb, upper_bound=ub, value=x_init)
     
     scenario = create_scenario(disciplines=[chain], objective_name="compliance", design_space=design_space, formulation_name="DisciplinaryOpt")
-    scenario.add_constraint("volume", "ineq", positive=False, value=volfrac)
+    scenario.add_constraint("volume", "ineq", positive=False, value=0.0)
     
     scenario.execute(algo_name="MMA", max_iter=max_iter, max_optimization_step=0.1)
 
@@ -64,7 +63,7 @@ def run_mbb_beam(max_iter=50):
     
     with stop_annotating():
         V_rho = df.FunctionSpace(mesh, "DG", 0)
-        rho_opt_arr = geom_disc._map_logic(opt_x)
+        rho_opt_arr = geom_disc._map_logic(opt_x, power=1.0)
         rho_opt = df.Function(V_rho)
         rho_opt.vector()[:] = rho_opt_arr
         
@@ -74,7 +73,7 @@ def run_mbb_beam(max_iter=50):
         plt.colorbar(p, label="Density $\\rho$")
         plt.title("Optimized GGP Topology: MBB Beam (Half Model)")
         plt.savefig("results/mbb_beam_optimized.png", dpi=300, bbox_inches="tight")
-        print("Results saved to 'results/' directory.")
+        print("Results saved.")
 
 if __name__ == "__main__":
     run_mbb_beam()

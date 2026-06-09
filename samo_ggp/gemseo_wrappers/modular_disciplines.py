@@ -1,17 +1,18 @@
 import numpy as np
-from dolfin import *
-from dolfin_adjoint import *
 from gemseo.core.discipline.discipline import Discipline
 from ..utils.vectorized_mapping import compute_local_characteristic_np, smooth_saturation_np
+import dolfin as df
+from dolfin_adjoint import *
 
 class GGPVectorizedGeometryDiscipline(Discipline):
     """
     Highly optimized GGP Geometry Discipline using NumPy vectorization.
     Supports both Free (6-var) and ALM (3-var) mapping strategies.
+    Implements GGP-Matlab consistent penalization: E depends on Mc^3, Rho on Mc^1.
     """
-    def __init__(self, mesh, num_components, mode='Free', L_domain=60.0, H_domain=30.0, 
-                 num_layers=None, comp_per_layer=None, layer_height=None,
-                 method='GP', r_gp=0.5, ka=10.0, pp=100.0, name="GGP_Geometry"):
+    def __init__(self, mesh, num_components, mode='Free', method='GP', r_gp=0.5, 
+                 ka=10.0, pp=100.0, gammac=3.0, gammav=1.0, name="GGP_Geometry",
+                 num_layers=None, comp_per_layer=None, layer_height=None):
         super().__init__(name=name)
         self.num_components = num_components
         self.mode = mode
@@ -19,14 +20,16 @@ class GGPVectorizedGeometryDiscipline(Discipline):
         self.r_gp = r_gp
         self.ka = ka
         self.pp = pp
+        self.gammac = gammac
+        self.gammav = gammav
         
         # ALM specific
         self.num_layers = num_layers
         self.comp_per_layer = comp_per_layer
         self.layer_height = layer_height
         
-        # Correct way to get centroids for DG0 in FEniCS 2019:
-        V_dg = FunctionSpace(mesh, "DG", 0)
+        # Pre-calculate element centroids
+        V_dg = df.FunctionSpace(mesh, "DG", 0)
         midpoints = V_dg.tabulate_dof_coordinates()
         self.X_mesh, self.Y_mesh = midpoints[:, 0], midpoints[:, 1]
         self.num_elements = len(self.X_mesh)
@@ -37,17 +40,16 @@ class GGPVectorizedGeometryDiscipline(Discipline):
         
         # IO Grammars
         self.input_grammar.update_from_names(["x_vars"])
-        self.output_grammar.update_from_names(["density"])
+        self.output_grammar.update_from_names(["rho_E", "rho_V"])
 
-    def _map_logic(self, x_vars):
+    def _map_logic(self, x_vars, power):
         char_functions = []
-        
         if self.mode == 'Free':
             params = x_vars.reshape(self.num_components, 6)
             for i in range(self.num_components):
                 p = params[i]
                 W = compute_local_characteristic_np(self.X_mesh, self.Y_mesh, p[0], p[1], p[2], p[3], p[4], self.r_gp, method=self.method)
-                char_functions.append(W * p[5])
+                char_functions.append(W * (p[5]**power))
         else:
             # ALM Mode
             params = x_vars.reshape(self.num_components, 3)
@@ -59,7 +61,7 @@ class GGPVectorizedGeometryDiscipline(Discipline):
                     idx = layer * self.comp_per_layer + i
                     p = params[idx]
                     W = compute_local_characteristic_np(self.X_mesh, self.Y_mesh, p[0], y_fixed, p[1], h_fixed, theta_fixed, self.r_gp, method=self.method)
-                    char_functions.append(W * p[2])
+                    char_functions.append(W * (p[2]**power))
         
         sum_exp = np.mean(np.exp(self.ka * np.array(char_functions)), axis=0)
         ks_val = (1.0 / self.ka) * np.log(sum_exp)
@@ -68,65 +70,72 @@ class GGPVectorizedGeometryDiscipline(Discipline):
     def _run(self, input_data=None):
         if input_data is not None: self.local_data.update(input_data)
         x_vars = self.local_data["x_vars"].flatten()
-        self.local_data["density"] = self._map_logic(x_vars)
+        self.local_data["rho_E"] = self._map_logic(x_vars, self.gammac)
+        self.local_data["rho_V"] = self._map_logic(x_vars, self.gammav)
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
         x = self.local_data["x_vars"].flatten()
         eps = 1e-8
-        jac = np.zeros((self.num_elements, len(x)))
+        jac_E = np.zeros((self.num_elements, len(x)))
+        jac_V = np.zeros((self.num_elements, len(x)))
         for i in range(len(x)):
-            x_plus = x.copy()
-            x_plus[i] += eps
-            rho_plus = self._map_logic(x_plus)
-            x_minus = x.copy()
-            x_minus[i] -= eps
-            rho_minus = self._map_logic(x_minus)
-            jac[:, i] = (rho_plus - rho_minus) / (2 * eps)
-        self.jac = {"density": {"x_vars": jac}}
+            x_plus = x.copy(); x_plus[i] += eps
+            x_minus = x.copy(); x_minus[i] -= eps
+            jac_E[:, i] = (self._map_logic(x_plus, self.gammac) - self._map_logic(x_minus, self.gammac)) / (2 * eps)
+            jac_V[:, i] = (self._map_logic(x_plus, self.gammav) - self._map_logic(x_minus, self.gammav)) / (2 * eps)
+        self.jac = {"rho_E": {"x_vars": jac_E}, "rho_V": {"x_vars": jac_V}}
 
 class GGPPhysicsAdjointDiscipline(Discipline):
     """
-    Optimized Physics Discipline with automatic objective scaling.
+    Optimized Physics Discipline with Log Scaling for Compliance.
+    Matches GGP-Matlab's log(c+1) and volume scaling.
     """
-    def __init__(self, solver, mesh, mesh_area, name="GGP_Physics"):
+    def __init__(self, solver, mesh, mesh_area, volfrac, name="GGP_Physics"):
         super().__init__(name=name)
         self.solver = solver
         self.mesh = mesh
         self.mesh_area = mesh_area
-        self.V_dg = FunctionSpace(mesh, "DG", 0)
-        self.scale_obj = 1.0
-        self.iter = 0
+        self.volfrac = volfrac
+        self.V_dg = df.FunctionSpace(mesh, "DG", 0)
         
-        self.input_grammar.update_from_names(["density"])
+        self.input_grammar.update_from_names(["rho_E", "rho_V"])
         self.output_grammar.update_from_names(["compliance", "volume"])
 
     def _run(self, input_data=None):
         if input_data is not None: self.local_data.update(input_data)
-        rho_arr = self.local_data["density"].flatten()
+        rho_E_arr = self.local_data["rho_E"].flatten()
+        rho_V_arr = self.local_data["rho_V"].flatten()
         
         get_working_tape().clear_tape()
-        rho_adj = Function(self.V_dg)
-        rho_adj.vector()[:] = rho_arr
-        rho_tracked = interpolate(rho_adj, self.V_dg)
         
-        u = self.solver.solve(rho_tracked)
-        j_val = float(self.solver.compute_compliance(u))
-        v_val = float(self.solver.compute_volume(rho_tracked))
+        rho_E_adj = df.Function(self.V_dg)
+        rho_E_adj.vector()[:] = rho_E_arr
+        rho_E_tracked = interpolate(rho_E_adj, self.V_dg)
         
-        # Scaling to 1.0 at first iteration
-        if self.iter == 0:
-            self.scale_obj = 1.0 / j_val
-            
-        self.local_data["compliance"] = np.array([j_val * self.scale_obj])
-        self.local_data["volume"] = np.array([v_val / self.mesh_area])
+        rho_V_adj = df.Function(self.V_dg)
+        rho_V_adj.vector()[:] = rho_V_arr
+        rho_V_tracked = interpolate(rho_V_adj, self.V_dg)
         
-        m = Control(rho_tracked)
-        self.dj_drho = compute_gradient(j_val, m).vector().get_local() * self.scale_obj
-        self.dv_drho = compute_gradient(v_val, m).vector().get_local() / self.mesh_area
-        self.iter += 1
+        u = self.solver.solve(rho_E_tracked)
+        j_functional = self.solver.compute_compliance(u)
+        v_functional = self.solver.compute_volume(rho_V_tracked)
+        
+        c_val = float(j_functional)
+        v_val = float(v_functional) / self.mesh_area
+        
+        # LOG SCALING: f0 = log(c + 1)
+        self.local_data["compliance"] = np.array([np.log(c_val + 1.0)])
+        
+        # VOLUME SCALING: f = (v - volfrac)/volfrac * 100
+        self.local_data["volume"] = np.array([(v_val - self.volfrac) / self.volfrac * 100.0])
+        
+        # Gradients
+        self.dj_drhoE = compute_gradient(j_functional, Control(rho_E_tracked)).vector().get_local() / (c_val + 1.0)
+        self.dv_drhoV = compute_gradient(v_functional, Control(rho_V_tracked)).vector().get_local() * (100.0 / (self.volfrac * self.mesh_area))
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
+        num_elements = len(self.dj_drhoE)
         self.jac = {
-            "compliance": {"density": self.dj_drho.reshape(1, -1)},
-            "volume": {"density": self.dv_drho.reshape(1, -1)}
+            "compliance": {"rho_E": self.dj_drhoE.reshape(1, -1), "rho_V": np.zeros((1, num_elements))},
+            "volume": {"rho_E": np.zeros((1, num_elements)), "rho_V": self.dv_drhoV.reshape(1, -1)}
         }
