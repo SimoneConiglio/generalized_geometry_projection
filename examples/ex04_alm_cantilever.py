@@ -24,12 +24,8 @@ def run_alm_cantilever(max_iter=50):
     # Mesh and Spaces
     mesh = RectangleMesh(df.Point(0, 0), df.Point(L, H), nelx, nely)
     V_u = df.VectorFunctionSpace(mesh, "CG", 1)
-    
-    # BCs
     def left_boundary(x, on_boundary): return on_boundary and df.near(x[0], 0.0)
     bc = [DirichletBC(V_u, Constant((0.0, 0.0)), left_boundary)]
-    
-    # Load
     boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     boundaries.set_all(0)
     class BottomRight(df.SubDomain):
@@ -38,7 +34,6 @@ def run_alm_cantilever(max_iter=50):
     ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
     L_rhs_vec = Constant((0.0, -1.0))
 
-    # Solver
     solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
     mapper = GeometryFactory.create_mapper("2D_ALM", mesh=mesh, num_layers=num_layers, 
                                           components_per_layer=comp_per_layer, layer_height=layer_height)
@@ -53,7 +48,6 @@ def run_alm_cantilever(max_iter=50):
     )
     phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H, volfrac=volfrac)
     
-    # Overhang Constraints
     from gemseo.core.discipline.discipline import Discipline
     class ALMConstraintsDiscipline(Discipline):
         def __init__(self, A, b):
@@ -72,7 +66,6 @@ def run_alm_cantilever(max_iter=50):
     cons_disc = ALMConstraintsDiscipline(A_over, b_over)
     
     chain = MDAChain([geom_disc, phys_disc])
-    
     design_space = gemseo.algos.design_space.DesignSpace()
     design_space.add_variable("x_vars", size=len(x_init), lower_bound=lb, upper_bound=ub, value=x_init)
     
@@ -90,16 +83,17 @@ def run_alm_cantilever(max_iter=50):
     
     with stop_annotating():
         V_rho = df.FunctionSpace(mesh, "DG", 0)
-        # Show rho_V (Physical Density)
         rho_opt_arr = geom_disc._map_logic(opt_x, power=1.0)
         rho_opt = df.Function(V_rho)
         rho_opt.vector()[:] = rho_opt_arr
         
         df.File("results/alm_cantilever_optimized.pvd") << rho_opt
         plt.figure(figsize=(10, 5))
-        df.plot(rho_opt, cmap="Blues")
+        p = df.plot(rho_opt, cmap="gray_r")
+        plt.colorbar(p, label="Density $\\rho$")
         plt.title(f"ALM Optimized Topology (Overhang {alpha_deg} deg)")
         plt.savefig("results/alm_cantilever_optimized.png", dpi=300)
+        plt.close()
         print("Results saved.")
 
 if __name__ == "__main__":

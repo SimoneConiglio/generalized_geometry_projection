@@ -18,12 +18,8 @@ def run_l_shape_bracket(max_iter=50):
 
     mesh = RectangleMesh(df.Point(0, 0), df.Point(L, H), nelx, nely)
     V_u = df.VectorFunctionSpace(mesh, "CG", 1)
-    
-    # BCs: Top edge fixed
     def top_boundary(x, on_boundary): return on_boundary and df.near(x[1], H)
     bc = [DirichletBC(V_u, Constant((0.0, 0.0)), top_boundary)]
-    
-    # Load: Middle of the right side
     boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     boundaries.set_all(0)
     class MiddleRightArea(df.SubDomain):
@@ -38,14 +34,12 @@ def run_l_shape_bracket(max_iter=50):
     lb = np.array([0.0, 0.0, 0.0, 1.0, -2*np.pi, 0.0] * num_components)
     ub = np.array([L, H, L*1.5, H, 2*np.pi, 1.0] * num_components)
 
-    # --- Hybrid Modular Architecture ---
     geom_disc = GGPVectorizedGeometryDiscipline(mesh, num_components, mode='Free', L_domain=L, H_domain=H)
     phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H, volfrac=volfrac)
     chain = MDAChain([geom_disc, phys_disc])
     
     design_space = gemseo.algos.design_space.DesignSpace()
     design_space.add_variable("x_vars", size=len(x_init), lower_bound=lb, upper_bound=ub, value=x_init)
-    
     scenario = create_scenario(disciplines=[chain], objective_name="compliance", design_space=design_space, formulation_name="DisciplinaryOpt")
     scenario.add_constraint("volume", "ineq", positive=False, value=0.0)
     
@@ -64,10 +58,11 @@ def run_l_shape_bracket(max_iter=50):
         
         df.File("results/l_shape_bracket_optimized.pvd") << rho_opt
         plt.figure(figsize=(7, 7))
-        p = df.plot(rho_opt, cmap="Blues")
+        p = df.plot(rho_opt, cmap="gray_r")
         plt.colorbar(p, label="Density $\\rho$", shrink=0.7)
         plt.title("Optimized GGP Topology: L-Shape Bracket")
         plt.savefig("results/l_shape_bracket_optimized.png", dpi=300, bbox_inches="tight")
+        plt.close()
         print("Results saved.")
 
 if __name__ == "__main__":
