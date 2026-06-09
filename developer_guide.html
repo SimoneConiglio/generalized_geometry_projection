@@ -5,7 +5,7 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
-    <title>Developer Guide &#8212; samo_ggp 0.1.0 documentation</title>
+    <title>Developer Guide &#8212; ggp 0.1.0 documentation</title>
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="_static/basic.css?v=686e5160" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
@@ -477,7 +477,7 @@ window.runMermaid = runMermaid;</script>
             
   <section id="developer-guide">
 <h1>Developer Guide<a class="headerlink" href="#developer-guide" title="Link to this heading">¶</a></h1>
-<p>This guide outlines the mathematical foundation, architectural patterns, and engineering decisions behind the <code class="docutils literal notranslate"><span class="pre">samo_ggp</span></code> framework.</p>
+<p>This guide outlines the mathematical foundation, architectural patterns, and engineering decisions behind the <code class="docutils literal notranslate"><span class="pre">ggp</span></code> framework.</p>
 <section id="mathematical-foundation">
 <h2>Mathematical Foundation<a class="headerlink" href="#mathematical-foundation" title="Link to this heading">¶</a></h2>
 <p>The <strong>Generalized Geometry Projection (GGP)</strong> method parametrizes a design domain using explicit geometric primitives (e.g., rectangles, ellipses) rather than a dense grid of pixel densities. This framework implements the 2D Free formulation based on the original work by Coniglio et al.</p>
@@ -492,7 +492,7 @@ The signed distance field <span class="math notranslate nohighlight">\(\psi_i(x,
 </section>
 <section id="architecture-object-oriented-design">
 <h2>Architecture &amp; Object-Oriented Design<a class="headerlink" href="#architecture-object-oriented-design" title="Link to this heading">¶</a></h2>
-<p>The <code class="docutils literal notranslate"><span class="pre">samo_ggp</span></code> package is structured to decouple the geometry parametrization from the physics solvers, enabling easy extension to 3D or Additive Layer Manufacturing (ALM) constraints without rewriting the optimization loop.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">ggp</span></code> package is structured to decouple the geometry parametrization from the physics solvers, enabling easy extension to 3D or Additive Layer Manufacturing (ALM) constraints without rewriting the optimization loop.</p>
 <pre align="center" class="mermaid align-center">
         graph TD
     subgraph GEMSEO
@@ -567,7 +567,7 @@ snakeviz<span class="w"> </span>performance_logs/short_cantilever.prof
       </div>
       <div class="sphinxsidebar" role="navigation" aria-label="Main">
         <div class="sphinxsidebarwrapper">
-<h1 class="logo"><a href="index.html">samo_ggp</a></h1>
+<h1 class="logo"><a href="index.html">ggp</a></h1>
 
 
 

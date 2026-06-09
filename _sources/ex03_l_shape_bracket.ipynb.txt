@@ -24,9 +24,9 @@
     "import numpy as np\n",
     "import gemseo\n",
     "from gemseo import create_scenario\n",
-    "from samo_ggp.geometry.factory import GeometryFactory\n",
-    "from samo_ggp.physics.factory import PhysicsFactory\n",
-    "from samo_ggp.gemseo_wrappers.macro_discipline import GGPMacroDiscipline\n",
+    "from ggp.geometry.factory import GeometryFactory\n",
+    "from ggp.physics.factory import PhysicsFactory\n",
+    "from ggp.gemseo_wrappers.macro_discipline import GGPMacroDiscipline\n",
     "import matplotlib.pyplot as plt\n",
     "import os"
    ]

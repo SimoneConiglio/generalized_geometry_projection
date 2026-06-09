@@ -1,7 +1,7 @@
 Developer Guide
 ===============
 
-This guide outlines the mathematical foundation, architectural patterns, and engineering decisions behind the ``samo_ggp`` framework.
+This guide outlines the mathematical foundation, architectural patterns, and engineering decisions behind the ``ggp`` framework.
 
 Mathematical Foundation
 -----------------------
@@ -25,7 +25,7 @@ Because the KS function can exceed 1.0 (causing issues for physics solvers), we 
 Architecture & Object-Oriented Design
 -------------------------------------
 
-The ``samo_ggp`` package is structured to decouple the geometry parametrization from the physics solvers, enabling easy extension to 3D or Additive Layer Manufacturing (ALM) constraints without rewriting the optimization loop.
+The ``ggp`` package is structured to decouple the geometry parametrization from the physics solvers, enabling easy extension to 3D or Additive Layer Manufacturing (ALM) constraints without rewriting the optimization loop.
 
 .. mermaid::
     :align: center
