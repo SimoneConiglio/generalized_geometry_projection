@@ -9,10 +9,13 @@
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="_static/basic.css?v=686e5160" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/nbsphinx-code-cells.css?v=2aa19091" />
     <script src="_static/documentation_options.js?v=01f34227"></script>
     <script src="_static/doctools.js?v=9bcbadda"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
     <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -105,7 +108,7 @@ import os
     scenario = create_scenario(disciplines=[disc], objective_name=&quot;compliance&quot;, design_space=design_space, formulation_name=&quot;DisciplinaryOpt&quot;)
     scenario.add_constraint(&quot;volume&quot;, &quot;ineq&quot;, positive=False, value=volfrac)
 
-    scenario.execute(algo_name=&quot;MMA&quot;, max_iter=5, max_optimization_step=0.1)
+    scenario.execute(algo_name=&quot;MMA&quot;, max_iter=50, max_optimization_step=0.1)
 
     # --- Post-Processing ---
     print(&quot;Post-processing optimal design...&quot;)
@@ -141,8 +144,10 @@ import os
 </pre></div>
 </div>
 </div>
-<section id="Optimized-Result:nbsphinx-math:n\nOptimized-Design">
-<h2>Optimized Result:nbsphinx-math:<cite>n</cite><span class="math">\n</span><img alt="Optimized Design" src="_static/mbb_beam_optimized.png" /><a class="headerlink" href="#Optimized-Result:nbsphinx-math:n\nOptimized-Design" title="Link to this heading">¶</a></h2>
+<section id="Optimized-Result">
+<h2>Optimized Result<a class="headerlink" href="#Optimized-Result" title="Link to this heading">¶</a></h2>
+<p><em>Note: The image below shows a fast preliminary result (5 iterations) for web demonstration. Running this notebook locally with ``max_iter=50`` will produce the fully converged, crisp topology.</em></p>
+<img alt="Optimized Design" src="_static/mbb_beam_optimized.png" />
 </section>
 </section>
 

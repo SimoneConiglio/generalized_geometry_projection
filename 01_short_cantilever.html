@@ -9,10 +9,13 @@
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="_static/basic.css?v=686e5160" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <link rel="stylesheet" type="text/css" href="_static/nbsphinx-code-cells.css?v=2aa19091" />
     <script src="_static/documentation_options.js?v=01f34227"></script>
     <script src="_static/doctools.js?v=9bcbadda"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
     <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
@@ -41,231 +44,110 @@
 <h1>Short Cantilever<a class="headerlink" href="#Short-Cantilever" title="Link to this heading">¶</a></h1>
 <p>This is an interactive Jupyter Notebook implementation.</p>
 <div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[1]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
 </pre></div>
 </div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="kn">import</span><span class="w"> </span><span class="nn">dolfin</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">df</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">dolfin_adjoint</span><span class="w"> </span><span class="kn">import</span> <span class="n">Constant</span><span class="p">,</span> <span class="n">DirichletBC</span><span class="p">,</span> <span class="n">RectangleMesh</span><span class="p">,</span> <span class="n">stop_annotating</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">numpy</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">np</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">gemseo</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">gemseo</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_scenario</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">samo_ggp.geometry.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">GeometryFactory</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">samo_ggp.physics.factory</span><span class="w"> </span><span class="kn">import</span> <span class="n">PhysicsFactory</span>
-<span class="kn">from</span><span class="w"> </span><span class="nn">samo_ggp.gemseo_wrappers.macro_discipline</span><span class="w"> </span><span class="kn">import</span> <span class="n">GGPMacroDiscipline</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">matplotlib.pyplot</span><span class="w"> </span><span class="k">as</span><span class="w"> </span><span class="nn">plt</span>
-<span class="kn">import</span><span class="w"> </span><span class="nn">os</span>
+<div class="input_area highlight-none notranslate"><div class="highlight"><pre><span></span>import dolfin as df
+from dolfin_adjoint import Constant, DirichletBC, RectangleMesh, stop_annotating
+import numpy as np
+import gemseo
+from gemseo import create_scenario
+from samo_ggp.geometry.factory import GeometryFactory
+from samo_ggp.physics.factory import PhysicsFactory
+from samo_ggp.gemseo_wrappers.macro_discipline import GGPMacroDiscipline
+import matplotlib.pyplot as plt
+import os
 </pre></div>
 </div>
 </div>
 <div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[2]:
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
 </pre></div>
 </div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">def</span><span class="w"> </span><span class="nf">run_short_cantilever</span><span class="p">():</span>
-    <span class="n">L</span><span class="p">,</span> <span class="n">H</span> <span class="o">=</span> <span class="mf">50.0</span><span class="p">,</span> <span class="mf">50.0</span>
-    <span class="n">nelx</span><span class="p">,</span> <span class="n">nely</span> <span class="o">=</span> <span class="mi">50</span><span class="p">,</span> <span class="mi">50</span>
-    <span class="n">volfrac</span> <span class="o">=</span> <span class="mf">0.4</span>
-    <span class="n">num_components</span> <span class="o">=</span> <span class="mi">10</span>
+<div class="input_area highlight-none notranslate"><div class="highlight"><pre><span></span>def run_short_cantilever():
+    L, H = 50.0, 50.0
+    nelx, nely = 50, 50
+    volfrac = 0.4
+    num_components = 10
 
-    <span class="c1"># Mesh and Spaces</span>
-    <span class="n">mesh</span> <span class="o">=</span> <span class="n">RectangleMesh</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">Point</span><span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="n">df</span><span class="o">.</span><span class="n">Point</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">H</span><span class="p">),</span> <span class="n">nelx</span><span class="p">,</span> <span class="n">nely</span><span class="p">)</span>
-    <span class="n">V_u</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">VectorFunctionSpace</span><span class="p">(</span><span class="n">mesh</span><span class="p">,</span> <span class="s2">&quot;CG&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
+    # Mesh and Spaces
+    mesh = RectangleMesh(df.Point(0, 0), df.Point(L, H), nelx, nely)
+    V_u = df.VectorFunctionSpace(mesh, &quot;CG&quot;, 1)
 
-    <span class="c1"># Boundary Conditions: Left edge fixed</span>
-    <span class="k">def</span><span class="w"> </span><span class="nf">left_boundary</span><span class="p">(</span><span class="n">x</span><span class="p">,</span> <span class="n">on_boundary</span><span class="p">):</span> <span class="k">return</span> <span class="n">on_boundary</span> <span class="ow">and</span> <span class="n">df</span><span class="o">.</span><span class="n">near</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="mf">0.0</span><span class="p">)</span>
-    <span class="n">bc</span> <span class="o">=</span> <span class="p">[</span><span class="n">DirichletBC</span><span class="p">(</span><span class="n">V_u</span><span class="p">,</span> <span class="n">Constant</span><span class="p">((</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">)),</span> <span class="n">left_boundary</span><span class="p">)]</span>
+    # Boundary Conditions: Left edge fixed
+    def left_boundary(x, on_boundary): return on_boundary and df.near(x[0], 0.0)
+    bc = [DirichletBC(V_u, Constant((0.0, 0.0)), left_boundary)]
 
-    <span class="c1"># Load: Point load on middle right</span>
-    <span class="n">boundaries</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">MeshFunction</span><span class="p">(</span><span class="s2">&quot;size_t&quot;</span><span class="p">,</span> <span class="n">mesh</span><span class="p">,</span> <span class="n">mesh</span><span class="o">.</span><span class="n">topology</span><span class="p">()</span><span class="o">.</span><span class="n">dim</span><span class="p">()</span> <span class="o">-</span> <span class="mi">1</span><span class="p">)</span>
-    <span class="n">boundaries</span><span class="o">.</span><span class="n">set_all</span><span class="p">(</span><span class="mi">0</span><span class="p">)</span>
-    <span class="k">class</span><span class="w"> </span><span class="nc">MiddleRightArea</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">SubDomain</span><span class="p">):</span>
-        <span class="k">def</span><span class="w"> </span><span class="nf">inside</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">x</span><span class="p">,</span> <span class="n">on_boundary</span><span class="p">):</span> <span class="k">return</span> <span class="n">df</span><span class="o">.</span><span class="n">near</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">],</span> <span class="n">L</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span> <span class="ow">and</span> <span class="n">df</span><span class="o">.</span><span class="n">near</span><span class="p">(</span><span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">],</span> <span class="n">H</span><span class="o">/</span><span class="mf">2.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">)</span>
-    <span class="n">MiddleRightArea</span><span class="p">()</span><span class="o">.</span><span class="n">mark</span><span class="p">(</span><span class="n">boundaries</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-    <span class="n">ds_load</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">Measure</span><span class="p">(</span><span class="s2">&quot;ds&quot;</span><span class="p">,</span> <span class="n">domain</span><span class="o">=</span><span class="n">mesh</span><span class="p">,</span> <span class="n">subdomain_data</span><span class="o">=</span><span class="n">boundaries</span><span class="p">)</span>
-    <span class="n">L_rhs_vec</span> <span class="o">=</span> <span class="n">Constant</span><span class="p">((</span><span class="mf">0.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">))</span>
+    # Load: Point load on middle right
+    boundaries = df.MeshFunction(&quot;size_t&quot;, mesh, mesh.topology().dim() - 1)
+    boundaries.set_all(0)
+    class MiddleRightArea(df.SubDomain):
+        def inside(self, x, on_boundary): return df.near(x[0], L, 2.0) and df.near(x[1], H/2.0, 5.0)
+    MiddleRightArea().mark(boundaries, 1)
+    ds_load = df.Measure(&quot;ds&quot;, domain=mesh, subdomain_data=boundaries)
+    L_rhs_vec = Constant((0.0, -1.0))
 
-    <span class="c1"># Initialization</span>
-    <span class="n">mapper</span> <span class="o">=</span> <span class="n">GeometryFactory</span><span class="o">.</span><span class="n">create_mapper</span><span class="p">(</span><span class="s2">&quot;2D_Free&quot;</span><span class="p">,</span> <span class="n">mesh</span><span class="o">=</span><span class="n">mesh</span><span class="p">,</span> <span class="n">num_components</span><span class="o">=</span><span class="n">num_components</span><span class="p">)</span>
-    <span class="n">solver</span> <span class="o">=</span> <span class="n">PhysicsFactory</span><span class="o">.</span><span class="n">create_solver</span><span class="p">(</span><span class="s2">&quot;Elasticity_2D&quot;</span><span class="p">,</span> <span class="n">V_u</span><span class="o">=</span><span class="n">V_u</span><span class="p">,</span> <span class="n">bc</span><span class="o">=</span><span class="n">bc</span><span class="p">,</span> <span class="n">ds_load</span><span class="o">=</span><span class="n">ds_load</span><span class="p">,</span> <span class="n">L_rhs_vec</span><span class="o">=</span><span class="n">L_rhs_vec</span><span class="p">)</span>
-    <span class="n">x_init</span> <span class="o">=</span> <span class="n">mapper</span><span class="o">.</span><span class="n">get_initial_design</span><span class="p">(</span><span class="n">L</span><span class="p">,</span> <span class="n">H</span><span class="p">)</span>
-    <span class="n">lb</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="mf">0.0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">5.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">,</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">]</span> <span class="o">*</span> <span class="n">num_components</span><span class="p">)</span>
-    <span class="n">ub</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">L</span><span class="p">,</span> <span class="n">H</span><span class="p">,</span> <span class="n">L</span><span class="p">,</span> <span class="n">H</span><span class="o">/</span><span class="mi">2</span><span class="p">,</span> <span class="n">np</span><span class="o">.</span><span class="n">pi</span><span class="p">]</span> <span class="o">*</span> <span class="n">num_components</span><span class="p">)</span>
+    # Initialization
+    mapper = GeometryFactory.create_mapper(&quot;2D_Free&quot;, mesh=mesh, num_components=num_components)
+    solver = PhysicsFactory.create_solver(&quot;Elasticity_2D&quot;, V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
+    x_init = mapper.get_initial_design(L, H)
+    lb = np.array([0.0, 0.0, 5.0, 2.0, -np.pi] * num_components)
+    ub = np.array([L, H, L, H/2, np.pi] * num_components)
 
-    <span class="c1"># Discipline and Optimization</span>
-    <span class="n">disc</span> <span class="o">=</span> <span class="n">GGPMacroDiscipline</span><span class="p">(</span><span class="n">mapper</span><span class="p">,</span> <span class="n">solver</span><span class="p">,</span> <span class="n">x_init</span><span class="p">,</span> <span class="n">lb</span><span class="p">,</span> <span class="n">ub</span><span class="p">,</span> <span class="n">mesh_area</span><span class="o">=</span><span class="n">L</span><span class="o">*</span><span class="n">H</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;GGP_Short_Cantilever&quot;</span><span class="p">)</span>
-    <span class="n">design_space</span> <span class="o">=</span> <span class="n">gemseo</span><span class="o">.</span><span class="n">algos</span><span class="o">.</span><span class="n">design_space</span><span class="o">.</span><span class="n">DesignSpace</span><span class="p">()</span>
-    <span class="n">design_space</span><span class="o">.</span><span class="n">add_variable</span><span class="p">(</span><span class="s2">&quot;x_vars&quot;</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">x_init</span><span class="p">),</span> <span class="n">lower_bound</span><span class="o">=</span><span class="n">lb</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="n">ub</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">x_init</span><span class="p">)</span>
+    # Discipline and Optimization
+    disc = GGPMacroDiscipline(mapper, solver, x_init, lb, ub, mesh_area=L*H, name=&quot;GGP_Short_Cantilever&quot;)
+    design_space = gemseo.algos.design_space.DesignSpace()
+    design_space.add_variable(&quot;x_vars&quot;, size=len(x_init), lower_bound=lb, upper_bound=ub, value=x_init)
 
-    <span class="n">scenario</span> <span class="o">=</span> <span class="n">create_scenario</span><span class="p">(</span><span class="n">disciplines</span><span class="o">=</span><span class="p">[</span><span class="n">disc</span><span class="p">],</span> <span class="n">objective_name</span><span class="o">=</span><span class="s2">&quot;compliance&quot;</span><span class="p">,</span> <span class="n">design_space</span><span class="o">=</span><span class="n">design_space</span><span class="p">,</span> <span class="n">formulation_name</span><span class="o">=</span><span class="s2">&quot;DisciplinaryOpt&quot;</span><span class="p">)</span>
-    <span class="n">scenario</span><span class="o">.</span><span class="n">add_constraint</span><span class="p">(</span><span class="s2">&quot;volume&quot;</span><span class="p">,</span> <span class="s2">&quot;ineq&quot;</span><span class="p">,</span> <span class="n">positive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">volfrac</span><span class="p">)</span>
+    scenario = create_scenario(disciplines=[disc], objective_name=&quot;compliance&quot;, design_space=design_space, formulation_name=&quot;DisciplinaryOpt&quot;)
+    scenario.add_constraint(&quot;volume&quot;, &quot;ineq&quot;, positive=False, value=volfrac)
 
-    <span class="n">scenario</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="n">algo_name</span><span class="o">=</span><span class="s2">&quot;MMA&quot;</span><span class="p">,</span> <span class="n">max_iter</span><span class="o">=</span><span class="mi">5</span><span class="p">,</span> <span class="n">max_optimization_step</span><span class="o">=</span><span class="mf">0.1</span><span class="p">)</span>
+    scenario.execute(algo_name=&quot;MMA&quot;, max_iter=50, max_optimization_step=0.1)
 
-    <span class="c1"># --- Post-Processing ---</span>
-    <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Post-processing optimal design...&quot;</span><span class="p">)</span>
-    <span class="n">os</span><span class="o">.</span><span class="n">makedirs</span><span class="p">(</span><span class="s2">&quot;results&quot;</span><span class="p">,</span> <span class="n">exist_ok</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
+    # --- Post-Processing ---
+    print(&quot;Post-processing optimal design...&quot;)
+    os.makedirs(&quot;results&quot;, exist_ok=True)
 
-    <span class="c1"># 1. Retrieve optimal design variables from GEMSEO</span>
-    <span class="n">opt_x</span> <span class="o">=</span> <span class="n">scenario</span><span class="o">.</span><span class="n">optimization_result</span><span class="o">.</span><span class="n">x_opt</span>
+    # 1. Retrieve optimal design variables from GEMSEO
+    opt_x = scenario.optimization_result.x_opt
 
-    <span class="c1"># 2. Assign back to FEniCS constants to update the UFL graph</span>
-    <span class="k">for</span> <span class="n">c</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="nb">zip</span><span class="p">(</span><span class="n">disc</span><span class="o">.</span><span class="n">controls_objs</span><span class="p">,</span> <span class="n">opt_x</span><span class="p">):</span>
-        <span class="n">c</span><span class="o">.</span><span class="n">assign</span><span class="p">(</span><span class="nb">float</span><span class="p">(</span><span class="n">v</span><span class="p">))</span>
+    # 2. Assign back to FEniCS constants to update the UFL graph
+    for c, v in zip(disc.controls_objs, opt_x):
+        c.assign(float(v))
 
-    <span class="k">with</span> <span class="n">stop_annotating</span><span class="p">():</span>
-        <span class="c1"># 3. Recompute the density field and project to a Function Space</span>
-        <span class="n">V_rho</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">FunctionSpace</span><span class="p">(</span><span class="n">mesh</span><span class="p">,</span> <span class="s2">&quot;CG&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">)</span>
-        <span class="n">rho_opt_ufl</span> <span class="o">=</span> <span class="n">mapper</span><span class="o">.</span><span class="n">map_to_density</span><span class="p">(</span><span class="n">disc</span><span class="o">.</span><span class="n">controls_objs</span><span class="p">)</span>
-        <span class="n">rho_opt</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">project</span><span class="p">(</span><span class="n">rho_opt_ufl</span><span class="p">,</span> <span class="n">V_rho</span><span class="p">)</span>
-        <span class="n">rho_opt</span><span class="o">.</span><span class="n">rename</span><span class="p">(</span><span class="s2">&quot;Density&quot;</span><span class="p">,</span> <span class="s2">&quot;Optimized GGP Density&quot;</span><span class="p">)</span>
+    with stop_annotating():
+        # 3. Recompute the density field and project to a Function Space
+        V_rho = df.FunctionSpace(mesh, &quot;CG&quot;, 1)
+        rho_opt_ufl = mapper.map_to_density(disc.controls_objs)
+        rho_opt = df.project(rho_opt_ufl, V_rho)
+        rho_opt.rename(&quot;Density&quot;, &quot;Optimized GGP Density&quot;)
 
-        <span class="c1"># 4. Save to Paraview format (.pvd)</span>
-        <span class="n">df</span><span class="o">.</span><span class="n">File</span><span class="p">(</span><span class="s2">&quot;results/short_cantilever_optimized.pvd&quot;</span><span class="p">)</span> <span class="o">&lt;&lt;</span> <span class="n">rho_opt</span>
+        # 4. Save to Paraview format (.pvd)
+        df.File(&quot;results/short_cantilever_optimized.pvd&quot;) &lt;&lt; rho_opt
 
-        <span class="c1"># 5. Save PNG using Matplotlib</span>
-        <span class="n">plt</span><span class="o">.</span><span class="n">figure</span><span class="p">(</span><span class="n">figsize</span><span class="o">=</span><span class="p">(</span><span class="mi">6</span><span class="p">,</span> <span class="mi">5</span><span class="p">))</span>
-        <span class="n">p</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">plot</span><span class="p">(</span><span class="n">rho_opt</span><span class="p">,</span> <span class="n">cmap</span><span class="o">=</span><span class="s2">&quot;Blues&quot;</span><span class="p">)</span>
-        <span class="n">plt</span><span class="o">.</span><span class="n">colorbar</span><span class="p">(</span><span class="n">p</span><span class="p">,</span> <span class="n">label</span><span class="o">=</span><span class="s2">&quot;Density $</span><span class="se">\\</span><span class="s2">rho$&quot;</span><span class="p">)</span>
-        <span class="n">plt</span><span class="o">.</span><span class="n">title</span><span class="p">(</span><span class="s2">&quot;Optimized GGP Topology: Short Cantilever&quot;</span><span class="p">)</span>
-        <span class="n">plt</span><span class="o">.</span><span class="n">savefig</span><span class="p">(</span><span class="s2">&quot;results/short_cantilever_optimized.png&quot;</span><span class="p">,</span> <span class="n">dpi</span><span class="o">=</span><span class="mi">300</span><span class="p">,</span> <span class="n">bbox_inches</span><span class="o">=</span><span class="s2">&quot;tight&quot;</span><span class="p">)</span>
-        <span class="nb">print</span><span class="p">(</span><span class="s2">&quot;Results saved to &#39;results/&#39; directory.&quot;</span><span class="p">)</span>
-</pre></div>
-</div>
-</div>
-<div class="nbinput docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[3]:
-</pre></div>
-</div>
-<div class="input_area highlight-ipython3 notranslate"><div class="highlight"><pre><span></span><span class="k">if</span> <span class="vm">__name__</span> <span class="o">==</span> <span class="s2">&quot;__main__&quot;</span><span class="p">:</span>
-    <span class="n">run_short_cantilever</span><span class="p">()</span>
+        # 5. Save PNG using Matplotlib
+        plt.figure(figsize=(6, 5))
+        p = df.plot(rho_opt, cmap=&quot;Blues&quot;)
+        plt.colorbar(p, label=&quot;Density $\\rho$&quot;)
+        plt.title(&quot;Optimized GGP Topology: Short Cantilever&quot;)
+        plt.savefig(&quot;results/short_cantilever_optimized.png&quot;, dpi=300, bbox_inches=&quot;tight&quot;)
+        print(&quot;Results saved to &#39;results/&#39; directory.&quot;)
 </pre></div>
 </div>
 </div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
 </div>
-<div class="output_area stderr docutils container">
-<div class="highlight"><pre>
-    INFO - 21:54:07: *** Start MDOScenario execution ***
-    INFO - 21:54:07: MDOScenario
-    INFO - 21:54:07:    Disciplines: GGP_Short_Cantilever
-    INFO - 21:54:07:    MDO formulation: DisciplinaryOpt
-    INFO - 21:54:07: Optimization problem:
-    INFO - 21:54:07:    minimize compliance(x_vars)
-    INFO - 21:54:07:    with respect to x_vars
-    INFO - 21:54:07:    under the inequality constraints
-    INFO - 21:54:07:       volume(x_vars) &lt;= 0.4
-    INFO - 21:54:07: Solving optimization problem with algorithm MMA:
-</pre></div></div>
-</div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area docutils container">
-<div class="highlight"><pre>
-Solving linear variational problem.
-</pre></div></div>
-</div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area stderr docutils container">
-<div class="highlight"><pre>
-    INFO - 21:54:20:     20%|██        | 1/5 [00:12&lt;00:50,  4.72 it/min, feas=False, obj=1]
-</pre></div></div>
-</div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area docutils container">
-<div class="highlight"><pre>
-Solving linear variational problem.
-</pre></div></div>
-</div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area stderr docutils container">
-<div class="highlight"><pre>
-    INFO - 21:54:32:     40%|████      | 2/5 [00:24&lt;00:37,  4.84 it/min, feas=True, obj=0.997]
-</pre></div></div>
-</div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area docutils container">
-<div class="highlight"><pre>
-Solving linear variational problem.
-</pre></div></div>
-</div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area stderr docutils container">
-<div class="highlight"><pre>
-    INFO - 21:54:44:     60%|██████    | 3/5 [00:36&lt;00:24,  4.90 it/min, feas=True, obj=0.484]
-</pre></div></div>
-</div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area docutils container">
-<div class="highlight"><pre>
-Solving linear variational problem.
-</pre></div></div>
-</div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area stderr docutils container">
-<div class="highlight"><pre>
-    INFO - 21:54:56:     80%|████████  | 4/5 [00:48&lt;00:12,  4.92 it/min, feas=True, obj=0.393]
-</pre></div></div>
-</div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area docutils container">
-<div class="highlight"><pre>
-Solving linear variational problem.
-</pre></div></div>
-</div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area stderr docutils container">
-<div class="highlight"><pre>
-    INFO - 21:55:08:    100%|██████████| 5/5 [01:00&lt;00:00,  4.92 it/min, feas=True, obj=0.0461]
-    INFO - 21:55:08: Optimization result:
-    INFO - 21:55:08:    Optimizer info:
-    INFO - 21:55:08:       Status: None
-    INFO - 21:55:08:       Message: Maximum number of iterations reached. GEMSEO stopped the driver.
-    INFO - 21:55:08:    Solution:
-    INFO - 21:55:08:       The solution is feasible.
-    INFO - 21:55:08:       Objective: 0.046078938061764836
-    INFO - 21:55:08:       Standardized constraints:
-    INFO - 21:55:08:          [volume-0.4] = -0.07286574826274778
-    INFO - 21:55:08: *** End MDOScenario execution ***
-</pre></div></div>
-</div>
-<div class="nboutput docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area docutils container">
-<div class="highlight"><pre>
-Post-processing optimal design...
-Results saved to &#39;results/&#39; directory.
-</pre></div></div>
-</div>
-<div class="nboutput nblast docutils container">
-<div class="prompt empty docutils container">
-</div>
-<div class="output_area docutils container">
-<img alt="_images/01_short_cantilever_3_12.png" src="_images/01_short_cantilever_3_12.png" />
+<div class="input_area highlight-none notranslate"><div class="highlight"><pre><span></span>if __name__ == &quot;__main__&quot;:
+    run_short_cantilever()
+</pre></div>
 </div>
 </div>
-<section id="Optimized-Result:nbsphinx-math:n\nOptimized-Design">
-<h2>Optimized Result:nbsphinx-math:<cite>n</cite><span class="math">\n</span><img alt="Optimized Design" src="_images/short_cantilever_optimized.png" /><a class="headerlink" href="#Optimized-Result:nbsphinx-math:n\nOptimized-Design" title="Link to this heading">¶</a></h2>
+<section id="Optimized-Result">
+<h2>Optimized Result<a class="headerlink" href="#Optimized-Result" title="Link to this heading">¶</a></h2>
+<p><em>Note: The image below shows a fast preliminary result (5 iterations) for web demonstration. Running this notebook locally with ``max_iter=50`` will produce the fully converged, crisp topology.</em></p>
+<img alt="Optimized Design" src="_images/short_cantilever_optimized.png" />
 </section>
 </section>
 

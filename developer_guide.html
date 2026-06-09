@@ -9,12 +9,451 @@
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="_static/basic.css?v=686e5160" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <script src="_static/documentation_options.js?v=01f34227"></script>
     <script src="_static/doctools.js?v=9bcbadda"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
     <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
+    <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";
+
+
+
+
+
+const initStyles = () => {
+    const defaultStyle = document.createElement('style');
+    defaultStyle.textContent = `pre.mermaid {
+    /* Same as .mermaid-container > pre */
+    display: block;
+    width: 100%;
+}
+
+pre.mermaid > svg {
+    /* Same as .mermaid-container > pre > svg */
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}`;
+    document.head.appendChild(defaultStyle);
+
+    const fullscreenStyle = document.createElement('style');
+    fullscreenStyle.textContent = `.mermaid-container {
+    display: flex;
+    flex-direction: row;
+    width: 100%;
+}
+
+.mermaid-container > pre {
+    display: block;
+    width: 100%;
+}
+
+.mermaid-container > pre > svg {
+    height: 500px;
+    width: 100%;
+    max-width: 100% !important;
+}
+
+.mermaid-fullscreen-btn {
+    width: 28px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.3);
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.2s;
+    box-shadow: 0 2px 6px rgba(0, 0, 0, 0.2);
+    font-size: 14px;
+    line-height: 1;
+    padding: 0;
+    color: #333;
+}
+
+.mermaid-fullscreen-btn:hover {
+    opacity: 100% !important;
+    background: rgba(255, 255, 255, 1);
+    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.3);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-btn.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.3);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-btn.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 3px 10px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal {
+    display: none;
+    position: fixed !important;
+    top: 0 !important;
+    left: 0 !important;
+    width: 95vw;
+    height: 100vh;
+    background: rgba(255, 255, 255, 0.98);
+    z-index: 9999;
+    padding: 20px;
+    overflow: auto;
+}
+
+.mermaid-fullscreen-modal.dark-theme {
+    background: rgba(0, 0, 0, 0.98);
+}
+
+.mermaid-fullscreen-modal.active {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen {
+    position: relative;
+    width: 95vw;
+    height: 90vh;
+    max-width: 95vw;
+    max-height: 90vh;
+    background: white;
+    border-radius: 8px;
+    padding: 20px;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+    overflow: auto;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen.dark-theme {
+    background: #1a1a1a;
+    box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+}
+
+.mermaid-container-fullscreen pre.mermaid {
+    width: 100%;
+    height: 100%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.mermaid-container-fullscreen .mermaid svg {
+    height: 100% !important;
+    width: 100% !important;
+    cursor: grab;
+}
+
+.mermaid-fullscreen-close {
+    position: fixed !important;
+    top: 20px !important;
+    right: 20px !important;
+    width: 40px;
+    height: 40px;
+    background: rgba(255, 255, 255, 0.95);
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: 50%;
+    cursor: pointer;
+    z-index: 10000;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
+    transition: all 0.2s;
+    font-size: 24px;
+    line-height: 1;
+    color: #333;
+}
+
+.mermaid-fullscreen-close:hover {
+    background: white;
+    box-shadow: 0 6px 16px rgba(0, 0, 0, 0.4);
+    transform: scale(1.1);
+}
+
+.mermaid-fullscreen-close.dark-theme {
+    background: rgba(50, 50, 50, 0.95);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    color: #e0e0e0;
+}
+
+.mermaid-fullscreen-close.dark-theme:hover {
+    background: rgba(60, 60, 60, 1);
+    box-shadow: 0 6px 16px rgba(255, 255, 255, 0.2);
+}
+
+.mermaid-fullscreen-modal .mermaid-fullscreen-btn {
+    display: none !important;
+}`;
+    document.head.appendChild(fullscreenStyle);
+}
+
+// Detect if page has dark background
+const isDarkTheme = () => {
+    // We use a set of heuristics:
+    // 1. Check for common dark mode classes or attributes
+    // 2. Check computed background color brightness
+    if (document.documentElement.classList.contains('dark') ||
+        document.documentElement.getAttribute('data-theme') === 'dark' ||
+        document.body.classList.contains('dark') ||
+        document.body.getAttribute('data-theme') === 'dark') {
+        // console.log("Dark theme detected via class/attribute");
+        return true;
+    }
+    if (document.documentElement.classList.contains('light') ||
+        document.documentElement.getAttribute('data-theme') === 'light' ||
+        document.body.classList.contains('light') ||
+        document.body.getAttribute('data-theme') === 'light') {
+        // console.log("Light theme detected via class/attribute");
+        return false;
+    }
+    if (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches) {
+        // console.log("Dark theme detected via prefers-color-scheme");
+        return true;
+    }
+    const bgColor = window.getComputedStyle(document.body).backgroundColor;
+    const match = bgColor.match(/rgb\((\d+),\s*(\d+),\s*(\d+)/);
+    if (match) {
+        const r = parseInt(match[1]);
+        const g = parseInt(match[2]);
+        const b = parseInt(match[3]);
+        const brightness = (r * 299 + g * 587 + b * 114) / 1000;
+        // console.log("Background color brightness:", brightness);
+        return brightness < 128;
+    }
+    // console.log("No dark or light theme detected, defaulting to light theme");
+    return false;
+};
+
+let darkTheme = isDarkTheme();
+let modal = null;
+let modalContent = null;
+let previousScrollOffset = [window.scrollX, window.scrollY];
+
+const runMermaid = async (rerun) => {
+    console.log("Running mermaid diagrams, rerun =", rerun);
+    // clear all existing mermaid charts
+    let all_mermaids = document.querySelectorAll(".mermaid");
+
+    if (rerun) {
+        all_mermaids.forEach((el) => {
+            if(!el.hasAttribute("data-original-code")) {
+                // store original code
+                // console.log(`Storing original code for first run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+            if(el.getAttribute("data-processed") === "true") {
+                // remove and restore original
+                el.removeAttribute("data-processed");
+                // console.log(`Restoring original code for re-run: `, el.getAttribute('data-original-code'));
+                el.innerHTML = el.getAttribute('data-original-code');
+            } else {
+                // store original code
+                // console.log(`Storing original code for re-run: `, el.innerHTML);
+                el.setAttribute('data-original-code', el.innerHTML);
+            }
+        });
+        await mermaid.run();
+    }
+
+    all_mermaids = document.querySelectorAll(".mermaid");
+    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+
+    if ("False" === "True") {
+        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        if(mermaids_to_add_zoom > 0) {
+            var svgs = d3.selectAll("");
+            if(all_mermaids.length !== mermaids_processed.length) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else if(svgs.size() !== mermaids_to_add_zoom) {
+                setTimeout(() => runMermaid(false), 200);
+                return;
+            } else {
+                svgs.each(function() {
+                    var svg = d3.select(this);
+                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+                    var inner = svg.select("g");
+                    var zoom = d3.zoom().on("zoom", function(event) {
+                        inner.attr("transform", event.transform);
+                    });
+                    svg.call(zoom);
+                });
+            }
+        }
+    } else if(all_mermaids.length !== mermaids_processed.length) {
+        // Wait for mermaid to process all diagrams
+        setTimeout(() => runMermaid(false), 200);
+        return;
+    }
+
+    // Stop here if not adding fullscreen capability
+    if ("True" !== "True") return;
+
+    if (modal !== null ) {
+        // Destroy existing modal
+        modal.remove();
+        modal = null;
+        modalContent = null;
+    }
+
+    modal = document.createElement('div');
+    modal.className = 'mermaid-fullscreen-modal' + (darkTheme ? ' dark-theme' : '');
+    modal.setAttribute('role', 'dialog');
+    modal.setAttribute('aria-modal', 'true');
+    modal.setAttribute('aria-label', 'Fullscreen diagram viewer');
+    modal.innerHTML = `
+        <button class="mermaid-fullscreen-close${darkTheme ? ' dark-theme' : ''}" aria-label="Close fullscreen">✕</button>
+        <div class="mermaid-container-fullscreen${darkTheme ? ' dark-theme' : ''}"></div>
+    `;
+    document.body.appendChild(modal);
+
+    modalContent = modal.querySelector('.mermaid-container-fullscreen');
+    const closeBtn = modal.querySelector('.mermaid-fullscreen-close');
+
+    const closeModal = () => {
+        modal.classList.remove('active');
+        modalContent.innerHTML = '';
+        document.body.style.overflow = ''
+        window.scrollTo({left: previousScrollOffset[0], top: previousScrollOffset[1], behavior: 'instant'});
+    };
+
+    closeBtn.addEventListener('click', closeModal);
+    modal.addEventListener('click', (e) => {
+        if (e.target === modal) closeModal();
+    });
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && modal.classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    document.querySelectorAll('.mermaid').forEach((mermaidDiv) => {
+        if (mermaidDiv.parentNode.classList.contains('mermaid-container') ||
+            mermaidDiv.closest('.mermaid-fullscreen-modal')) {
+            // Already processed, adjust button class if needed
+            const existingBtn = mermaidDiv.parentNode.querySelector('.mermaid-fullscreen-btn');
+            if (existingBtn) {
+                existingBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+            }
+            return;
+        }
+
+        const container = document.createElement('div');
+        container.className = 'mermaid-container';
+        mermaidDiv.parentNode.insertBefore(container, mermaidDiv);
+        container.appendChild(mermaidDiv);
+
+        const fullscreenBtn = document.createElement('button');
+        fullscreenBtn.className = 'mermaid-fullscreen-btn' + (darkTheme ? ' dark-theme' : '');
+        fullscreenBtn.setAttribute('aria-label', 'View diagram in fullscreen');
+        fullscreenBtn.textContent = '⛶';
+        fullscreenBtn.style.opacity = '50%';
+
+        // Calculate dynamic position based on diagram's margin and padding
+        const diagramStyle = window.getComputedStyle(mermaidDiv);
+        const marginTop = parseFloat(diagramStyle.marginTop) || 0;
+        const marginRight = parseFloat(diagramStyle.marginRight) || 0;
+        const paddingTop = parseFloat(diagramStyle.paddingTop) || 0;
+        const paddingRight = parseFloat(diagramStyle.paddingRight) || 0;
+        fullscreenBtn.style.top = `${marginTop + paddingTop + 4}px`;
+        fullscreenBtn.style.right = `${marginRight + paddingRight + 4}px`;
+
+        fullscreenBtn.addEventListener('click', () => {
+            previousScrollOffset = [window.scroll, window.scrollY];
+            const clone = mermaidDiv.cloneNode(true);
+            modalContent.innerHTML = '';
+            modalContent.appendChild(clone);
+
+            const svg = clone.querySelector('svg');
+            if (svg) {
+                svg.removeAttribute('width');
+                svg.removeAttribute('height');
+                svg.style.width = '100%';
+                svg.style.height = 'auto';
+                svg.style.maxWidth = '100%';
+                svg.style.sdisplay = 'block';
+
+                if ("False" === "True") {
+                    setTimeout(() => {
+                        const g = svg.querySelector('g');
+                        if (g) {
+                            var svgD3 = d3.select(svg);
+                            svgD3.html("<g class='wrapper'>" + svgD3.html() + "</g>");
+                            var inner = svgD3.select("g");
+                            var zoom = d3.zoom().on("zoom", function(event) {
+                                inner.attr("transform", event.transform);
+                            });
+                            svgD3.call(zoom);
+                        }
+                    }, 100);
+                }
+            }
+
+            modal.classList.add('active');
+            document.body.style.overflow = 'hidden';
+        });
+        container.appendChild(fullscreenBtn);
+    });
+};
+
+const load = async () => {
+    initStyles();
+
+    await runMermaid(true);
+
+    const reRunIfThemeChanges = async () => {
+        const newDarkTheme = isDarkTheme();
+        if (newDarkTheme !== darkTheme) {
+            darkTheme = newDarkTheme;
+            console.log("Theme change detected, re-running mermaid with", darkTheme ? "dark" : "default", "theme");
+            await mermaid.initialize(
+                {...JSON.parse(
+                    `{"startOnLoad": false}`
+                ),
+                ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+                }
+            );
+            await runMermaid(true);
+        }
+    };
+
+    // Update theme classes when theme changes
+    const themeObserver = new MutationObserver(reRunIfThemeChanges);
+    themeObserver.observe(document.documentElement, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+    themeObserver.observe(document.body, {
+        attributes: true,
+        attributeFilter: ['class', 'style', 'data-theme']
+    });
+};
+
+
+
+
+
+console.log("Initializing mermaid with", darkTheme ? "dark" : "default", "theme");
+mermaid.initialize(
+    {...JSON.parse(
+        `{"startOnLoad": false}`
+    ),
+    ...{ darkMode: darkTheme, theme: darkTheme ? 'dark' : 'default' },
+    }
+);
+
+window.addEventListener("load", load);
+window.runMermaid = runMermaid;</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Examples" href="examples.html" />
@@ -38,52 +477,64 @@
             
   <section id="developer-guide">
 <h1>Developer Guide<a class="headerlink" href="#developer-guide" title="Link to this heading">¶</a></h1>
-<p>This guide outlines the mathematical foundation, architectural patterns, and engineering decisions behind the <cite>samo_ggp</cite> framework.</p>
+<p>This guide outlines the mathematical foundation, architectural patterns, and engineering decisions behind the <code class="docutils literal notranslate"><span class="pre">samo_ggp</span></code> framework.</p>
 <section id="mathematical-foundation">
 <h2>Mathematical Foundation<a class="headerlink" href="#mathematical-foundation" title="Link to this heading">¶</a></h2>
-<p>The <strong>Generalized Geometry Projection (GGP)</strong> method parametrizes a design domain using explicit geometric primitives (e.g., rectangles, ellipses) rather than a dense grid of pixel densities. This framework implements the 2D Free formulation based on the original work.</p>
-<p>### 1. Primitive Mapping
-Each component $i$ is defined by a set of continuous variables $x_i = [X_c, Y_c, L, H, theta]$.
-The signed distance field $psi_i(x, y)$ of a primitive is smoothed to ensure differentiability. The local density $rho_i(x, y)$ is obtained via a <strong>Regularized Heaviside function</strong>, ensuring that the density smoothly transitions from 1 (inside the component) to 0 (outside) over a narrow band $epsilon_{mna}$.</p>
-<p>### 2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation
-To combine multiple overlapping components into a single global density field $rho(x, y)$, the KS function is used as a smooth approximation of the maximum operator:</p>
+<p>The <strong>Generalized Geometry Projection (GGP)</strong> method parametrizes a design domain using explicit geometric primitives (e.g., rectangles, ellipses) rather than a dense grid of pixel densities. This framework implements the 2D Free formulation based on the original work by Coniglio et al.</p>
+<p>### 1. Primitive Mapping</p>
+<p>Each component <span class="math notranslate nohighlight">\(i\)</span> is defined by a set of continuous variables <span class="math notranslate nohighlight">\(x_i = [X_c, Y_c, L, H, \theta]\)</span>.
+The signed distance field <span class="math notranslate nohighlight">\(\psi_i(x, y)\)</span> of a primitive is smoothed to ensure differentiability. The local density <span class="math notranslate nohighlight">\(\rho_i(x, y)\)</span> is obtained via a <strong>Regularized Heaviside function</strong>, ensuring that the density smoothly transitions from 1 (inside the component) to 0 (outside) over a narrow band <span class="math notranslate nohighlight">\(\epsilon_{mna}\)</span>.</p>
+<p>### 2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation</p>
+<p>To combine multiple overlapping components into a single global density field <span class="math notranslate nohighlight">\(\rho(x, y)\)</span>, the KS function is used as a smooth approximation of the maximum operator:</p>
 <div class="math notranslate nohighlight">
 \[KS(\rho) = \frac{1}{\kappa_a} \ln \left( \frac{1}{N} \sum_{i=1}^N \exp(\kappa_a \rho_i) \right)\]</div>
-<p>Because the KS function can exceed 1.0 (causing issues for physics solvers), we apply a <strong>smooth saturation function</strong> to strictly bound the final density $rho in [0, 1]$.</p>
+<p>Because the KS function can exceed 1.0 (causing issues for physics solvers), we apply a <strong>smooth saturation function</strong> to strictly bound the final density <span class="math notranslate nohighlight">\(\rho \in [0, 1]\)</span>.</p>
 </section>
 <section id="architecture-object-oriented-design">
 <h2>Architecture &amp; Object-Oriented Design<a class="headerlink" href="#architecture-object-oriented-design" title="Link to this heading">¶</a></h2>
-<p>The <cite>samo_ggp</cite> package is structured to decouple the geometry parametrization from the physics solvers, enabling easy extension to 3D or Additive Layer Manufacturing (ALM) constraints without rewriting the optimization loop.</p>
-<p>### 1. The Factory Pattern
-- <strong>`BaseMapper` &amp; `GeometryFactory`:</strong> Encapsulates the GGP mapping logic. To add 3D ALM track mapping, a new <cite>GGP3DMapper</cite> can be introduced and registered in the factory.
-- <strong>`BaseSolver` &amp; `PhysicsFactory`:</strong> Encapsulates the FEniCS PDE solvers. Currently implements <cite>LinearElasticitySolver</cite> (using SIMP penalization).</p>
-<p>### 2. The GEMSEO “Macro-Discipline”
-A critical engineering challenge was integrating <cite>dolfin-adjoint</cite> (which tracks FEniCS operations) with <cite>GEMSEO</cite> (the MDAO orchestration engine).</p>
-<p><strong>Why not a modular `MDAChain`?</strong>
-Initially, we attempted to split the process into two GEMSEO disciplines:
-1. <cite>GeometryDiscipline</cite>: $x rightarrow rho$
-2. <cite>PhysicsDiscipline</cite>: $rho rightarrow text{Compliance}$</p>
-<p>However, GEMSEO’s chain rule requires explicitly computing the intermediate Jacobian $frac{partial rho}{partial x}$. For a $50 times 50$ mesh and 50 design variables, this meant computing and passing a dense $2500 times 50$ matrix every iteration. This completely broke the analytical efficiency of the adjoint method.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">samo_ggp</span></code> package is structured to decouple the geometry parametrization from the physics solvers, enabling easy extension to 3D or Additive Layer Manufacturing (ALM) constraints without rewriting the optimization loop.</p>
+<pre align="center" class="mermaid align-center">
+        graph TD
+    subgraph GEMSEO
+        A[MMA Optimizer] --&gt;|Design Variables 'x'| B(GGPMacroDiscipline)
+    end
+
+    subgraph FEniCS Tape
+        B --&gt;|x| C{GeometryFactory: GGP2DMapper}
+        C --&gt;|Density Field 'rho'| D{PhysicsFactory: LinearElasticitySolver}
+        D --&gt;|Compliance 'J', Volume 'V'| B
+    end
+
+    subgraph dolfin-adjoint
+        B -.-&gt;|Request Gradient| E(compute_gradient)
+        E -.-&gt;|dJ/dx, dV/dx| B
+    end
+
+    B --&gt;|Objective &amp; Gradients| A
+    </pre><p>### The GEMSEO “Macro-Discipline”</p>
+<p>A critical engineering challenge was integrating <code class="docutils literal notranslate"><span class="pre">dolfin-adjoint</span></code> (which tracks FEniCS operations) with <code class="docutils literal notranslate"><span class="pre">GEMSEO</span></code> (the MDAO orchestration engine).</p>
+<p><strong>Why not a modular MDAChain?</strong>
+Initially, we attempted to split the process into two GEMSEO disciplines: a Geometry discipline and a Physics discipline.
+However, GEMSEO’s chain rule requires explicitly computing the intermediate Jacobian <span class="math notranslate nohighlight">\(\frac{\partial \rho}{\partial x}\)</span>. For a 50x50 mesh and 50 design variables, this meant computing and passing a dense 2500x50 matrix every iteration. This completely broke the analytical efficiency of the adjoint method.</p>
 <p><strong>The Solution: Monolithic Adjoint Tracking</strong>
-We implemented the <cite>GGPMacroDiscipline</cite>. This single GEMSEO wrapper takes the primitive variables $x$, constructs <cite>dolfin_adjoint.Constant</cite> objects, and runs the entire forward pass (Mapping + Physics).
-When GEMSEO requests the gradient $frac{partial J}{partial x}$, <cite>dolfin-adjoint</cite> solves the adjoint PDE and computes the exact sensitivities analytically in a fraction of a second, entirely bypassing the dense $frac{partial rho}{partial x}$ Jacobian.</p>
+We implemented the <code class="docutils literal notranslate"><span class="pre">GGPMacroDiscipline</span></code>. This single GEMSEO wrapper takes the primitive variables <span class="math notranslate nohighlight">\(x\)</span>, constructs <code class="docutils literal notranslate"><span class="pre">dolfin_adjoint.Constant</span></code> objects, and runs the entire forward pass (Mapping + Physics).
+When GEMSEO requests the gradient <span class="math notranslate nohighlight">\(\frac{\partial J}{\partial x}\)</span>, <code class="docutils literal notranslate"><span class="pre">dolfin-adjoint</span></code> solves the adjoint PDE and computes the exact sensitivities analytically in a fraction of a second, entirely bypassing the dense Jacobian.</p>
 </section>
 <section id="tape-management-safe-re-execution">
 <h2>Tape Management &amp; Safe Re-execution<a class="headerlink" href="#tape-management-safe-re-execution" title="Link to this heading">¶</a></h2>
-<p>To prevent memory leaks and graph corruption across thousands of optimization iterations, the <cite>_run</cite> method executes a strict protocol:
-1. <cite>get_working_tape().clear_tape()</cite> is called to destroy the previous iteration’s computational graph.
-2. Fresh <cite>dolfin_adjoint.Constant</cite> objects are instantiated.
-3. The forward graph is rebuilt from scratch.</p>
+<p>To prevent memory leaks and graph corruption across thousands of optimization iterations, the <code class="docutils literal notranslate"><span class="pre">_run</span></code> method executes a strict protocol:</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">get_working_tape().clear_tape()</span></code> is called to destroy the previous iteration’s computational graph.</p></li>
+<li><p>Fresh <code class="docutils literal notranslate"><span class="pre">dolfin_adjoint.Constant</span></code> objects are instantiated.</p></li>
+<li><p>The forward graph is rebuilt from scratch.</p></li>
+</ol>
 </section>
 <section id="citations">
 <h2>Citations<a class="headerlink" href="#citations" title="Link to this heading">¶</a></h2>
-<p>This framework is a Python/FEniCS re-implementation and extension of the original MATLAB framework.</p>
-<ol class="arabic simple">
-<li><p><strong>Original Paper:</strong>
-Bhat, A., Capasso, M., Coniglio, S., et al. <em>“On some applications of Generalized Geometric Projection to optimal 3D printing”</em>.</p></li>
-<li><p><strong>Original MATLAB Code:</strong>
-The foundational KS aggregation and Heaviside mappings are heavily inspired by the associated GGP-Matlab repository provided by the original authors.</p></li>
-</ol>
+<ul class="simple">
+<li><p><strong>Original Paper:</strong> Coniglio, S., Morlier, J., Gogu, C. et al. <em>Generalized Geometry Projection: A Unified Approach for Geometric Feature Based Topology Optimization</em>. Arch Computat Methods Eng 27, 1573–1610 (2020). <a class="reference external" href="https://doi.org/10.1007/s11831-019-09362-8">https://doi.org/10.1007/s11831-019-09362-8</a></p></li>
+<li><p><strong>Original MATLAB Code:</strong> <a class="reference external" href="https://github.com/topggp/GGP-Matlab">GGP-Matlab Repository</a></p></li>
+</ul>
 </section>
 </section>
 

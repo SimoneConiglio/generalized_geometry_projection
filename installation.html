@@ -9,9 +9,12 @@
     <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
     <link rel="stylesheet" type="text/css" href="_static/basic.css?v=686e5160" />
     <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
     <script src="_static/documentation_options.js?v=01f34227"></script>
     <script src="_static/doctools.js?v=9bcbadda"></script>
     <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
     <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -36,34 +39,60 @@
             
   <section id="installation-guide">
 <h1>Installation Guide<a class="headerlink" href="#installation-guide" title="Link to this heading">¶</a></h1>
-<p>This guide provides instructions on how to install and set up the <cite>samo_ggp</cite> framework.</p>
-<section id="prerequisites">
-<h2>Prerequisites<a class="headerlink" href="#prerequisites" title="Link to this heading">¶</a></h2>
-<p>The <cite>samo_ggp</cite> framework is built heavily around <strong>FEniCS</strong> (<cite>dolfin</cite>, <cite>dolfin-adjoint</cite>) and <strong>GEMSEO</strong>. Due to the complex C++ dependencies of FEniCS, it is highly recommended to install the framework within a <cite>conda</cite> environment on a Linux system or Windows Subsystem for Linux (WSL).</p>
+<p>This guide provides a detailed, step-by-step walk-through to reproduce the exact environment required to run the <code class="docutils literal notranslate"><span class="pre">samo_ggp</span></code> framework.</p>
+<section id="system-requirements">
+<h2>System Requirements<a class="headerlink" href="#system-requirements" title="Link to this heading">¶</a></h2>
+<p>Topology optimization frameworks rely on robust C++ libraries for finite element analysis. The framework uses <strong>FEniCS 2019.1.0</strong>.</p>
+<div class="admonition warning">
+<p class="admonition-title">Warning</p>
+<p>FEniCS requires a UNIX-like environment. <strong>Windows users MUST use Windows Subsystem for Linux (WSL2)</strong> or Docker. Native Windows installations of FEniCS are not supported.</p>
+</div>
 </section>
-<section id="step-1-clone-the-repository">
-<h2>Step 1: Clone the Repository<a class="headerlink" href="#step-1-clone-the-repository" title="Link to this heading">¶</a></h2>
-<p>Clone the repository to your local machine:</p>
+<section id="step-1-install-conda">
+<h2>Step 1: Install Conda<a class="headerlink" href="#step-1-install-conda" title="Link to this heading">¶</a></h2>
+<p>If you do not have Conda installed, we recommend installing Miniconda inside your Linux/WSL terminal:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>wget<span class="w"> </span>https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh
+bash<span class="w"> </span>Miniconda3-latest-Linux-x86_64.sh
+</pre></div>
+</div>
+<p>Restart your terminal after installation.</p>
+</section>
+<section id="step-2-clone-the-repository">
+<h2>Step 2: Clone the Repository<a class="headerlink" href="#step-2-clone-the-repository" title="Link to this heading">¶</a></h2>
+<p>Clone the repository to your local machine and navigate into it:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>git<span class="w"> </span>clone<span class="w"> </span>https://github.com/SimoneConiglio/generalized_geometry_projection.git
 <span class="nb">cd</span><span class="w"> </span>generalized_geometry_projection
 </pre></div>
 </div>
 </section>
-<section id="step-2-create-the-conda-environment">
-<h2>Step 2: Create the Conda Environment<a class="headerlink" href="#step-2-create-the-conda-environment" title="Link to this heading">¶</a></h2>
-<p>We provide an <cite>environment.yml</cite> file that correctly resolves the FEniCS version alongside GEMSEO and all required scientific tools (NumPy, SciPy, Jupyter, Sphinx).</p>
+<section id="step-3-create-the-conda-environment">
+<h2>Step 3: Create the Conda Environment<a class="headerlink" href="#step-3-create-the-conda-environment" title="Link to this heading">¶</a></h2>
+<p>We provide an <code class="docutils literal notranslate"><span class="pre">environment.yml</span></code> file that strictly pins the FEniCS version alongside GEMSEO and all required scientific tools (NumPy, SciPy, Jupyter, Sphinx). This ensures you do not face C++ compilation or MPI errors.</p>
+<p>Run the following command from the root of the cloned repository:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>env<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>environment.yml
 </pre></div>
 </div>
-<p>Once created, activate the environment:</p>
+<p>This process may take a few minutes as it downloads and resolves the FEniCS binaries from <code class="docutils literal notranslate"><span class="pre">conda-forge</span></code>.</p>
+</section>
+<section id="step-4-activate-the-environment">
+<h2>Step 4: Activate the Environment<a class="headerlink" href="#step-4-activate-the-environment" title="Link to this heading">¶</a></h2>
+<p>Every time you work on this project, you must activate the environment:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>activate<span class="w"> </span>samo_agents
 </pre></div>
 </div>
 </section>
-<section id="step-3-verify-the-installation">
-<h2>Step 3: Verify the Installation<a class="headerlink" href="#step-3-verify-the-installation" title="Link to this heading">¶</a></h2>
+<section id="step-5-set-the-python-path">
+<h2>Step 5: Set the Python Path<a class="headerlink" href="#step-5-set-the-python-path" title="Link to this heading">¶</a></h2>
+<p>For Python to recognize the <code class="docutils literal notranslate"><span class="pre">samo_ggp</span></code> package without requiring a global pip install, you must append the current directory to your <code class="docutils literal notranslate"><span class="pre">PYTHONPATH</span></code> before running scripts.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span><span class="nv">$PYTHONPATH</span>:.
+</pre></div>
+</div>
+<p><em>Tip: You can add this line to your `~/.bashrc` or run commands by prefixing them, e.g., `PYTHONPATH=$PYTHONPATH:. python examples/01_short_cantilever.py`</em></p>
+</section>
+<section id="step-6-verify-the-installation">
+<h2>Step 6: Verify the Installation<a class="headerlink" href="#step-6-verify-the-installation" title="Link to this heading">¶</a></h2>
 <p>You can verify that all dependencies and internal modules are working by running the provided <cite>pytest</cite> suite:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">PYTHONPATH</span><span class="o">=</span><span class="nv">$PYTHONPATH</span>:.<span class="w"> </span>pytest<span class="w"> </span>tests/
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>tests/
 </pre></div>
 </div>
 <p>If the tests pass, you are ready to start running the examples or developing your own topology optimization workflows!</p>
@@ -99,10 +128,13 @@
 <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Installation Guide</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#prerequisites">Prerequisites</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#step-1-clone-the-repository">Step 1: Clone the Repository</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#step-2-create-the-conda-environment">Step 2: Create the Conda Environment</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#step-3-verify-the-installation">Step 3: Verify the Installation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#system-requirements">System Requirements</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-1-install-conda">Step 1: Install Conda</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-2-clone-the-repository">Step 2: Clone the Repository</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-3-create-the-conda-environment">Step 3: Create the Conda Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-4-activate-the-environment">Step 4: Activate the Environment</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-5-set-the-python-path">Step 5: Set the Python Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-6-verify-the-installation">Step 6: Verify the Installation</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="developer_guide.html">Developer Guide</a></li>

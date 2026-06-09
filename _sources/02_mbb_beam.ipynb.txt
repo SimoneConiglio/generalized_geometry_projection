@@ -2,7 +2,7 @@
  "cells": [
   {
    "cell_type": "markdown",
-   "id": "c2c78ce4",
+   "id": "c9b6512a",
    "metadata": {},
    "source": [
     "# MBB Beam\n",
@@ -13,7 +13,7 @@
   {
    "cell_type": "code",
    "execution_count": null,
-   "id": "efb3f32e",
+   "id": "6da13e72",
    "metadata": {
     "lines_to_next_cell": 1
    },
@@ -34,7 +34,7 @@
   {
    "cell_type": "code",
    "execution_count": null,
-   "id": "1b12a21c",
+   "id": "5538a705",
    "metadata": {
     "lines_to_next_cell": 1
    },
@@ -84,7 +84,7 @@
     "    scenario = create_scenario(disciplines=[disc], objective_name=\"compliance\", design_space=design_space, formulation_name=\"DisciplinaryOpt\")\n",
     "    scenario.add_constraint(\"volume\", \"ineq\", positive=False, value=volfrac)\n",
     "    \n",
-    "    scenario.execute(algo_name=\"MMA\", max_iter=5, max_optimization_step=0.1)\n",
+    "    scenario.execute(algo_name=\"MMA\", max_iter=50, max_optimization_step=0.1)\n",
     "\n",
     "    # --- Post-Processing ---\n",
     "    print(\"Post-processing optimal design...\")\n",
@@ -113,7 +113,7 @@
   {
    "cell_type": "code",
    "execution_count": null,
-   "id": "24f52858",
+   "id": "03dbb264",
    "metadata": {},
    "outputs": [],
    "source": [
@@ -123,10 +123,14 @@
   },
   {
    "cell_type": "markdown",
-   "id": "9786cc84",
+   "id": "3b3f5485",
    "metadata": {},
    "source": [
-    "### Optimized Result\\n\\n![Optimized Design](_static/mbb_beam_optimized.png)"
+    "### Optimized Result\n",
+    "\n",
+    "*Note: The image below shows a fast preliminary result (5 iterations) for web demonstration. Running this notebook locally with `max_iter=50` will produce the fully converged, crisp topology.*\n",
+    "\n",
+    "![Optimized Design](_static/mbb_beam_optimized.png)"
    ]
   }
  ],
