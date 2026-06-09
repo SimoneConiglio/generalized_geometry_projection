@@ -1,0 +1,68 @@
+# Byte-compiled / optimized / DLL files
+__pycache__/
+*.py[cod]
+*$py.class
+
+# C extensions
+*.so
+
+# Distribution / packaging
+.Python
+build/
+develop-eggs/
+dist/
+downloads/
+eggs/
+.eggs/
+lib/
+lib64/
+parts/
+sdist/
+var/
+wheels/
+share/python-wheels/
+*.egg-info/
+.installed.cfg
+*.egg
+MANIFEST
+
+# FEniCS JIT caches
+jitfailure-*/
+.cache/
+.ffc/
+.ufl/
+
+# GEMSEO / Output data
+results*/
+*.pvd
+*.vtu
+*.png
+*.h5
+*.hdf5
+optimization_history*/
+
+# Environments
+.env
+.venv
+env/
+venv/
+ENV/
+env.bak/
+venv.bak/
+
+# Conda / Shell Scripts
+Miniconda3-latest-Linux-x86_64.sh
+
+# Temporary Project files
+sandbox/results*/
+sandbox/*.pvd
+sandbox/*.vtu
+
+# IDEs and Editors
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Project specific
+GGP-Matlab/

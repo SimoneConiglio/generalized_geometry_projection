@@ -1,0 +1,10 @@
+google-genai
+typer
+requests
+numpy
+scipy
+# FEniCS dependencies are usually handled via Conda, but listed here for completeness
+# fenics-dolfin
+# fenics-dolfin-adjoint
+# gemseo
+# nlopt
