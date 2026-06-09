@@ -28,7 +28,7 @@ def run_l_shape_bracket(max_iter=50):
     ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
     L_rhs_vec = Constant((0.0, -1.0))
 
-    solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
+    solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec, p=1.0)
     mapper = GeometryFactory.create_mapper("2D_Free", mesh=mesh, num_components=num_components, method='GP')
     x_init = mapper.get_initial_design(L, H)
     lb = np.array([0.0, 0.0, 0.0, 1.0, -2*np.pi, 0.0] * num_components)
@@ -43,7 +43,8 @@ def run_l_shape_bracket(max_iter=50):
     scenario = create_scenario(disciplines=[chain], objective_name="compliance", design_space=design_space, formulation_name="DisciplinaryOpt")
     scenario.add_constraint("volume", "ineq", positive=False, value=0.0)
     
-    scenario.execute(algo_name="MMA", max_iter=max_iter, max_optimization_step=0.1)
+    # MMA with conservative move limit (0.01) matching MATLAB
+    scenario.execute(algo_name="MMA", max_iter=max_iter, max_optimization_step=0.01)
 
     # --- Post-Processing ---
     print("Post-processing optimal design...")

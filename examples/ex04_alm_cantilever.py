@@ -34,7 +34,8 @@ def run_alm_cantilever(max_iter=50):
     ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
     L_rhs_vec = Constant((0.0, -1.0))
 
-    solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
+    # Solver
+    solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec, p=1.0)
     mapper = GeometryFactory.create_mapper("2D_ALM", mesh=mesh, num_layers=num_layers, 
                                           components_per_layer=comp_per_layer, layer_height=layer_height)
     x_init = mapper.get_initial_design(L, H)
@@ -74,7 +75,8 @@ def run_alm_cantilever(max_iter=50):
     scenario.add_constraint("volume", "ineq", positive=False, value=0.0)
     scenario.add_constraint("overhang_cons", "ineq", positive=False, value=0.0)
     
-    scenario.execute(algo_name="MMA", max_iter=max_iter, max_optimization_step=0.1)
+    # MMA with conservative move limit (0.01) matching MATLAB
+    scenario.execute(algo_name="MMA", max_iter=max_iter, max_optimization_step=0.01)
 
     # --- Post-Processing ---
     print("Post-processing ALM result...")
