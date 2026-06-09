@@ -27,14 +27,14 @@ def test_macro_discipline_execution():
     mapper = GeometryFactory.create_mapper("2D_Free", mesh=mesh, num_components=1)
     solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
     
-    x_init = np.array([0.5, 0.5, 0.2, 0.2, 0.0])
-    lb = np.array([0.0]*5)
-    ub = np.array([1.0]*5)
+    x_init = np.array([0.5, 0.5, 0.2, 0.2, 0.0, 1.0])
+    lb = np.array([0.0]*6)
+    ub = np.array([1.0]*6)
     
     disc = GGPMacroDiscipline(mapper, solver, x_init, lb, ub, mesh_area=1.0)
     
     # Test execution
-    input_data = {"x_vars": np.array([0.5]*5)}
+    input_data = {"x_vars": np.array([0.5]*6)}
     disc.execute(input_data)
     
     # Assert outputs are generated
@@ -46,4 +46,4 @@ def test_macro_discipline_execution():
     jac = disc.linearize(input_data, compute_all_jacobians=True)
     assert "compliance" in jac
     assert "x_vars" in jac["compliance"]
-    assert jac["compliance"]["x_vars"].shape == (1, 5)
+    assert jac["compliance"]["x_vars"].shape == (1, 6)

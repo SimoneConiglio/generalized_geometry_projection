@@ -10,10 +10,10 @@ import matplotlib.pyplot as plt
 import os
 
 def run_short_cantilever():
-    L, H = 50.0, 50.0
-    nelx, nely = 50, 50
+    L, H = 60.0, 30.0
+    nelx, nely = 60, 30
     volfrac = 0.4
-    num_components = 10
+    num_components = 18
 
     # Mesh and Spaces
     mesh = RectangleMesh(df.Point(0, 0), df.Point(L, H), nelx, nely)
@@ -27,17 +27,19 @@ def run_short_cantilever():
     boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     boundaries.set_all(0)
     class MiddleRightArea(df.SubDomain):
-        def inside(self, x, on_boundary): return df.near(x[0], L, 2.0) and df.near(x[1], H/2.0, 5.0)
+        def inside(self, x, on_boundary): return df.near(x[0], L, 1.0) and df.near(x[1], H/2.0, 2.0)
     MiddleRightArea().mark(boundaries, 1)
     ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
     L_rhs_vec = Constant((0.0, -1.0))
 
     # Initialization
-    mapper = GeometryFactory.create_mapper("2D_Free", mesh=mesh, num_components=num_components)
+    mapper = GeometryFactory.create_mapper("2D_Free", mesh=mesh, num_components=num_components, method='GP')
     solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
     x_init = mapper.get_initial_design(L, H)
-    lb = np.array([0.0, 0.0, 5.0, 2.0, -np.pi] * num_components)
-    ub = np.array([L, H, L, H/2, np.pi] * num_components)
+    
+    # Bounding box for 6 variables: Xc, Yc, L, h, T, M
+    lb = np.array([0.0, 0.0, 0.0, 1.0, -2*np.pi, 0.0] * num_components)
+    ub = np.array([L, H, L*1.5, H, 2*np.pi, 1.0] * num_components)
 
     # Discipline and Optimization
     disc = GGPMacroDiscipline(mapper, solver, x_init, lb, ub, mesh_area=L*H, name="GGP_Short_Cantilever")

@@ -14,7 +14,7 @@ def run_mbb_beam():
     L, H = 150.0, 50.0
     nelx, nely = 150, 50
     volfrac = 0.5
-    num_components = 20
+    num_components = 24
 
     # Mesh and Spaces
     mesh = RectangleMesh(df.Point(0, 0), df.Point(L, H), nelx, nely)
@@ -33,17 +33,18 @@ def run_mbb_beam():
     boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     boundaries.set_all(0)
     class TopLeftArea(df.SubDomain):
-        def inside(self, x, on_boundary): return df.near(x[0], 0.0, 2.0) and df.near(x[1], H, 2.0)
+        def inside(self, x, on_boundary): return df.near(x[0], 0.0, 1.0) and df.near(x[1], H, 1.0)
     TopLeftArea().mark(boundaries, 1)
     ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
     L_rhs_vec = Constant((0.0, -1.0))
 
     # Initialization
-    mapper = GeometryFactory.create_mapper("2D_Free", mesh=mesh, num_components=num_components)
+    mapper = GeometryFactory.create_mapper("2D_Free", mesh=mesh, num_components=num_components, method='GP')
     solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
     x_init = mapper.get_initial_design(L, H)
-    lb = np.array([0.0, 0.0, 5.0, 2.0, -np.pi] * num_components)
-    ub = np.array([L, H, L, H/2, np.pi] * num_components)
+    
+    lb = np.array([0.0, 0.0, 0.0, 1.0, -2*np.pi, 0.0] * num_components)
+    ub = np.array([L, H, L*1.5, H, 2*np.pi, 1.0] * num_components)
 
     # Discipline and Optimization
     disc = GGPMacroDiscipline(mapper, solver, x_init, lb, ub, mesh_area=L*H, name="GGP_MBB")
