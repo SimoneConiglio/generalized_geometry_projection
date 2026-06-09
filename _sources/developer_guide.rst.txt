@@ -1,37 +1,62 @@
 Developer Guide
 ===============
 
-This guide outlines the architecture and design decisions behind the `samo_ggp` framework.
+This guide outlines the mathematical foundation, architectural patterns, and engineering decisions behind the `samo_ggp` framework.
 
-Architecture Overview
----------------------
+Mathematical Foundation
+-----------------------
 
-The `samo_ggp` framework uses a highly modular Object-Oriented design integrated with **GEMSEO** for MDAO (Multidisciplinary Design Analysis and Optimization).
+The **Generalized Geometry Projection (GGP)** method parametrizes a design domain using explicit geometric primitives (e.g., rectangles, ellipses) rather than a dense grid of pixel densities. This framework implements the 2D Free formulation based on the original work.
 
-### Package Structure
+### 1. Primitive Mapping
+Each component $i$ is defined by a set of continuous variables $x_i = [X_c, Y_c, L, H, \theta]$.
+The signed distance field $\psi_i(x, y)$ of a primitive is smoothed to ensure differentiability. The local density $\rho_i(x, y)$ is obtained via a **Regularized Heaviside function**, ensuring that the density smoothly transitions from 1 (inside the component) to 0 (outside) over a narrow band $\epsilon_{mna}$.
 
-- **`samo_ggp.geometry`**: Contains mapping logic. The `GGP2DMapper` takes discrete primitives (e.g., coordinates, widths, angles) and projects them into a continuous FEniCS density field ($\rho$) using regularized Heaviside and Saturated KS functions.
-- **`samo_ggp.physics`**: Contains PDE solvers. The `LinearElasticitySolver` solves the forward mechanics problem and computes the compliance objective.
-- **`samo_ggp.gemseo_wrappers`**: Contains the GEMSEO Discipline wrappers.
+### 2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation
+To combine multiple overlapping components into a single global density field $\rho(x, y)$, the KS function is used as a smooth approximation of the maximum operator:
 
-The Monolithic "Macro-Discipline"
----------------------------------
+.. math::
+    KS(\rho) = \frac{1}{\kappa_a} \ln \left( \frac{1}{N} \sum_{i=1}^N \exp(\kappa_a \rho_i) \right)
 
-Early benchmarking revealed that separating the Geometry Mapping and Physics into a modular GEMSEO `MDAChain` led to a severe bottleneck. GEMSEO requires explicitly sized dense Jacobian matrices for chain rule computation. Generating the Jacobian of a full mesh density field with respect to primitive variables ($\frac{\partial \rho}{\partial x}$) is highly inefficient.
+Because the KS function can exceed 1.0 (causing issues for physics solvers), we apply a **smooth saturation function** to strictly bound the final density $\rho \in [0, 1]$.
 
-Instead, we use a single **`GGPMacroDiscipline`**. This discipline executes the mapper and the solver sequentially within the same `dolfin-adjoint` tape. FEniCS-adjoint can then compute the analytical gradient of the scalar objective directly with respect to the design variables ($\frac{\partial J}{\partial x}$), bypassing the dense density Jacobian entirely.
+Architecture & Object-Oriented Design
+-------------------------------------
 
-### Tape Management
+The `samo_ggp` package is structured to decouple the geometry parametrization from the physics solvers, enabling easy extension to 3D or Additive Layer Manufacturing (ALM) constraints without rewriting the optimization loop.
 
-To ensure `dolfin-adjoint` does not leak memory or track disconnected variables across multiple GEMSEO iterations, the `_run()` method in the Macro-Discipline follows a strict protocol:
+### 1. The Factory Pattern
+- **`BaseMapper` & `GeometryFactory`:** Encapsulates the GGP mapping logic. To add 3D ALM track mapping, a new `GGP3DMapper` can be introduced and registered in the factory.
+- **`BaseSolver` & `PhysicsFactory`:** Encapsulates the FEniCS PDE solvers. Currently implements `LinearElasticitySolver` (using SIMP penalization).
 
-1. **Clear Tape**: `get_working_tape().clear_tape()` is called at the beginning of each iteration.
-2. **Fresh Constants**: `dolfin_adjoint.Constant` objects are instantiated *fresh* inside `_run()` based on the current GEMSEO design variables.
+### 2. The GEMSEO "Macro-Discipline"
+A critical engineering challenge was integrating `dolfin-adjoint` (which tracks FEniCS operations) with `GEMSEO` (the MDAO orchestration engine).
 
-Adding New Physics or Geometries
---------------------------------
+**Why not a modular `MDAChain`?**
+Initially, we attempted to split the process into two GEMSEO disciplines:
+1. `GeometryDiscipline`: $x \rightarrow \rho$
+2. `PhysicsDiscipline`: $\rho \rightarrow \text{Compliance}$
 
-To extend the framework:
-1. Create a new class inheriting from `BaseMapper` or `BaseSolver`.
-2. Register it in `GeometryFactory` or `PhysicsFactory`.
-3. Instantiate the `GGPMacroDiscipline` passing your new mapper and solver. No modifications to the GEMSEO wrapper are required.
+However, GEMSEO's chain rule requires explicitly computing the intermediate Jacobian $\frac{\partial \rho}{\partial x}$. For a $50 \times 50$ mesh and 50 design variables, this meant computing and passing a dense $2500 \times 50$ matrix every iteration. This completely broke the analytical efficiency of the adjoint method.
+
+**The Solution: Monolithic Adjoint Tracking**
+We implemented the `GGPMacroDiscipline`. This single GEMSEO wrapper takes the primitive variables $x$, constructs `dolfin_adjoint.Constant` objects, and runs the entire forward pass (Mapping + Physics).
+When GEMSEO requests the gradient $\frac{\partial J}{\partial x}$, `dolfin-adjoint` solves the adjoint PDE and computes the exact sensitivities analytically in a fraction of a second, entirely bypassing the dense $\frac{\partial \rho}{\partial x}$ Jacobian.
+
+Tape Management & Safe Re-execution
+-----------------------------------
+
+To prevent memory leaks and graph corruption across thousands of optimization iterations, the `_run` method executes a strict protocol:
+1. `get_working_tape().clear_tape()` is called to destroy the previous iteration's computational graph.
+2. Fresh `dolfin_adjoint.Constant` objects are instantiated.
+3. The forward graph is rebuilt from scratch.
+
+Citations
+---------
+
+This framework is a Python/FEniCS re-implementation and extension of the original MATLAB framework.
+
+1. **Original Paper:**
+   Bhat, A., Capasso, M., Coniglio, S., et al. *"On some applications of Generalized Geometric Projection to optimal 3D printing"*.
+2. **Original MATLAB Code:**
+   The foundational KS aggregation and Heaviside mappings are heavily inspired by the associated GGP-Matlab repository provided by the original authors.
