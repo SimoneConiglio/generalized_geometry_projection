@@ -10,7 +10,7 @@ dependencies:
   - h5py
   - nlopt
   - gemseo
-  - fenics-adjoint
+  - dolfin-adjoint
   - pip
   - pytest
   - pytest-cov
