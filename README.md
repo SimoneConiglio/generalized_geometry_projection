@@ -4,6 +4,12 @@ This repository contains a modular Python framework for Topology Optimization us
 
 This framework focuses on extending structural topology optimization to include Additive Layer Manufacturing (ALM) constraints, specifically focusing on layer-by-layer parameterization and overhang angle restrictions to ensure 3D printability.
 
+## 📚 Citations
+
+This framework is a Python/FEniCS re-implementation and extension of the original MATLAB framework.
+- **Original Paper:** Bhat, A., Capasso, M., Coniglio, S., et al. *"On some applications of Generalized Geometric Projection to optimal 3D printing"*.
+- **Original Code:** The KS aggregation and Heaviside mappings are heavily inspired by the associated GGP-Matlab repository provided by the original authors.
+
 ## 📖 Documentation
 
 Comprehensive documentation, including mathematical background and detailed code examples, is automatically generated using Sphinx and hosted on GitHub Pages:
