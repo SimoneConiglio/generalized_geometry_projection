@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>Additive Manufacturing Constraints &#8212; samo_ggp 0.1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=686e5160" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+    <script src="_static/documentation_options.js?v=01f34227"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+    <script src="_static/copybutton.js?v=f281be69"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="additive-manufacturing-constraints">
+<h1>Additive Manufacturing Constraints<a class="headerlink" href="#additive-manufacturing-constraints" title="Link to this heading">¶</a></h1>
+<p>The <cite>samo_ggp</cite> framework extends the standard Generalized Geometry Projection (GGP) method to support <strong>Additive Layer Manufacturing (ALM)</strong> constraints. This ensures that the generated topology is printable without internal support structures.</p>
+<section id="layer-by-layer-parameterization">
+<h2>Layer-by-Layer Parameterization<a class="headerlink" href="#layer-by-layer-parameterization" title="Link to this heading">¶</a></h2>
+<p>In standard GGP, components can change their orientation (<span class="math notranslate nohighlight">\(\theta\)</span>) and vertical position (<span class="math notranslate nohighlight">\(y_c\)</span>) freely. In the ALM formulation (provided by <code class="docutils literal notranslate"><span class="pre">GGP2DALMMapper</span></code>), components are restricted to horizontal tracks of a fixed height (matching the layer height).</p>
+<p>Each component <span class="math notranslate nohighlight">\(j\)</span> in layer <span class="math notranslate nohighlight">\(i\)</span> is defined by only three variables:
+<span class="math notranslate nohighlight">\(x_{i,j} = [X_{c,i,j}, w_{i,j}, M_{i,j}]\)</span></p>
+<p>where:
+- <span class="math notranslate nohighlight">\(X_{c}\)</span> is the horizontal center.
+- <span class="math notranslate nohighlight">\(w\)</span> is the track width.
+- <span class="math notranslate nohighlight">\(M\)</span> is the track mass variable.</p>
+</section>
+<section id="overhang-angle-constraints">
+<h2>Overhang Angle Constraints<a class="headerlink" href="#overhang-angle-constraints" title="Link to this heading">¶</a></h2>
+<p>To be printable without supports, each layer must be sufficiently supported by the layer beneath it. For a layer height <span class="math notranslate nohighlight">\(\Delta h\)</span> and a maximum allowable overhang angle <span class="math notranslate nohighlight">\(\alpha\)</span> (typically 45°), the following linear constraints are enforced between layer <span class="math notranslate nohighlight">\(i\)</span> and layer <span class="math notranslate nohighlight">\(i+1\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}(x_{c, i+1} - \frac{w_{i+1}}{2}) \ge (x_{c, i} - \frac{w_i}{2}) - \Delta h \cdot \tan(\alpha)\\(x_{c, i+1} + \frac{w_{i+1}}{2}) \le (x_{c, i} + \frac{w_i}{2}) + \Delta h \cdot \tan(\alpha)\end{aligned}\end{align} \]</div>
+</section>
+<section id="implementation-in-gemseo">
+<h2>Implementation in GEMSEO<a class="headerlink" href="#implementation-in-gemseo" title="Link to this heading">¶</a></h2>
+<p>These constraints are linear with respect to the design variables. In the provided examples, they are wrapped in an <code class="docutils literal notranslate"><span class="pre">ALMConstraintsDiscipline</span></code> and passed to the GEMSEO optimizer (MMA), which handles them alongside the volume and compliance objectives.</p>
+<p>See the <span class="xref std std-ref">alm_example</span> for a complete implementation.</p>
+</section>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">samo_ggp</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul>
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_guide.html">Developer Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2026, Simone Coniglio.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.1.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/alm_guide.rst.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>
