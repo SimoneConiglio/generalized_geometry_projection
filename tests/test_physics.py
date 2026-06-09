@@ -1,22 +1,22 @@
 import pytest
-import dolfin as df
-from dolfin_adjoint import Constant, DirichletBC, stop_annotating
+from dolfin import *
+from dolfin_adjoint import *
 from samo_ggp.physics.factory import PhysicsFactory
 from samo_ggp.physics.elasticity_2d import LinearElasticitySolver
 
 def setup_solver():
-    mesh = df.UnitSquareMesh(4, 4)
-    V_u = df.VectorFunctionSpace(mesh, "CG", 1)
-    def left_boundary(x, on_boundary): return on_boundary and df.near(x[0], 0.0)
+    mesh = UnitSquareMesh(4, 4)
+    V_u = VectorFunctionSpace(mesh, "CG", 1)
+    def left_boundary(x, on_boundary): return on_boundary and near(x[0], 0.0)
     bc = [DirichletBC(V_u, Constant((0.0, 0.0)), left_boundary)]
     
     # Mark the right boundary for the load
-    boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
+    boundaries = MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
     boundaries.set_all(0)
-    class RightBoundary(df.SubDomain):
-        def inside(self, x, on_boundary): return df.near(x[0], 1.0)
+    class RightBoundary(SubDomain):
+        def inside(self, x, on_boundary): return near(x[0], 1.0)
     RightBoundary().mark(boundaries, 1)
-    ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
+    ds_load = Measure("ds", domain=mesh, subdomain_data=boundaries)
     L_rhs_vec = Constant((0.0, -1.0))
     
     solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
@@ -29,8 +29,8 @@ def test_physics_factory():
 def test_solve_and_compliance():
     solver, mesh = setup_solver()
     
-    V_rho = df.FunctionSpace(mesh, "CG", 1)
-    rho = df.interpolate(df.Constant(0.5), V_rho)
+    V_rho = FunctionSpace(mesh, "CG", 1)
+    rho = interpolate(Constant(0.5), V_rho)
     
     with stop_annotating():
         u = solver.solve(rho)
