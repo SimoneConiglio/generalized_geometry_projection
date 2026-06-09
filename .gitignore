@@ -58,6 +58,9 @@ sandbox/results*/
 sandbox/*.pvd
 sandbox/*.vtu
 
+# Docs
+docs/_build/
+
 # IDEs and Editors
 .vscode/
 .idea/

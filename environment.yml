@@ -1,0 +1,19 @@
+name: samo_agents
+channels:
+  - conda-forge
+  - defaults
+dependencies:
+  - python=3.10
+  - fenics=2019.1.0
+  - mshr=2019.1.0
+  - pip
+  - pytest
+  - sphinx
+  - sphinx_rtd_theme
+  - pip:
+    - google-genai
+    - typer
+    - requests
+    - gemseo
+    - nlopt
+    - dolfin-adjoint
