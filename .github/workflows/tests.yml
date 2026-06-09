@@ -38,4 +38,17 @@ jobs:
         PYTHONPATH: .
       run: |
         pip install "setuptools<70"
-        pytest --cov=samo_ggp tests/
+        pytest --cov=samo_ggp --cov-report=json tests/
+        PERCENT=$(jq '.totals.percent_covered' coverage.json)
+        COLOR=$(python3 -c "print('green' if $PERCENT > 80 else 'yellow' if $PERCENT > 50 else 'red')")
+        mkdir -p badges
+        echo "{\"schemaVersion\": 1, \"label\": \"coverage\", \"message\": \"${PERCENT%.*}%\", \"color\": \"$COLOR\"}" > badges/coverage.json
+
+    - name: Deploy Coverage JSON
+      uses: peaceiris/actions-gh-pages@v3
+      with:
+        github_token: ${{ secrets.GITHUB_TOKEN }}
+        publish_dir: badges
+        publish_branch: gh-pages
+        destination_dir: badges
+        keep_files: true
