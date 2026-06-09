@@ -1,0 +1,49 @@
+import dolfin as df
+from dolfin_adjoint import *
+import ufl
+from ..physics.base_solver import BaseSolver
+
+class LinearElasticitySolver(BaseSolver):
+    """
+    FEniCS Linear Elasticity Solver with Adjoint support.
+    """
+    def __init__(self, V_u, bc, ds_load, L_rhs_vec, p=3.0, Emin=1e-6, E0=1.0):
+        self.V_u = V_u
+        self.bc = bc
+        self.ds_load = ds_load
+        self.L_rhs_vec = L_rhs_vec
+        self.p = df.Constant(p)
+        self.Emin = df.Constant(Emin)
+        self.E0 = df.Constant(E0)
+
+    def solve(self, rho):
+        # SIMP Penalization
+        rho_safe = ufl.max_value(df.Constant(0.0), rho)
+        E = self.Emin + rho_safe**self.p * (self.E0 - self.Emin)
+        
+        # Material properties (nu=0.3)
+        mu = E / 2.6
+        lmbda = E * 0.3 / (1.3 * 0.4)
+        
+        def eps_f(u): return 0.5 * (ufl.nabla_grad(u) + ufl.nabla_grad(u).T)
+        def sig_f(u): return lmbda * ufl.tr(eps_f(u)) * ufl.Identity(2) + 2.0 * mu * eps_f(u)
+        
+        u_trial, v_test = df.TrialFunction(self.V_u), df.TestFunction(self.V_u)
+        a = ufl.inner(sig_f(u_trial), eps_f(v_test)) * df.dx
+        L = ufl.dot(self.L_rhs_vec, v_test) * self.ds_load(1)
+        
+        u_sol = df.Function(self.V_u)
+        df.solve(a == L, u_sol, self.bc, solver_parameters={"linear_solver": "mumps"})
+        
+        # Store for objective computation
+        self.last_L = L
+        self.last_u = u_sol
+        return u_sol
+
+    def compute_compliance(self, u=None):
+        if u is None:
+            u = self.last_u
+        return df.assemble(ufl.action(self.last_L, u))
+
+    def compute_volume(self, rho):
+        return df.assemble(rho * df.dx)
