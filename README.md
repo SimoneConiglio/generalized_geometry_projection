@@ -64,6 +64,9 @@ python examples/02_mbb_beam.py
 
 # Run the L-Shape Bracket benchmark
 python examples/03_l_shape_bracket.py
+
+# Run the ALM Cantilever with Overhang Constraints
+python examples/04_alm_cantilever.py
 ```
 
 ## 🏗️ Architecture
