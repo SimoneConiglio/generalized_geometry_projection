@@ -2,12 +2,12 @@
  "cells": [
   {
    "cell_type": "markdown",
-   "id": "c9b6512a",
+   "id": "f2ebd6fc",
    "metadata": {},
    "source": [
     "# MBB Beam\n",
     "\n",
-    "This is an interactive Jupyter Notebook implementation."
+    "This is an interactive Jupyter Notebook implementation. The optimization runs for 50 iterations to ensure proper convergence."
    ]
   },
   {
@@ -123,12 +123,10 @@
   },
   {
    "cell_type": "markdown",
-   "id": "3b3f5485",
+   "id": "fed9e074",
    "metadata": {},
    "source": [
     "### Optimized Result\n",
-    "\n",
-    "*Note: The image below shows a fast preliminary result (5 iterations) for web demonstration. Running this notebook locally with `max_iter=50` will produce the fully converged, crisp topology.*\n",
     "\n",
     "![Optimized Design](_static/mbb_beam_optimized.png)"
    ]

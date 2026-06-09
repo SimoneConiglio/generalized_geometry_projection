@@ -48,7 +48,8 @@ The ``samo_ggp`` package is structured to decouple the geometry parametrization 
         
         B -->|Objective & Gradients| A
 
-### The GEMSEO "Macro-Discipline"
+The GEMSEO "Macro-Discipline"
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 A critical engineering challenge was integrating ``dolfin-adjoint`` (which tracks FEniCS operations) with ``GEMSEO`` (the MDAO orchestration engine).
 
@@ -74,3 +75,4 @@ Citations
 
 - **Original Paper:** Coniglio, S., Morlier, J., Gogu, C. et al. *Generalized Geometry Projection: A Unified Approach for Geometric Feature Based Topology Optimization*. Arch Computat Methods Eng 27, 1573–1610 (2020). https://doi.org/10.1007/s11831-019-09362-8
 - **Original MATLAB Code:** `GGP-Matlab Repository <https://github.com/topggp/GGP-Matlab>`_
+y <https://github.com/topggp/GGP-Matlab>`_

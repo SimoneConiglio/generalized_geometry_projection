@@ -511,7 +511,8 @@ The signed distance field <span class="math notranslate nohighlight">\(\psi_i(x,
     end
 
     B --&gt;|Objective &amp; Gradients| A
-    </pre><p>### The GEMSEO “Macro-Discipline”</p>
+    </pre><section id="the-gemseo-macro-discipline">
+<h3>The GEMSEO “Macro-Discipline”<a class="headerlink" href="#the-gemseo-macro-discipline" title="Link to this heading">¶</a></h3>
 <p>A critical engineering challenge was integrating <code class="docutils literal notranslate"><span class="pre">dolfin-adjoint</span></code> (which tracks FEniCS operations) with <code class="docutils literal notranslate"><span class="pre">GEMSEO</span></code> (the MDAO orchestration engine).</p>
 <p><strong>Why not a modular MDAChain?</strong>
 Initially, we attempted to split the process into two GEMSEO disciplines: a Geometry discipline and a Physics discipline.
@@ -519,6 +520,7 @@ However, GEMSEO’s chain rule requires explicitly computing the intermediate Ja
 <p><strong>The Solution: Monolithic Adjoint Tracking</strong>
 We implemented the <code class="docutils literal notranslate"><span class="pre">GGPMacroDiscipline</span></code>. This single GEMSEO wrapper takes the primitive variables <span class="math notranslate nohighlight">\(x\)</span>, constructs <code class="docutils literal notranslate"><span class="pre">dolfin_adjoint.Constant</span></code> objects, and runs the entire forward pass (Mapping + Physics).
 When GEMSEO requests the gradient <span class="math notranslate nohighlight">\(\frac{\partial J}{\partial x}\)</span>, <code class="docutils literal notranslate"><span class="pre">dolfin-adjoint</span></code> solves the adjoint PDE and computes the exact sensitivities analytically in a fraction of a second, entirely bypassing the dense Jacobian.</p>
+</section>
 </section>
 <section id="tape-management-safe-re-execution">
 <h2>Tape Management &amp; Safe Re-execution<a class="headerlink" href="#tape-management-safe-re-execution" title="Link to this heading">¶</a></h2>
@@ -535,6 +537,7 @@ When GEMSEO requests the gradient <span class="math notranslate nohighlight">\(\
 <li><p><strong>Original Paper:</strong> Coniglio, S., Morlier, J., Gogu, C. et al. <em>Generalized Geometry Projection: A Unified Approach for Geometric Feature Based Topology Optimization</em>. Arch Computat Methods Eng 27, 1573–1610 (2020). <a class="reference external" href="https://doi.org/10.1007/s11831-019-09362-8">https://doi.org/10.1007/s11831-019-09362-8</a></p></li>
 <li><p><strong>Original MATLAB Code:</strong> <a class="reference external" href="https://github.com/topggp/GGP-Matlab">GGP-Matlab Repository</a></p></li>
 </ul>
+<p>y &lt;<a class="reference external" href="https://github.com/topggp/GGP-Matlab">https://github.com/topggp/GGP-Matlab</a>&gt;`_</p>
 </section>
 </section>
 
