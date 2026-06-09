@@ -1,11 +1,12 @@
 import dolfin as df
-from dolfin_adjoint import Constant, DirichletBC, RectangleMesh, stop_annotating
+from dolfin_adjoint import *
 import numpy as np
 import gemseo
 from gemseo import create_scenario
+from gemseo.mda.mda_chain import MDAChain
 from samo_ggp.geometry.factory import GeometryFactory
 from samo_ggp.physics.factory import PhysicsFactory
-from samo_ggp.gemseo_wrappers.macro_discipline import GGPMacroDiscipline
+from samo_ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsAdjointDiscipline
 from samo_ggp.utils.alm_utils import create_alm_overhang_constraints
 import matplotlib.pyplot as plt
 import os
@@ -37,30 +38,22 @@ def run_alm_cantilever(max_iter=50):
     ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
     L_rhs_vec = Constant((0.0, -1.0))
 
-    # Initialize ALM Mapper
+    # Solver and Mapper Setup
+    solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
     mapper = GeometryFactory.create_mapper("2D_ALM", mesh=mesh, num_layers=num_layers, 
                                           components_per_layer=comp_per_layer, layer_height=layer_height)
-    solver = PhysicsFactory.create_solver("Elasticity_2D", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
     x_init = mapper.get_initial_design(L, H)
-    
-    # Bounds for [xc, width, mc]
     lb = np.array([0.0, 1.0, 0.0] * mapper.num_components)
     ub = np.array([L, L, 1.0] * mapper.num_components)
 
-    # Discipline
-    disc = GGPMacroDiscipline(mapper, solver, x_init, lb, ub, mesh_area=L*H, name="GGP_ALM_Cantilever")
+    # --- Hybrid Modular Architecture ---
+    geom_disc = GGPVectorizedGeometryDiscipline(
+        mesh, mapper.num_components, mode='ALM', 
+        num_layers=num_layers, comp_per_layer=comp_per_layer, layer_height=layer_height
+    )
+    phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H)
     
-    design_space = gemseo.algos.design_space.DesignSpace()
-    design_space.add_variable("x_vars", size=len(x_init), lower_bound=lb, upper_bound=ub, value=x_init)
-    
-    scenario = create_scenario(disciplines=[disc], objective_name="compliance", design_space=design_space, formulation_name="DisciplinaryOpt")
-    scenario.add_constraint("volume", "ineq", positive=False, value=volfrac)
-    
-    # Add Overhang Constraints
-    A_over, b_over = create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg)
-    
-    # We can use GEMSEO's LinearConstraint
-    # However, to be simple and reliable, we'll just implement a dedicated Discipline for these constraints
+    # Add Overhang Constraints Discipline
     from gemseo.core.discipline.discipline import Discipline
     class ALMConstraintsDiscipline(Discipline):
         def __init__(self, A, b):
@@ -69,30 +62,38 @@ def run_alm_cantilever(max_iter=50):
             self.input_grammar.update_from_names(["x_vars"])
             self.output_grammar.update_from_names(["overhang_cons"])
         def _run(self, input_data=None):
-            x = self.get_inputs_by_name("x_vars")
-            self.store_local_data(overhang_cons=self.A @ x.flatten() - self.b)
+            if input_data is not None: self.local_data.update(input_data)
+            x = self.local_data["x_vars"].flatten()
+            self.local_data["overhang_cons"] = self.A @ x - self.b
         def _compute_jacobian(self, inputs=None, outputs=None):
             self.jac = {"overhang_cons": {"x_vars": self.A}}
 
+    A_over, b_over = create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg)
     cons_disc = ALMConstraintsDiscipline(A_over, b_over)
     
-    # Re-create scenario with both disciplines
-    scenario = create_scenario(disciplines=[disc, cons_disc], objective_name="compliance", 
+    chain = MDAChain([geom_disc, phys_disc])
+    
+    design_space = gemseo.algos.design_space.DesignSpace()
+    design_space.add_variable("x_vars", size=len(x_init), lower_bound=lb, upper_bound=ub, value=x_init)
+    
+    scenario = create_scenario(disciplines=[chain, cons_disc], objective_name="compliance", 
                                design_space=design_space, formulation_name="DisciplinaryOpt")
     scenario.add_constraint("volume", "ineq", positive=False, value=volfrac)
     scenario.add_constraint("overhang_cons", "ineq", positive=False, value=0.0)
     
     scenario.execute(algo_name="MMA", max_iter=max_iter, max_optimization_step=0.1)
 
-    # Post-processing
+    # --- Post-Processing ---
     print("Post-processing ALM result...")
     os.makedirs("results", exist_ok=True)
     opt_x = scenario.optimization_result.x_opt
-    for c, v in zip(disc.controls_objs, opt_x):
-        c.assign(float(v))
+    
     with stop_annotating():
-        V_rho = df.FunctionSpace(mesh, "CG", 1)
-        rho_opt = df.project(mapper.map_to_density(disc.controls_objs), V_rho)
+        V_rho = df.FunctionSpace(mesh, "DG", 0)
+        rho_opt_arr = geom_disc._map_logic(opt_x)
+        rho_opt = df.Function(V_rho)
+        rho_opt.vector()[:] = rho_opt_arr
+        
         df.File("results/alm_cantilever_optimized.pvd") << rho_opt
         plt.figure(figsize=(10, 5))
         df.plot(rho_opt, cmap="Blues")

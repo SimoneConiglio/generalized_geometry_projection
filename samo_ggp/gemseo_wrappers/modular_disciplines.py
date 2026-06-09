@@ -1,65 +1,128 @@
 import numpy as np
 from gemseo.core.discipline.discipline import Discipline
+from ..utils.vectorized_mapping import compute_local_characteristic_np, smooth_saturation_np
+import dolfin as df
+from dolfin_adjoint import *
 
-class GGPGeometryDiscipline(Discipline):
+class GGPVectorizedGeometryDiscipline(Discipline):
     """
-    GEMSEO Discipline for GGP Geometry Mapping.
-    Input: x_vars (primitive parameters)
-    Output: density (field)
+    Highly optimized GGP Geometry Discipline using NumPy vectorization.
+    Supports both Free (6-var) and ALM (3-var) mapping strategies.
     """
-    def __init__(self, mapper, x_init, name="GGP_Geometry"):
+    def __init__(self, mesh, num_components, mode='Free', L_domain=None, H_domain=None, 
+                 num_layers=None, comp_per_layer=None, layer_height=None,
+                 method='GP', r_gp=0.5, ka=10.0, pp=100.0, name="GGP_Geometry"):
         super().__init__(name=name)
-        self.mapper = mapper
+        self.num_components = num_components
+        self.mode = mode
+        self.method = method
+        self.r_gp = r_gp
+        self.ka = ka
+        self.pp = pp
+        
+        # ALM specific
+        self.num_layers = num_layers
+        self.comp_per_layer = comp_per_layer
+        self.layer_height = layer_height
+        
+        # Pre-calculate element centroids
+        V_dg = df.FunctionSpace(mesh, "DG", 0)
+        midpoints = V_dg.tabulate_dof_coordinates()
+        self.X_mesh, self.Y_mesh = midpoints[:, 0], midpoints[:, 1]
+        self.num_elements = len(self.X_mesh)
+        
+        # Saturation constants
+        self.xt = 1.0 + 1.0/ka * np.log((1.0 + (num_components - 1.0)*np.exp(-ka))/num_components)
+        self.s0 = -np.log(np.exp(-pp) + 1.0 / (np.exp(0.0) + 1.0)) / pp
         
         # IO Grammars
         self.input_grammar.update_from_names(["x_vars"])
         self.output_grammar.update_from_names(["density"])
-        self.default_inputs = {"x_vars": x_init}
+
+    def _map_logic(self, x_vars):
+        char_functions = []
         
-        # Internal state for derivatives
-        self.ctrls = [mapper.eps_safe for _ in range(len(x_init))] # Placeholder type
+        if self.mode == 'Free':
+            params = x_vars.reshape(self.num_components, 6)
+            for i in range(self.num_components):
+                p = params[i]
+                W = compute_local_characteristic_np(self.X_mesh, self.Y_mesh, p[0], p[1], p[2], p[3], p[4], self.r_gp, method=self.method)
+                char_functions.append(W * p[5])
+        else:
+            # ALM Mode: [xc, width, Mc] per component
+            params = x_vars.reshape(self.num_components, 3)
+            h_fixed = self.layer_height
+            theta_fixed = 0.0
+            for layer in range(self.num_layers):
+                y_fixed = (layer + 0.5) * self.layer_height
+                for i in range(self.comp_per_layer):
+                    idx = layer * self.comp_per_layer + i
+                    p = params[idx]
+                    W = compute_local_characteristic_np(self.X_mesh, self.Y_mesh, p[0], y_fixed, p[1], h_fixed, theta_fixed, self.r_gp, method=self.method)
+                    char_functions.append(W * p[2])
+        
+        sum_exp = np.mean(np.exp(self.ka * np.array(char_functions)), axis=0)
+        ks_val = (1.0 / self.ka) * np.log(sum_exp)
+        return smooth_saturation_np(ks_val, self.ka, self.pp, self.xt, self.s0)
 
     def _run(self, input_data=None):
-        if input_data is not None:
-            self.local_data.update(input_data)
+        if input_data is not None: self.local_data.update(input_data)
         x_vars = self.local_data["x_vars"].flatten()
-        # This discipline is purely for the forward mapping in the GEMSEO chain.
-        # However, for dolfin-adjoint to work across disciplines, 
-        # we need to be careful about how the tape is shared.
-        
-        # In the modular approach, we just return the density as a numpy-compatible object 
-        # or a FEniCS Function if using a specific adapter.
-        # For simplicity in this benchmark, we'll keep the FEniCS objects.
-        rho = self.mapper.map_to_density(x_vars) 
-        self.local_data["density"] = rho 
+        self.local_data["density"] = self._map_logic(x_vars)
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
-        # Derivatives will be handled by dolfin-adjoint internally or via GEMSEO chain rule
-        pass
+        x = self.local_data["x_vars"].flatten()
+        eps = 1e-8
+        jac = np.zeros((self.num_elements, len(x)))
+        
+        for i in range(len(x)):
+            x_plus = x.copy()
+            x_plus[i] += eps
+            rho_plus = self._map_logic(x_plus)
+            x_minus = x.copy()
+            x_minus[i] -= eps
+            rho_minus = self._map_logic(x_minus)
+            jac[:, i] = (rho_plus - rho_minus) / (2 * eps)
+            
+        self.jac = {"density": {"x_vars": jac}}
 
-class GGPPhysicsDiscipline(Discipline):
+class GGPPhysicsAdjointDiscipline(Discipline):
     """
-    GEMSEO Discipline for GGP Physics Solve.
-    Input: density
-    Output: compliance, volume
+    Optimized Physics Discipline.
+    Bypasses UFL symbolic mapping by taking a pre-computed density array.
     """
-    def __init__(self, solver, mesh_area, name="GGP_Physics"):
+    def __init__(self, solver, mesh, mesh_area, name="GGP_Physics"):
         super().__init__(name=name)
         self.solver = solver
+        self.mesh = mesh
         self.mesh_area = mesh_area
+        self.V_dg = df.FunctionSpace(mesh, "DG", 0)
         
-        # IO Grammars
         self.input_grammar.update_from_names(["density"])
         self.output_grammar.update_from_names(["compliance", "volume"])
 
-    def _run(self):
-        rho = self.local_data["density"]
-        u = self.solver.solve(rho)
+    def _run(self, input_data=None):
+        if input_data is not None: self.local_data.update(input_data)
+        rho_arr = self.local_data["density"].flatten()
+        
+        get_working_tape().clear_tape()
+        
+        rho_adj = df.Function(self.V_dg, name="DensityInput")
+        rho_adj.vector()[:] = rho_arr
+        rho_tracked = interpolate(rho_adj, self.V_dg)
+        
+        u = self.solver.solve(rho_tracked)
         j_val = self.solver.compute_compliance(u)
-        v_val = self.solver.compute_volume(rho)
+        v_val = self.solver.compute_volume(rho_tracked)
         
         self.local_data["compliance"] = np.array([float(j_val)])
         self.local_data["volume"] = np.array([float(v_val) / self.mesh_area])
+        
+        self.dj_drho = compute_gradient(j_val, Control(rho_tracked)).vector().get_local()
+        self.dv_drho = compute_gradient(v_val, Control(rho_tracked)).vector().get_local() / self.mesh_area
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
-        pass
+        self.jac = {
+            "compliance": {"density": self.dj_drho.reshape(1, -1)},
+            "volume": {"density": self.dv_drho.reshape(1, -1)}
+        }
