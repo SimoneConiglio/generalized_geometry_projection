@@ -1,15 +1,15 @@
 import numpy as np
+from dolfin import *
+from dolfin_adjoint import *
 from gemseo.core.discipline.discipline import Discipline
 from ..utils.vectorized_mapping import compute_local_characteristic_np, smooth_saturation_np
-import dolfin as df
-from dolfin_adjoint import *
 
 class GGPVectorizedGeometryDiscipline(Discipline):
     """
     Highly optimized GGP Geometry Discipline using NumPy vectorization.
     Supports both Free (6-var) and ALM (3-var) mapping strategies.
     """
-    def __init__(self, mesh, num_components, mode='Free', L_domain=None, H_domain=None, 
+    def __init__(self, mesh, num_components, mode='Free', L_domain=60.0, H_domain=30.0, 
                  num_layers=None, comp_per_layer=None, layer_height=None,
                  method='GP', r_gp=0.5, ka=10.0, pp=100.0, name="GGP_Geometry"):
         super().__init__(name=name)
@@ -25,8 +25,8 @@ class GGPVectorizedGeometryDiscipline(Discipline):
         self.comp_per_layer = comp_per_layer
         self.layer_height = layer_height
         
-        # Pre-calculate element centroids
-        V_dg = df.FunctionSpace(mesh, "DG", 0)
+        # Correct way to get centroids for DG0 in FEniCS 2019:
+        V_dg = FunctionSpace(mesh, "DG", 0)
         midpoints = V_dg.tabulate_dof_coordinates()
         self.X_mesh, self.Y_mesh = midpoints[:, 0], midpoints[:, 1]
         self.num_elements = len(self.X_mesh)
@@ -49,7 +49,7 @@ class GGPVectorizedGeometryDiscipline(Discipline):
                 W = compute_local_characteristic_np(self.X_mesh, self.Y_mesh, p[0], p[1], p[2], p[3], p[4], self.r_gp, method=self.method)
                 char_functions.append(W * p[5])
         else:
-            # ALM Mode: [xc, width, Mc] per component
+            # ALM Mode
             params = x_vars.reshape(self.num_components, 3)
             h_fixed = self.layer_height
             theta_fixed = 0.0
@@ -74,7 +74,6 @@ class GGPVectorizedGeometryDiscipline(Discipline):
         x = self.local_data["x_vars"].flatten()
         eps = 1e-8
         jac = np.zeros((self.num_elements, len(x)))
-        
         for i in range(len(x)):
             x_plus = x.copy()
             x_plus[i] += eps
@@ -83,20 +82,20 @@ class GGPVectorizedGeometryDiscipline(Discipline):
             x_minus[i] -= eps
             rho_minus = self._map_logic(x_minus)
             jac[:, i] = (rho_plus - rho_minus) / (2 * eps)
-            
         self.jac = {"density": {"x_vars": jac}}
 
 class GGPPhysicsAdjointDiscipline(Discipline):
     """
-    Optimized Physics Discipline.
-    Bypasses UFL symbolic mapping by taking a pre-computed density array.
+    Optimized Physics Discipline with automatic objective scaling.
     """
     def __init__(self, solver, mesh, mesh_area, name="GGP_Physics"):
         super().__init__(name=name)
         self.solver = solver
         self.mesh = mesh
         self.mesh_area = mesh_area
-        self.V_dg = df.FunctionSpace(mesh, "DG", 0)
+        self.V_dg = FunctionSpace(mesh, "DG", 0)
+        self.scale_obj = 1.0
+        self.iter = 0
         
         self.input_grammar.update_from_names(["density"])
         self.output_grammar.update_from_names(["compliance", "volume"])
@@ -106,20 +105,25 @@ class GGPPhysicsAdjointDiscipline(Discipline):
         rho_arr = self.local_data["density"].flatten()
         
         get_working_tape().clear_tape()
-        
-        rho_adj = df.Function(self.V_dg, name="DensityInput")
+        rho_adj = Function(self.V_dg)
         rho_adj.vector()[:] = rho_arr
         rho_tracked = interpolate(rho_adj, self.V_dg)
         
         u = self.solver.solve(rho_tracked)
-        j_val = self.solver.compute_compliance(u)
-        v_val = self.solver.compute_volume(rho_tracked)
+        j_val = float(self.solver.compute_compliance(u))
+        v_val = float(self.solver.compute_volume(rho_tracked))
         
-        self.local_data["compliance"] = np.array([float(j_val)])
-        self.local_data["volume"] = np.array([float(v_val) / self.mesh_area])
+        # Scaling to 1.0 at first iteration
+        if self.iter == 0:
+            self.scale_obj = 1.0 / j_val
+            
+        self.local_data["compliance"] = np.array([j_val * self.scale_obj])
+        self.local_data["volume"] = np.array([v_val / self.mesh_area])
         
-        self.dj_drho = compute_gradient(j_val, Control(rho_tracked)).vector().get_local()
-        self.dv_drho = compute_gradient(v_val, Control(rho_tracked)).vector().get_local() / self.mesh_area
+        m = Control(rho_tracked)
+        self.dj_drho = compute_gradient(j_val, m).vector().get_local() * self.scale_obj
+        self.dv_drho = compute_gradient(v_val, m).vector().get_local() / self.mesh_area
+        self.iter += 1
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
         self.jac = {
