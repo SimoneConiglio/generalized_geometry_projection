@@ -19,7 +19,9 @@ class GGPGeometryDiscipline(Discipline):
         # Internal state for derivatives
         self.ctrls = [mapper.eps_safe for _ in range(len(x_init))] # Placeholder type
 
-    def _run(self):
+    def _run(self, input_data=None):
+        if input_data is not None:
+            self.local_data.update(input_data)
         x_vars = self.local_data["x_vars"].flatten()
         # This discipline is purely for the forward mapping in the GEMSEO chain.
         # However, for dolfin-adjoint to work across disciplines, 
