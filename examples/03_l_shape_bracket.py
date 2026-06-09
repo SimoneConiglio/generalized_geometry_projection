@@ -47,7 +47,7 @@ def run_l_shape_bracket():
     scenario = create_scenario(disciplines=[disc], objective_name="compliance", design_space=design_space, formulation_name="DisciplinaryOpt")
     scenario.add_constraint("volume", "ineq", positive=False, value=volfrac)
     
-    scenario.execute(algo_name="MMA", max_iter=5, max_optimization_step=0.1)
+    scenario.execute(algo_name="MMA", max_iter=50, max_optimization_step=0.1)
 
     # --- Post-Processing ---
     print("Post-processing optimal design...")

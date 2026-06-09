@@ -7,8 +7,8 @@ This framework focuses on extending structural topology optimization to include 
 ## 📚 Citations
 
 This framework is a Python/FEniCS re-implementation and extension of the original MATLAB framework.
-- **Original Paper:** Bhat, A., Capasso, M., Coniglio, S., et al. *"On some applications of Generalized Geometric Projection to optimal 3D printing"*.
-- **Original Code:** The KS aggregation and Heaviside mappings are heavily inspired by the associated GGP-Matlab repository provided by the original authors.
+- **Original Paper:** Coniglio, S., Morlier, J., Gogu, C. et al. *Generalized Geometry Projection: A Unified Approach for Geometric Feature Based Topology Optimization*. Arch Computat Methods Eng 27, 1573–1610 (2020). [https://doi.org/10.1007/s11831-019-09362-8](https://doi.org/10.1007/s11831-019-09362-8)
+- **Original Code:** The foundational logic is heavily inspired by the associated [GGP-Matlab](https://github.com/topggp/GGP-Matlab) repository provided by the original authors.
 
 ## 📖 Documentation
 

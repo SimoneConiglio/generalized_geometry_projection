@@ -5,7 +5,9 @@ numpy
 scipy
 pytest
 sphinx
-sphinx_rtd_theme
+sphinx-book-theme
+sphinx-copybutton
+sphinxcontrib-mermaid
 nbsphinx
 jupyterlab
 jupytext
