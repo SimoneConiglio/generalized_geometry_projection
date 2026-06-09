@@ -531,6 +531,25 @@ When GEMSEO requests the gradient <span class="math notranslate nohighlight">\(\
 <li><p>The forward graph is rebuilt from scratch.</p></li>
 </ol>
 </section>
+<section id="performance-monitoring">
+<h2>Performance Monitoring<a class="headerlink" href="#performance-monitoring" title="Link to this heading">¶</a></h2>
+<p>To track the evolution of code performance and identify bottlenecks, a profiling infrastructure is provided.</p>
+<p>### 1. Running the Profiling Suite</p>
+<p>To run a fast profile of all standard benchmarks (5 iterations each), execute:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">PYTHONPATH</span><span class="o">=</span><span class="nv">$PYTHONPATH</span>:.<span class="w"> </span>python<span class="w"> </span>profile_suite.py
+</pre></div>
+</div>
+<p>This script will:
+- Run all 4 benchmarks.
+- Generate detailed <code class="docutils literal notranslate"><span class="pre">.prof</span></code> files in the <code class="docutils literal notranslate"><span class="pre">performance_logs/</span></code> directory.
+- Log the average time per iteration and the Git commit hash to <code class="docutils literal notranslate"><span class="pre">performance_history.json</span></code>.</p>
+<p>### 2. Analyzing Bottlenecks</p>
+<p>Detailed profiling data can be visualized using tools like <cite>snakeviz</cite>:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>snakeviz
+snakeviz<span class="w"> </span>performance_logs/short_cantilever.prof
+</pre></div>
+</div>
+</section>
 <section id="citations">
 <h2>Citations<a class="headerlink" href="#citations" title="Link to this heading">¶</a></h2>
 <ul class="simple">
@@ -574,6 +593,7 @@ When GEMSEO requests the gradient <span class="math notranslate nohighlight">\(\
 <li class="toctree-l2"><a class="reference internal" href="#mathematical-foundation">Mathematical Foundation</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#architecture-object-oriented-design">Architecture &amp; Object-Oriented Design</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#tape-management-safe-re-execution">Tape Management &amp; Safe Re-execution</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#performance-monitoring">Performance Monitoring</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#citations">Citations</a></li>
 </ul>
 </li>

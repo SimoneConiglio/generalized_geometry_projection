@@ -6,7 +6,7 @@ Here are three topology optimization examples implemented using the `samo_ggp` f
 .. toctree::
    :maxdepth: 1
 
-   01_short_cantilever
-   02_mbb_beam
-   03_l_shape_bracket
-   04_alm_cantilever
+   ex01_short_cantilever
+   ex02_mbb_beam
+   ex03_l_shape_bracket
+   ex04_alm_cantilever
