@@ -3,7 +3,8 @@ import nbformat as nbf
 files = {
     '01_short_cantilever.ipynb': ('Short Cantilever', 'short_cantilever_optimized.png'),
     '02_mbb_beam.ipynb': ('MBB Beam', 'mbb_beam_optimized.png'),
-    '03_l_shape_bracket.ipynb': ('L-Shape Bracket', 'l_shape_bracket_optimized.png')
+    '03_l_shape_bracket.ipynb': ('L-Shape Bracket', 'l_shape_bracket_optimized.png'),
+    '04_alm_cantilever.ipynb': ('ALM Cantilever (Overhang Constraints)', 'alm_cantilever_optimized.png')
 }
 
 for fname, (title, img) in files.items():
