@@ -9,3 +9,4 @@ Here are three topology optimization examples implemented using the `samo_ggp` f
    01_short_cantilever
    02_mbb_beam
    03_l_shape_bracket
+   04_alm_cantilever

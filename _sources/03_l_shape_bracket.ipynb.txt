@@ -2,7 +2,7 @@
  "cells": [
   {
    "cell_type": "markdown",
-   "id": "5afa5f3c",
+   "id": "f151c333",
    "metadata": {},
    "source": [
     "# L-Shape Bracket\n",
@@ -115,7 +115,7 @@
   },
   {
    "cell_type": "markdown",
-   "id": "897899ca",
+   "id": "5f2ac3bd",
    "metadata": {},
    "source": [
     "### Optimized Result\n",
