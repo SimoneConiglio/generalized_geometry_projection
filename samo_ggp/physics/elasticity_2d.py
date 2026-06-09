@@ -1,4 +1,4 @@
-import dolfin as df
+from dolfin import *
 from dolfin_adjoint import *
 import ufl
 from ..physics.base_solver import BaseSolver
@@ -12,13 +12,13 @@ class LinearElasticitySolver(BaseSolver):
         self.bc = bc
         self.ds_load = ds_load
         self.L_rhs_vec = L_rhs_vec
-        self.p = df.Constant(p)
-        self.Emin = df.Constant(Emin)
-        self.E0 = df.Constant(E0)
+        self.p = Constant(p)
+        self.Emin = Constant(Emin)
+        self.E0 = Constant(E0)
 
     def solve(self, rho):
         # SIMP Penalization
-        rho_safe = ufl.max_value(df.Constant(0.0), rho)
+        rho_safe = ufl.max_value(Constant(0.0), rho)
         E = self.Emin + rho_safe**self.p * (self.E0 - self.Emin)
         
         # Material properties (nu=0.3)
@@ -28,12 +28,12 @@ class LinearElasticitySolver(BaseSolver):
         def eps_f(u): return 0.5 * (ufl.nabla_grad(u) + ufl.nabla_grad(u).T)
         def sig_f(u): return lmbda * ufl.tr(eps_f(u)) * ufl.Identity(2) + 2.0 * mu * eps_f(u)
         
-        u_trial, v_test = df.TrialFunction(self.V_u), df.TestFunction(self.V_u)
-        a = ufl.inner(sig_f(u_trial), eps_f(v_test)) * df.dx
+        u_trial, v_test = TrialFunction(self.V_u), TestFunction(self.V_u)
+        a = ufl.inner(sig_f(u_trial), eps_f(v_test)) * dx
         L = ufl.dot(self.L_rhs_vec, v_test) * self.ds_load(1)
         
-        u_sol = df.Function(self.V_u)
-        df.solve(a == L, u_sol, self.bc, solver_parameters={"linear_solver": "mumps"})
+        u_sol = Function(self.V_u)
+        solve(a == L, u_sol, self.bc, solver_parameters={"linear_solver": "mumps"})
         
         # Store for objective computation
         self.last_L = L
@@ -43,7 +43,7 @@ class LinearElasticitySolver(BaseSolver):
     def compute_compliance(self, u=None):
         if u is None:
             u = self.last_u
-        return df.assemble(ufl.action(self.last_L, u))
+        return assemble(ufl.action(self.last_L, u))
 
     def compute_volume(self, rho):
-        return df.assemble(rho * df.dx)
+        return assemble(rho * dx)

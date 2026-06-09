@@ -1,5 +1,6 @@
 import numpy as np
-import dolfin as df
+from dolfin import *
+import dolfin_adjoint
 from dolfin_adjoint import *
 from gemseo.core.discipline.discipline import Discipline
 
@@ -22,44 +23,46 @@ class GGPMacroDiscipline(Discipline):
         
         # Internal state
         self.lb, self.ub = lb, ub
-        self.controls_objs = [df.Constant(v) for v in x_init]
+        self.x_vals = x_init
         self.last_x = None
         self.scale_obj = 1.0
         self.iter = 0
 
-    def _run(self):
+    def _run(self, input_data=None):
+        if input_data is not None:
+            self.local_data.update(input_data)
         x_vars = self.local_data["x_vars"].flatten()
         
-        # Clear tape for new iteration
+        # 1. Clear tape BEFORE graph construction
         tape = get_working_tape()
         tape.clear_tape()
         
-        # Assign constants and build graph
-        for c, v in zip(self.controls_objs, x_vars):
-            c.assign(float(v))
+        # 2. Build graph with FRESH AdjConstants in every iteration
+        # This is the safest way to ensure they are tracked in the new tape.
+        controls_objs = [dolfin_adjoint.Constant(float(v)) for v in x_vars]
             
-        # Adjoint-tracked graph
-        rho = self.mapper.map_to_density(self.controls_objs)
+        rho = self.mapper.map_to_density(controls_objs)
         u = self.solver.solve(rho)
         
-        j_val = self.solver.compute_compliance(u)
-        v_val = self.solver.compute_volume(rho)
+        # 3. Ensure these are tape-tracked functionals
+        j_functional = self.solver.compute_compliance(u)
+        v_functional = self.solver.compute_volume(rho)
         
-        # Extract gradients
-        m_ctrls = [Control(c) for c in self.controls_objs]
-        dj_raw = np.array([float(g) for g in compute_gradient(j_val, m_ctrls)])
-        dv_raw = np.array([float(g) for g in compute_gradient(v_val, m_ctrls)]) / self.mesh_area
+        # 4. Extract gradients
+        m_ctrls = [Control(c) for c in controls_objs]
+        dj_raw = np.array([float(g) for g in compute_gradient(j_functional, m_ctrls)])
+        dv_raw = np.array([float(g) for g in compute_gradient(v_functional, m_ctrls)]) / self.mesh_area
         
         # Normalization and scaling
         if self.iter == 0:
-            self.scale_obj = 1.0 / float(j_val)
+            self.scale_obj = 1.0 / float(j_functional)
             
         self.dj = np.nan_to_num(dj_raw) * self.scale_obj
         self.dv = np.nan_to_num(dv_raw)
         
         # Store results
-        self.local_data["compliance"] = np.array([float(j_val) * self.scale_obj])
-        self.local_data["volume"] = np.array([float(v_val) / self.mesh_area])
+        self.local_data["compliance"] = np.array([float(j_functional) * self.scale_obj])
+        self.local_data["volume"] = np.array([float(v_functional) / self.mesh_area])
         
         self.iter += 1
 
