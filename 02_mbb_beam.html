@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+
+<html lang="en" data-content_root="./">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+    <title>MBB Beam &#8212; samo_ggp 0.1.0 documentation</title>
+    <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=5ecbeea2" />
+    <link rel="stylesheet" type="text/css" href="_static/basic.css?v=686e5160" />
+    <link rel="stylesheet" type="text/css" href="_static/alabaster.css?v=27fed22d" />
+    <link rel="stylesheet" type="text/css" href="_static/nbsphinx-code-cells.css?v=2aa19091" />
+    <script src="_static/documentation_options.js?v=01f34227"></script>
+    <script src="_static/doctools.js?v=9bcbadda"></script>
+    <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+    <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+    <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="L-Shape Bracket" href="03_l_shape_bracket.html" />
+    <link rel="prev" title="Short Cantilever" href="01_short_cantilever.html" />
+   
+  <link rel="stylesheet" href="_static/custom.css" type="text/css" />
+  
+
+  
+  
+
+  </head><body>
+  
+
+    <div class="document">
+      <div class="documentwrapper">
+        <div class="bodywrapper">
+          
+
+          <div class="body" role="main">
+            
+  <section id="MBB-Beam">
+<h1>MBB Beam<a class="headerlink" href="#MBB-Beam" title="Link to this heading">¶</a></h1>
+<p>This is an interactive Jupyter Notebook implementation.</p>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-none notranslate"><div class="highlight"><pre><span></span>import dolfin as df
+from dolfin_adjoint import Constant, DirichletBC, RectangleMesh, stop_annotating
+import numpy as np
+import gemseo
+from gemseo import create_scenario
+from samo_ggp.geometry.factory import GeometryFactory
+from samo_ggp.physics.factory import PhysicsFactory
+from samo_ggp.gemseo_wrappers.macro_discipline import GGPMacroDiscipline
+import matplotlib.pyplot as plt
+import os
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-none notranslate"><div class="highlight"><pre><span></span>def run_mbb_beam():
+    # Only modeling half of the beam due to symmetry
+    L, H = 150.0, 50.0
+    nelx, nely = 150, 50
+    volfrac = 0.5
+    num_components = 20
+
+    # Mesh and Spaces
+    mesh = RectangleMesh(df.Point(0, 0), df.Point(L, H), nelx, nely)
+    V_u = df.VectorFunctionSpace(mesh, &quot;CG&quot;, 1)
+
+    # Boundary Conditions: Left edge symmetry (ux=0), Bottom right point supported (uy=0)
+    def left_symmetry(x, on_boundary): return on_boundary and df.near(x[0], 0.0)
+    def bottom_right_support(x, on_boundary): return on_boundary and df.near(x[0], L, 1.0) and df.near(x[1], 0.0, 1.0)
+
+    bc = [
+        DirichletBC(V_u.sub(0), Constant(0.0), left_symmetry),
+        DirichletBC(V_u.sub(1), Constant(0.0), bottom_right_support, method=&quot;pointwise&quot;)
+    ]
+
+    # Load: Top left corner point load
+    boundaries = df.MeshFunction(&quot;size_t&quot;, mesh, mesh.topology().dim() - 1)
+    boundaries.set_all(0)
+    class TopLeftArea(df.SubDomain):
+        def inside(self, x, on_boundary): return df.near(x[0], 0.0, 2.0) and df.near(x[1], H, 2.0)
+    TopLeftArea().mark(boundaries, 1)
+    ds_load = df.Measure(&quot;ds&quot;, domain=mesh, subdomain_data=boundaries)
+    L_rhs_vec = Constant((0.0, -1.0))
+
+    # Initialization
+    mapper = GeometryFactory.create_mapper(&quot;2D_Free&quot;, mesh=mesh, num_components=num_components)
+    solver = PhysicsFactory.create_solver(&quot;Elasticity_2D&quot;, V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
+    x_init = mapper.get_initial_design(L, H)
+    lb = np.array([0.0, 0.0, 5.0, 2.0, -np.pi] * num_components)
+    ub = np.array([L, H, L, H/2, np.pi] * num_components)
+
+    # Discipline and Optimization
+    disc = GGPMacroDiscipline(mapper, solver, x_init, lb, ub, mesh_area=L*H, name=&quot;GGP_MBB&quot;)
+    design_space = gemseo.algos.design_space.DesignSpace()
+    design_space.add_variable(&quot;x_vars&quot;, size=len(x_init), lower_bound=lb, upper_bound=ub, value=x_init)
+
+    scenario = create_scenario(disciplines=[disc], objective_name=&quot;compliance&quot;, design_space=design_space, formulation_name=&quot;DisciplinaryOpt&quot;)
+    scenario.add_constraint(&quot;volume&quot;, &quot;ineq&quot;, positive=False, value=volfrac)
+
+    scenario.execute(algo_name=&quot;MMA&quot;, max_iter=5, max_optimization_step=0.1)
+
+    # --- Post-Processing ---
+    print(&quot;Post-processing optimal design...&quot;)
+    os.makedirs(&quot;results&quot;, exist_ok=True)
+
+    opt_x = scenario.optimization_result.x_opt
+    for c, v in zip(disc.controls_objs, opt_x):
+        c.assign(float(v))
+
+    with stop_annotating():
+        V_rho = df.FunctionSpace(mesh, &quot;CG&quot;, 1)
+        rho_opt_ufl = mapper.map_to_density(disc.controls_objs)
+        rho_opt = df.project(rho_opt_ufl, V_rho)
+        rho_opt.rename(&quot;Density&quot;, &quot;Optimized GGP Density&quot;)
+
+        df.File(&quot;results/mbb_beam_optimized.pvd&quot;) &lt;&lt; rho_opt
+
+        plt.figure(figsize=(10, 4))
+        p = df.plot(rho_opt, cmap=&quot;Blues&quot;)
+        plt.colorbar(p, label=&quot;Density $\\rho$&quot;)
+        plt.title(&quot;Optimized GGP Topology: MBB Beam (Half Model)&quot;)
+        plt.savefig(&quot;results/mbb_beam_optimized.png&quot;, dpi=300, bbox_inches=&quot;tight&quot;)
+        print(&quot;Results saved to &#39;results/&#39; directory.&quot;)
+</pre></div>
+</div>
+</div>
+<div class="nbinput nblast docutils container">
+<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+</pre></div>
+</div>
+<div class="input_area highlight-none notranslate"><div class="highlight"><pre><span></span>if __name__ == &quot;__main__&quot;:
+    run_mbb_beam()
+</pre></div>
+</div>
+</div>
+</section>
+
+
+          </div>
+          
+        </div>
+      </div>
+      <div class="sphinxsidebar" role="navigation" aria-label="Main">
+        <div class="sphinxsidebarwrapper">
+<h1 class="logo"><a href="index.html">samo_ggp</a></h1>
+
+
+
+
+
+
+
+
+
+<search id="searchbox" style="display: none" role="search">
+    <div class="searchformwrapper">
+    <form class="search" action="search.html" method="get">
+      <input type="text" name="q" aria-labelledby="searchlabel" autocomplete="off" autocorrect="off" autocapitalize="off" spellcheck="false" placeholder="Search"/>
+      <input type="submit" value="Go" />
+    </form>
+    </div>
+</search>
+<script>document.getElementById('searchbox').style.display = "block"</script><h3>Navigation</h3>
+<p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_guide.html">Developer Guide</a></li>
+<li class="toctree-l1 current"><a class="reference internal" href="examples.html">Examples</a><ul class="current">
+<li class="toctree-l2"><a class="reference internal" href="01_short_cantilever.html">Short Cantilever</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">MBB Beam</a></li>
+<li class="toctree-l2"><a class="reference internal" href="03_l_shape_bracket.html">L-Shape Bracket</a></li>
+</ul>
+</li>
+</ul>
+
+<div class="relations">
+<h3>Related Topics</h3>
+<ul>
+  <li><a href="index.html">Documentation overview</a><ul>
+  <li><a href="examples.html">Examples</a><ul>
+      <li>Previous: <a href="01_short_cantilever.html" title="previous chapter">Short Cantilever</a></li>
+      <li>Next: <a href="03_l_shape_bracket.html" title="next chapter">L-Shape Bracket</a></li>
+  </ul></li>
+  </ul></li>
+</ul>
+</div>
+
+
+
+
+
+
+
+
+        </div>
+      </div>
+      <div class="clearer"></div>
+    </div>
+    <div class="footer">
+      &#169;2026, Simone Coniglio.
+      
+      |
+      Powered by <a href="https://www.sphinx-doc.org/">Sphinx 8.1.3</a>
+      &amp; <a href="https://alabaster.readthedocs.io">Alabaster 1.0.0</a>
+      
+      |
+      <a href="_sources/02_mbb_beam.ipynb.txt"
+          rel="nofollow">Page source</a>
+    </div>
+
+    
+
+    
+  </body>
+</html>

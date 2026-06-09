@@ -1,25 +1,11 @@
 Examples
 ========
 
-Here are three topology optimization examples implemented using the `samo_ggp` framework.
+Here are three topology optimization examples implemented using the `samo_ggp` framework. These examples are interactive Jupyter Notebooks.
 
-1. Short Cantilever
--------------------
+.. toctree::
+   :maxdepth: 1
 
-.. literalinclude:: ../examples/01_short_cantilever.py
-   :language: python
-   :linenos:
-
-2. MBB Beam
------------
-
-.. literalinclude:: ../examples/02_mbb_beam.py
-   :language: python
-   :linenos:
-
-3. L-Shape Bracket
-------------------
-
-.. literalinclude:: ../examples/03_l_shape_bracket.py
-   :language: python
-   :linenos:
+   01_short_cantilever
+   02_mbb_beam
+   03_l_shape_bracket
