@@ -2,7 +2,7 @@ import dolfin as df
 from dolfin_adjoint import *
 import numpy as np
 from samo_ggp.geometry.ggp_2d_free import GGP2DMapper
-from samo_ggp.physics.elasticity_2d import LinearElasticitySolver
+from samo_ggp.physics.elasticity import LinearElasticitySolver
 
 def test_imports():
     print("Testing samo_ggp package imports...")

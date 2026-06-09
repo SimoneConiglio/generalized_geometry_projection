@@ -7,8 +7,7 @@ from dolfin_adjoint import *
 class GGPVectorizedGeometryDiscipline(Discipline):
     """
     Highly optimized GGP Geometry Discipline using NumPy vectorization.
-    Supports both Free (6-var) and ALM (3-var) mapping strategies.
-    Implements GGP-Matlab consistent penalization: E depends on Mc^3, Rho on Mc^1.
+    Supports both Free (2D: 6-var, 3D: 8-var) and ALM mapping strategies.
     """
     def __init__(self, mesh, num_components, mode='Free', method='GP', r_gp=0.5, 
                  ka=10.0, pp=100.0, gammac=3.0, gammav=1.0, name="GGP_Geometry",
@@ -22,6 +21,7 @@ class GGPVectorizedGeometryDiscipline(Discipline):
         self.pp = pp
         self.gammac = gammac
         self.gammav = gammav
+        self.dim = mesh.geometry().dim()
         
         # ALM specific
         self.num_layers = num_layers
@@ -32,6 +32,7 @@ class GGPVectorizedGeometryDiscipline(Discipline):
         V_dg = df.FunctionSpace(mesh, "DG", 0)
         midpoints = V_dg.tabulate_dof_coordinates()
         self.X_mesh, self.Y_mesh = midpoints[:, 0], midpoints[:, 1]
+        self.Z_mesh = midpoints[:, 2] if self.dim == 3 else None
         self.num_elements = len(self.X_mesh)
         
         # Saturation constants
@@ -44,14 +45,26 @@ class GGPVectorizedGeometryDiscipline(Discipline):
 
     def _map_logic(self, x_vars, power):
         char_functions = []
+        
         if self.mode == 'Free':
-            params = x_vars.reshape(self.num_components, 6)
-            for i in range(self.num_components):
-                p = params[i]
-                W = compute_local_characteristic_np(self.X_mesh, self.Y_mesh, p[0], p[1], p[2], p[3], p[4], self.r_gp, method=self.method)
-                char_functions.append(W * (p[5]**power))
+            if self.dim == 2:
+                params = x_vars.reshape(self.num_components, 6)
+                for i in range(self.num_components):
+                    p = params[i]
+                    W = compute_local_characteristic_np(self.X_mesh, self.Y_mesh, p[0], p[1], p[2], p[3], p[4], self.r_gp, method=self.method)
+                    char_functions.append(W * (p[5]**power))
+            else:
+                # 3D: [Xc, Yc, Zc, L, h, Theta, Phi, Mc] (8 variables)
+                params = x_vars.reshape(self.num_components, 8)
+                for i in range(self.num_components):
+                    p = params[i]
+                    W = compute_local_characteristic_np(
+                        self.X_mesh, self.Y_mesh, p[0], p[1], p[3], p[4], p[5], self.r_gp, 
+                        method=self.method, Z_mesh=self.Z_mesh, Z=p[2], P=p[6]
+                    )
+                    char_functions.append(W * (p[7]**power))
         else:
-            # ALM Mode
+            # ALM Mode (2D only for now)
             params = x_vars.reshape(self.num_components, 3)
             h_fixed = self.layer_height
             theta_fixed = 0.0
@@ -88,7 +101,7 @@ class GGPVectorizedGeometryDiscipline(Discipline):
 class GGPPhysicsAdjointDiscipline(Discipline):
     """
     Optimized Physics Discipline with Log Scaling for Compliance.
-    Matches GGP-Matlab's log(c+1) and volume scaling.
+    Supports 2D and 3D.
     """
     def __init__(self, solver, mesh, mesh_area, volfrac, name="GGP_Physics"):
         super().__init__(name=name)
@@ -123,10 +136,8 @@ class GGPPhysicsAdjointDiscipline(Discipline):
         c_val = float(j_functional)
         v_val = float(v_functional) / self.mesh_area
         
-        # LOG SCALING: f0 = log(c + 1)
+        # LOG SCALING
         self.local_data["compliance"] = np.array([np.log(c_val + 1.0)])
-        
-        # VOLUME SCALING: f = (v - volfrac)/volfrac * 100
         self.local_data["volume"] = np.array([(v_val - self.volfrac) / self.volfrac * 100.0])
         
         # Gradients

@@ -1,5 +1,6 @@
 from .ggp_2d_free import GGP2DMapper
 from .ggp_2d_alm import GGP2DALMMapper
+from .ggp_3d_free import GGP3DMapper
 
 class GeometryFactory:
     @staticmethod
@@ -8,5 +9,7 @@ class GeometryFactory:
             return GGP2DMapper(**kwargs)
         elif geometry_type == "2D_ALM":
             return GGP2DALMMapper(**kwargs)
+        elif geometry_type == "3D_Free":
+            return GGP3DMapper(**kwargs)
         else:
             raise ValueError(f"Unknown geometry type: {geometry_type}")

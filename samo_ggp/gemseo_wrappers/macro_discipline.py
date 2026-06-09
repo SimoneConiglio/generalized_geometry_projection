@@ -38,10 +38,17 @@ class GGPMacroDiscipline(Discipline):
         tape.clear_tape()
         
         # 2. Build graph with FRESH AdjConstants in every iteration
-        # This is the safest way to ensure they are tracked in the new tape.
         self.controls_objs = [dolfin_adjoint.Constant(float(v)) for v in x_vars]
             
-        rho = self.mapper.map_to_density(self.controls_objs)
+        rho_ufl = self.mapper.map_to_density(self.controls_objs)
+        
+        # --- OPTIMIZATION: Intermediate Density Projection ---
+        # Instead of passing the complex UFL sum into the solver (which makes 
+        # stiffness matrix assembly extremely slow), we project onto DG0.
+        # dolfin-adjoint will track this projection block correctly.
+        V_rho = FunctionSpace(self.mapper.mesh, "DG", 0)
+        rho = project(rho_ufl, V_rho)
+        
         u = self.solver.solve(rho)
         
         # 3. Ensure these are tape-tracked functionals
