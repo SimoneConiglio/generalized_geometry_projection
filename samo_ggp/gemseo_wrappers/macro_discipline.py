@@ -39,9 +39,9 @@ class GGPMacroDiscipline(Discipline):
         
         # 2. Build graph with FRESH AdjConstants in every iteration
         # This is the safest way to ensure they are tracked in the new tape.
-        controls_objs = [dolfin_adjoint.Constant(float(v)) for v in x_vars]
+        self.controls_objs = [dolfin_adjoint.Constant(float(v)) for v in x_vars]
             
-        rho = self.mapper.map_to_density(controls_objs)
+        rho = self.mapper.map_to_density(self.controls_objs)
         u = self.solver.solve(rho)
         
         # 3. Ensure these are tape-tracked functionals
@@ -49,7 +49,7 @@ class GGPMacroDiscipline(Discipline):
         v_functional = self.solver.compute_volume(rho)
         
         # 4. Extract gradients
-        m_ctrls = [Control(c) for c in controls_objs]
+        m_ctrls = [Control(c) for c in self.controls_objs]
         dj_raw = np.array([float(g) for g in compute_gradient(j_functional, m_ctrls)])
         dv_raw = np.array([float(g) for g in compute_gradient(v_functional, m_ctrls)]) / self.mesh_area
         

@@ -1,11 +1,13 @@
 import dolfin as df
-from dolfin_adjoint import Constant, DirichletBC, RectangleMesh
+from dolfin_adjoint import Constant, DirichletBC, RectangleMesh, stop_annotating
 import numpy as np
 import gemseo
 from gemseo import create_scenario
 from samo_ggp.geometry.factory import GeometryFactory
 from samo_ggp.physics.factory import PhysicsFactory
 from samo_ggp.gemseo_wrappers.macro_discipline import GGPMacroDiscipline
+import matplotlib.pyplot as plt
+import os
 
 def run_short_cantilever():
     L, H = 50.0, 50.0
@@ -46,6 +48,35 @@ def run_short_cantilever():
     scenario.add_constraint("volume", "ineq", positive=False, value=volfrac)
     
     scenario.execute(algo_name="MMA", max_iter=5, max_optimization_step=0.1)
+
+    # --- Post-Processing ---
+    print("Post-processing optimal design...")
+    os.makedirs("results", exist_ok=True)
+    
+    # 1. Retrieve optimal design variables from GEMSEO
+    opt_x = scenario.optimization_result.x_opt
+    
+    # 2. Assign back to FEniCS constants to update the UFL graph
+    for c, v in zip(disc.controls_objs, opt_x):
+        c.assign(float(v))
+        
+    with stop_annotating():
+        # 3. Recompute the density field and project to a Function Space
+        V_rho = df.FunctionSpace(mesh, "CG", 1)
+        rho_opt_ufl = mapper.map_to_density(disc.controls_objs)
+        rho_opt = df.project(rho_opt_ufl, V_rho)
+        rho_opt.rename("Density", "Optimized GGP Density")
+        
+        # 4. Save to Paraview format (.pvd)
+        df.File("results/short_cantilever_optimized.pvd") << rho_opt
+        
+        # 5. Save PNG using Matplotlib
+        plt.figure(figsize=(6, 5))
+        p = df.plot(rho_opt, cmap="Blues")
+        plt.colorbar(p, label="Density $\\rho$")
+        plt.title("Optimized GGP Topology: Short Cantilever")
+        plt.savefig("results/short_cantilever_optimized.png", dpi=300, bbox_inches="tight")
+        print("Results saved to 'results/' directory.")
 
 if __name__ == "__main__":
     run_short_cantilever()

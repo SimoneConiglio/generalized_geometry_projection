@@ -1,11 +1,13 @@
 import dolfin as df
-from dolfin_adjoint import Constant, DirichletBC, RectangleMesh
+from dolfin_adjoint import Constant, DirichletBC, RectangleMesh, stop_annotating
 import numpy as np
 import gemseo
 from gemseo import create_scenario
 from samo_ggp.geometry.factory import GeometryFactory
 from samo_ggp.physics.factory import PhysicsFactory
 from samo_ggp.gemseo_wrappers.macro_discipline import GGPMacroDiscipline
+import matplotlib.pyplot as plt
+import os
 
 def run_mbb_beam():
     # Only modeling half of the beam due to symmetry
@@ -52,6 +54,29 @@ def run_mbb_beam():
     scenario.add_constraint("volume", "ineq", positive=False, value=volfrac)
     
     scenario.execute(algo_name="MMA", max_iter=5, max_optimization_step=0.1)
+
+    # --- Post-Processing ---
+    print("Post-processing optimal design...")
+    os.makedirs("results", exist_ok=True)
+    
+    opt_x = scenario.optimization_result.x_opt
+    for c, v in zip(disc.controls_objs, opt_x):
+        c.assign(float(v))
+        
+    with stop_annotating():
+        V_rho = df.FunctionSpace(mesh, "CG", 1)
+        rho_opt_ufl = mapper.map_to_density(disc.controls_objs)
+        rho_opt = df.project(rho_opt_ufl, V_rho)
+        rho_opt.rename("Density", "Optimized GGP Density")
+        
+        df.File("results/mbb_beam_optimized.pvd") << rho_opt
+        
+        plt.figure(figsize=(10, 4))
+        p = df.plot(rho_opt, cmap="Blues")
+        plt.colorbar(p, label="Density $\\rho$")
+        plt.title("Optimized GGP Topology: MBB Beam (Half Model)")
+        plt.savefig("results/mbb_beam_optimized.png", dpi=300, bbox_inches="tight")
+        print("Results saved to 'results/' directory.")
 
 if __name__ == "__main__":
     run_mbb_beam()
