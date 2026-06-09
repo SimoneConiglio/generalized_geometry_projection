@@ -4,6 +4,8 @@ requests
 numpy
 scipy
 pytest
+pytest-cov
+coverage
 sphinx
 sphinx-book-theme
 sphinx-copybutton

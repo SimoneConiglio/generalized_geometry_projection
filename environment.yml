@@ -8,6 +8,8 @@ dependencies:
   - mshr=2019.1.0
   - pip
   - pytest
+  - pytest-cov
+  - coverage
   - sphinx
   - sphinx-book-theme
   - sphinx-copybutton
