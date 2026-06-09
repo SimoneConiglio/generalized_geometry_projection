@@ -1,7 +1,7 @@
 Additive Manufacturing Constraints
 ==================================
 
-The `samo_ggp` framework extends the standard Generalized Geometry Projection (GGP) method to support **Additive Layer Manufacturing (ALM)** constraints. This ensures that the generated topology is printable without internal support structures.
+The `ggp` framework extends the standard Generalized Geometry Projection (GGP) method to support **Additive Layer Manufacturing (ALM)** constraints. This ensures that the generated topology is printable without internal support structures.
 
 Layer-by-Layer Parameterization
 -------------------------------

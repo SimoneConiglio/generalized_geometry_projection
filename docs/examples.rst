@@ -1,7 +1,7 @@
 Examples
 ========
 
-Here are three topology optimization examples implemented using the `samo_ggp` framework. These examples are interactive Jupyter Notebooks.
+Here are three topology optimization examples implemented using the `ggp` framework. These examples are interactive Jupyter Notebooks.
 
 .. toctree::
    :maxdepth: 1

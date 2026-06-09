@@ -2,9 +2,9 @@ import pytest
 from dolfin import *
 from dolfin_adjoint import *
 import numpy as np
-from samo_ggp.geometry.factory import GeometryFactory
-from samo_ggp.geometry.base_mapper import BaseMapper
-from samo_ggp.geometry.ggp_2d_free import GGP2DMapper
+from ggp.geometry.factory import GeometryFactory
+from ggp.geometry.base_mapper import BaseMapper
+from ggp.geometry.ggp_2d_free import GGP2DMapper
 
 def test_geometry_factory():
     mesh = UnitSquareMesh(2, 2)

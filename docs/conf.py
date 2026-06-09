@@ -6,7 +6,7 @@
 # -- Project information -----------------------------------------------------
 # https://www.sphinx-doc.org/en/master/usage/configuration.html#project-information
 
-project = 'samo_ggp'
+project = 'ggp'
 copyright = '2026, Simone Coniglio'
 author = 'Simone Coniglio'
 

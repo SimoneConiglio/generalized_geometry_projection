@@ -1,7 +1,7 @@
 import time
 import os
 import sys
-from samo_ggp.utils.profiling import profile_me, PerformanceTracker
+from ggp.utils.profiling import profile_me, PerformanceTracker
 
 # Add current directory to path for imports
 sys.path.append(os.getcwd())

@@ -72,7 +72,7 @@ python examples/ex04_alm_cantilever.py
 
 ## 🏗️ Architecture
 
-The code is structured into the `samo_ggp/` package:
+The code is structured into the `ggp/` package:
 - `geometry/`: Contains the `GGP2DMapper` which maps design primitives to a FEniCS density field using Saturated Kreisselmeier-Steinhauser (KS) aggregation and regularized Heaviside functions.
 - `physics/`: Contains the `LinearElasticitySolver` with SIMP penalization.
 - `gemseo_wrappers/`: Contains the `GGPMacroDiscipline`, bridging the FEniCS world with GEMSEO's optimization algorithms (e.g., `NLOPT_MMA`).

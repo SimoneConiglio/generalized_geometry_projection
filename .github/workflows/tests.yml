@@ -38,7 +38,7 @@ jobs:
         PYTHONPATH: .
       run: |
         pip install "setuptools<70"
-        pytest --cov=samo_ggp --cov-report=json tests/
+        pytest --cov=ggp --cov-report=json tests/
         PERCENT=$(jq '.totals.percent_covered' coverage.json)
         COLOR=$(python3 -c "print('green' if $PERCENT > 80 else 'yellow' if $PERCENT > 50 else 'red')")
         mkdir -p badges

@@ -1,11 +1,11 @@
 import dolfin as df
 from dolfin_adjoint import *
 import numpy as np
-from samo_ggp.geometry.ggp_2d_free import GGP2DMapper
-from samo_ggp.physics.elasticity import LinearElasticitySolver
+from ggp.geometry.ggp_2d_free import GGP2DMapper
+from ggp.physics.elasticity import LinearElasticitySolver
 
 def test_imports():
-    print("Testing samo_ggp package imports...")
+    print("Testing ggp package imports...")
     try:
         mesh = df.UnitSquareMesh(10, 10)
         V_u = df.VectorFunctionSpace(mesh, "CG", 1)

@@ -1,9 +1,9 @@
-.. samo_ggp documentation master file, created by
+.. ggp documentation master file, created by
    sphinx-quickstart on Tue Jun  9 20:56:21 2026.
    You can adapt this file completely to your liking, but it should at least
    contain the root `toctree` directive.
 
-samo_ggp documentation
+ggp documentation
 ======================
 
 Add your content using ``reStructuredText`` syntax. See the

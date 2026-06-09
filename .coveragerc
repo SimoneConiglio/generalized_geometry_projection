@@ -1,8 +1,8 @@
 [run]
 branch = True
-source = samo_ggp/
+source = ggp/
 omit =
-    samo_ggp/tests/*
+    ggp/tests/*
 
 [report]
 show_missing = True

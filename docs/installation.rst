@@ -1,7 +1,7 @@
 Installation Guide
 ==================
 
-This guide provides a detailed, step-by-step walk-through to reproduce the exact environment required to run the ``samo_ggp`` framework.
+This guide provides a detailed, step-by-step walk-through to reproduce the exact environment required to run the ``ggp`` framework.
 
 System Requirements
 -------------------
@@ -58,7 +58,7 @@ Every time you work on this project, you must activate the environment:
 Step 5: Set the Python Path
 ---------------------------
 
-For Python to recognize the ``samo_ggp`` package without requiring a global pip install, you must append the current directory to your ``PYTHONPATH`` before running scripts.
+For Python to recognize the ``ggp`` package without requiring a global pip install, you must append the current directory to your ``PYTHONPATH`` before running scripts.
 
 .. code-block:: bash
 

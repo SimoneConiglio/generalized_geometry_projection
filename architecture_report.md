@@ -5,7 +5,7 @@
 This report concludes the benchmarking phase comparing the two proposed GEMSEO integration architectures for the GGP Additive Manufacturing framework.
 
 ### 1. Macro-Discipline (Monolithic) - **SELECTED**
-**Implementation:** `samo_ggp/gemseo_wrappers/macro_discipline.py`
+**Implementation:** `ggp/gemseo_wrappers/macro_discipline.py`
 
 This approach wraps both the Geometry Mapping (`GGP2DMapper`) and the Physics Solver (`LinearElasticitySolver`) into a single GEMSEO `Discipline`. 
 
@@ -15,7 +15,7 @@ This approach wraps both the Geometry Mapping (`GGP2DMapper`) and the Physics So
 - **Gradient Computation:** `dolfin-adjoint` calculates the exact coupled derivatives ($\frac{\partial J}{\partial x}$) analytically using the chain rule over the computational graph, entirely bypassing the need to compute the intermediate density Jacobian.
 
 ### 2. Modular Sub-Discipline Chain - **REJECTED**
-**Implementation:** `samo_ggp/gemseo_wrappers/modular_disciplines.py`
+**Implementation:** `ggp/gemseo_wrappers/modular_disciplines.py`
 
 This approach attempts to split the process into a `GGPGeometryDiscipline` (Outputs Density) and a `GGPPhysicsDiscipline` (Inputs Density, Outputs Compliance).
 

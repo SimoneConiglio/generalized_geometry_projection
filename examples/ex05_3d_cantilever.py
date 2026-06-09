@@ -4,9 +4,9 @@ import numpy as np
 import gemseo
 from gemseo import create_scenario
 from gemseo.mda.mda_chain import MDAChain
-from samo_ggp.geometry.factory import GeometryFactory
-from samo_ggp.physics.factory import PhysicsFactory
-from samo_ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsAdjointDiscipline
+from ggp.geometry.factory import GeometryFactory
+from ggp.physics.factory import PhysicsFactory
+from ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsAdjointDiscipline
 import os
 
 def run_3d_cantilever(max_iter=50):

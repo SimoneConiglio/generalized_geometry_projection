@@ -1,1 +1,0 @@
-# samo_ggp package

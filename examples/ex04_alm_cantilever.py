@@ -4,10 +4,10 @@ import numpy as np
 import gemseo
 from gemseo import create_scenario
 from gemseo.mda.mda_chain import MDAChain
-from samo_ggp.geometry.factory import GeometryFactory
-from samo_ggp.physics.factory import PhysicsFactory
-from samo_ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsAdjointDiscipline
-from samo_ggp.utils.alm_utils import create_alm_overhang_constraints
+from ggp.geometry.factory import GeometryFactory
+from ggp.physics.factory import PhysicsFactory
+from ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsAdjointDiscipline
+from ggp.utils.alm_utils import create_alm_overhang_constraints
 import matplotlib.pyplot as plt
 import os
 

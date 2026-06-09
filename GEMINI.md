@@ -5,7 +5,7 @@ This project is a research and development environment focused on **Additive Man
 ## Project Overview
 
 - **Domain:** Computational Mechanics, Additive Manufacturing, MDAO.
-- **Core Package:** `samo_ggp`
+- **Core Package:** `ggp`
 - **Core Technologies:**
   - **Simulation:** [FEniCS](https://fenicsproject.org/) (`dolfin`, `dolfin_adjoint`) for finite element analysis and adjoint-based optimization.
   - **Optimization Orchestration:** [GEMSEO](https://gemseo.readthedocs.io/) for multi-disciplinary optimization and MMA (Moving Asymptotes) algorithms.
@@ -13,9 +13,9 @@ This project is a research and development environment focused on **Additive Man
 
 ## Key Components
 
-- **`samo_ggp.geometry`**: Implements GGP mapping strategies (Free mapping and ALM Layer-by-Layer mapping).
-- **`samo_ggp.physics`**: Implements FEniCS-based PDE solvers (Linear Elasticity).
-- **`samo_ggp.gemseo_wrappers`**: Contains the `GGPMacroDiscipline`, a monolithic wrapper that leverages `dolfin-adjoint` for highly efficient analytical gradient computation within GEMSEO scenarios.
+- **`ggp.geometry`**: Implements GGP mapping strategies (Free mapping and ALM Layer-by-Layer mapping).
+- **`ggp.physics`**: Implements FEniCS-based PDE solvers (Linear Elasticity).
+- **`ggp.gemseo_wrappers`**: Contains the `GGPMacroDiscipline`, a monolithic wrapper that leverages `dolfin-adjoint` for highly efficient analytical gradient computation within GEMSEO scenarios.
 - **`examples/`**: Provides validated benchmark optimizations (Short Cantilever, MBB, L-Shape, and ALM-constrained designs).
 - **`docs/`**: Automated Sphinx documentation with interactive Jupyter Notebook tutorials.
 

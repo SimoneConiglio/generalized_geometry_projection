@@ -1,6 +1,6 @@
 import numpy as np
 import pytest
-from samo_ggp.utils.math_utils import smooth_saturation, ks_aggregation
+from ggp.utils.math_utils import smooth_saturation, ks_aggregation
 
 def test_smooth_saturation():
     """Test the regularized saturation bounding."""

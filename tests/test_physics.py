@@ -1,8 +1,8 @@
 import pytest
 from dolfin import *
 from dolfin_adjoint import *
-from samo_ggp.physics.factory import PhysicsFactory
-from samo_ggp.physics.elasticity import LinearElasticitySolver
+from ggp.physics.factory import PhysicsFactory
+from ggp.physics.elasticity import LinearElasticitySolver
 
 def setup_solver():
     mesh = UnitSquareMesh(4, 4)

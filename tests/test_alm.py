@@ -1,9 +1,9 @@
 import pytest
 import dolfin as df
 import numpy as np
-from samo_ggp.geometry.factory import GeometryFactory
-from samo_ggp.geometry.ggp_2d_alm import GGP2DALMMapper
-from samo_ggp.utils.alm_utils import create_alm_overhang_constraints
+from ggp.geometry.factory import GeometryFactory
+from ggp.geometry.ggp_2d_alm import GGP2DALMMapper
+from ggp.utils.alm_utils import create_alm_overhang_constraints
 
 def test_alm_mapper_factory():
     mesh = df.UnitSquareMesh(2, 2)

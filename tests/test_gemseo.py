@@ -2,9 +2,9 @@ import pytest
 from dolfin import *
 from dolfin_adjoint import *
 import numpy as np
-from samo_ggp.geometry.factory import GeometryFactory
-from samo_ggp.physics.factory import PhysicsFactory
-from samo_ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsAdjointDiscipline
+from ggp.geometry.factory import GeometryFactory
+from ggp.physics.factory import PhysicsFactory
+from ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsAdjointDiscipline
 import gemseo
 from gemseo import create_scenario
 from gemseo.mda.mda_chain import MDAChain

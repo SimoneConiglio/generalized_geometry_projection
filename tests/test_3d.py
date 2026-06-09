@@ -1,7 +1,7 @@
 import pytest
 import dolfin as df
 import numpy as np
-from samo_ggp.geometry.factory import GeometryFactory
+from ggp.geometry.factory import GeometryFactory
 
 def test_3d_geometry_initial_design():
     mesh = df.BoxMesh(df.Point(0,0,0), df.Point(1,1,1), 2, 2, 2)
@@ -12,7 +12,7 @@ def test_3d_geometry_initial_design():
 
 def test_3d_map_to_density():
     mesh = df.BoxMesh(df.Point(0,0,0), df.Point(1,1,1), 5, 5, 5)
-    from samo_ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline
+    from ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline
     
     num_comp = 2
     geom_disc = GGPVectorizedGeometryDiscipline(mesh, num_comp, mode='Free')
