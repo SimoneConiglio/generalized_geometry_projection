@@ -70,6 +70,33 @@ To prevent memory leaks and graph corruption across thousands of optimization it
 2. Fresh ``dolfin_adjoint.Constant`` objects are instantiated.
 3. The forward graph is rebuilt from scratch.
 
+Performance Monitoring
+----------------------
+
+To track the evolution of code performance and identify bottlenecks, a profiling infrastructure is provided.
+
+### 1. Running the Profiling Suite
+
+To run a fast profile of all standard benchmarks (5 iterations each), execute:
+
+.. code-block:: bash
+
+   PYTHONPATH=$PYTHONPATH:. python profile_suite.py
+
+This script will:
+- Run all 4 benchmarks.
+- Generate detailed ``.prof`` files in the ``performance_logs/`` directory.
+- Log the average time per iteration and the Git commit hash to ``performance_history.json``.
+
+### 2. Analyzing Bottlenecks
+
+Detailed profiling data can be visualized using tools like `snakeviz`:
+
+.. code-block:: bash
+
+   pip install snakeviz
+   snakeviz performance_logs/short_cantilever.prof
+
 Citations
 ---------
 

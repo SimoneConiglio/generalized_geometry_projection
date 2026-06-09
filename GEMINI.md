@@ -24,6 +24,7 @@ This project is a research and development environment focused on **Additive Man
 - **Mathematical Integrity:** All mapping functions must be differentiable. Regularized Heaviside and Saturated KS functions are preferred for smooth assembly of geometric features.
 - **Performance:** Performance must be monitored via the `GGPMacroDiscipline`. Avoid modular GEMSEO chains for field-to-field mappings to prevent dense Jacobian bottlenecks.
 - **Verification:** Any new feature or mapper must include unit tests in the `tests/` directory. Coverage must be maintained above 80% as enforced by the CI pipeline.
+- **Performance Tracking:** Use `python profile_suite.py` to track code speed. Any significant regression (>10%) in the average iteration time should be justified and documented in the performance history.
 
 ## Getting Started
 

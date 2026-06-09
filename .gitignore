@@ -64,6 +64,10 @@ docs/_build/
 # Coverage
 .coverage
 
+# Profiling
+performance_logs/
+performance_history.json
+
 # IDEs and Editors
 .vscode/
 .idea/

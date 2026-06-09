@@ -10,7 +10,7 @@ from samo_ggp.utils.alm_utils import create_alm_overhang_constraints
 import matplotlib.pyplot as plt
 import os
 
-def run_alm_cantilever():
+def run_alm_cantilever(max_iter=50):
     L, H = 60.0, 30.0
     nelx, nely = 60, 30
     volfrac = 0.3
@@ -82,7 +82,7 @@ def run_alm_cantilever():
     scenario.add_constraint("volume", "ineq", positive=False, value=volfrac)
     scenario.add_constraint("overhang_cons", "ineq", positive=False, value=0.0)
     
-    scenario.execute(algo_name="MMA", max_iter=50, max_optimization_step=0.1)
+    scenario.execute(algo_name="MMA", max_iter=max_iter, max_optimization_step=0.1)
 
     # Post-processing
     print("Post-processing ALM result...")

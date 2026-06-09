@@ -57,16 +57,16 @@ Three classical topology optimization examples are provided in the `examples/` d
 
 ```bash
 # Run the Short Cantilever benchmark
-python examples/01_short_cantilever.py
+python examples/ex01_short_cantilever.py
 
 # Run the MBB Beam benchmark
-python examples/02_mbb_beam.py
+python examples/ex02_mbb_beam.py
 
 # Run the L-Shape Bracket benchmark
-python examples/03_l_shape_bracket.py
+python examples/ex03_l_shape_bracket.py
 
 # Run the ALM Cantilever with Overhang Constraints
-python examples/04_alm_cantilever.py
+python examples/ex04_alm_cantilever.py
 ```
 
 ## 🏗️ Architecture
