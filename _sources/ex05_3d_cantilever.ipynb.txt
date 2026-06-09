@@ -1,0 +1,115 @@
+{
+ "cells": [
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "3ff68c39",
+   "metadata": {
+    "lines_to_next_cell": 1
+   },
+   "outputs": [],
+   "source": [
+    "import dolfin as df\n",
+    "from dolfin_adjoint import *\n",
+    "import numpy as np\n",
+    "import gemseo\n",
+    "from gemseo import create_scenario\n",
+    "from gemseo.mda.mda_chain import MDAChain\n",
+    "from samo_ggp.geometry.factory import GeometryFactory\n",
+    "from samo_ggp.physics.factory import PhysicsFactory\n",
+    "from samo_ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsAdjointDiscipline\n",
+    "import os"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "08e80955",
+   "metadata": {
+    "lines_to_next_cell": 1
+   },
+   "outputs": [],
+   "source": [
+    "def run_3d_cantilever(max_iter=50):\n",
+    "    # Domain: 60 x 30 x 30\n",
+    "    L, H, D = 60.0, 30.0, 30.0\n",
+    "    nx, ny, nz = 30, 15, 15 # Lower res for desktop profiling\n",
+    "    volfrac = 0.2\n",
+    "    num_components = 40\n",
+    "\n",
+    "    # Mesh and Spaces\n",
+    "    mesh = BoxMesh(df.Point(0, 0, 0), df.Point(L, H, D), nx, ny, nz)\n",
+    "    V_u = df.VectorFunctionSpace(mesh, \"CG\", 1)\n",
+    "    \n",
+    "    # BCs: Left face fixed (x=0)\n",
+    "    def left_face(x, on_boundary): return on_boundary and df.near(x[0], 0.0)\n",
+    "    bc = [DirichletBC(V_u, Constant((0.0, 0.0, 0.0)), left_face)]\n",
+    "    \n",
+    "    # Load: Bottom center of right face\n",
+    "    boundaries = df.MeshFunction(\"size_t\", mesh, mesh.topology().dim() - 1)\n",
+    "    boundaries.set_all(0)\n",
+    "    class LoadArea(df.SubDomain):\n",
+    "        def inside(self, x, on_boundary): \n",
+    "            return on_boundary and df.near(x[0], L) and df.near(x[1], 0.0, 2.0) and df.near(x[2], D/2, 5.0)\n",
+    "    LoadArea().mark(boundaries, 1)\n",
+    "    ds_load = df.Measure(\"ds\", domain=mesh, subdomain_data=boundaries)\n",
+    "    L_rhs_vec = Constant((0.0, -1.0, 0.0))\n",
+    "\n",
+    "    # Solver (Scalable CG + AMG)\n",
+    "    solver = PhysicsFactory.create_solver(\"Elasticity\", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec, iterative=True)\n",
+    "    mapper = GeometryFactory.create_mapper(\"3D_Free\", mesh=mesh, num_components=num_components)\n",
+    "    x_init = mapper.get_initial_design(L, H, D)\n",
+    "    \n",
+    "    # Bounds for [X, Y, Z, L, h, Theta, Phi, Mc]\n",
+    "    lb = np.array([0.0, 0.0, 0.0, 1.0, 1.0, -np.pi, -np.pi, 0.0] * num_components)\n",
+    "    ub = np.array([L, H, D, L, H, np.pi, np.pi, 1.0] * num_components)\n",
+    "\n",
+    "    # Hybrid Disciplines\n",
+    "    geom_disc = GGPVectorizedGeometryDiscipline(mesh, num_components, mode='Free')\n",
+    "    phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H*D, volfrac=volfrac)\n",
+    "    chain = MDAChain([geom_disc, phys_disc])\n",
+    "    \n",
+    "    design_space = gemseo.algos.design_space.DesignSpace()\n",
+    "    design_space.add_variable(\"x_vars\", size=len(x_init), lower_bound=lb, upper_bound=ub, value=x_init)\n",
+    "    \n",
+    "    scenario = create_scenario(disciplines=[chain], objective_name=\"compliance\", design_space=design_space, formulation_name=\"DisciplinaryOpt\")\n",
+    "    scenario.add_constraint(\"volume\", \"ineq\", positive=False, value=0.0)\n",
+    "    \n",
+    "    print(f\">>> Starting 3D Optimization ({nx}x{ny}x{nz} mesh, {num_components} components)...\")\n",
+    "    scenario.execute(algo_name=\"MMA\", max_iter=max_iter)\n",
+    "\n",
+    "    # Post-processing\n",
+    "    print(\"Post-processing 3D result...\")\n",
+    "    os.makedirs(\"results\", exist_ok=True)\n",
+    "    opt_x = scenario.optimization_result.x_opt\n",
+    "    with stop_annotating():\n",
+    "        V_rho = df.FunctionSpace(mesh, \"DG\", 0)\n",
+    "        rho_opt_arr = geom_disc._map_logic(opt_x, power=1.0)\n",
+    "        rho_opt = df.Function(V_rho)\n",
+    "        rho_opt.vector()[:] = rho_opt_arr\n",
+    "        df.File(\"results/cantilever_3d_optimized.pvd\") << rho_opt\n",
+    "        print(\"3D results saved to results/cantilever_3d_optimized.pvd (Open in ParaView).\")"
+   ]
+  },
+  {
+   "cell_type": "code",
+   "execution_count": null,
+   "id": "3e303ef8",
+   "metadata": {},
+   "outputs": [],
+   "source": [
+    "if __name__ == \"__main__\":\n",
+    "    run_3d_cantilever()"
+   ]
+  }
+ ],
+ "metadata": {
+  "jupytext": {
+   "cell_metadata_filter": "-all",
+   "main_language": "python",
+   "notebook_metadata_filter": "-all"
+  }
+ },
+ "nbformat": 4,
+ "nbformat_minor": 5
+}
