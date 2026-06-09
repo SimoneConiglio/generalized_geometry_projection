@@ -35,7 +35,7 @@ def run_alm_cantilever(max_iter=50):
     L_rhs_vec = Constant((0.0, -1.0))
 
     # Solver
-    solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec, p=1.0)
+    solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec, p=3.0)
     mapper = GeometryFactory.create_mapper("2D_ALM", mesh=mesh, num_layers=num_layers, 
                                           components_per_layer=comp_per_layer, layer_height=layer_height)
     x_init = mapper.get_initial_design(L, H)

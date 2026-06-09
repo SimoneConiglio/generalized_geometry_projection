@@ -28,8 +28,8 @@ def run_short_cantilever(max_iter=50):
     ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
     L_rhs_vec = Constant((0.0, -1.0))
 
-    # Solver with SIMP power p=1.0 (MATLAB q=1)
-    solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec, p=1.0)
+    # Solver with SIMP power p=3.0 (MATLAB penalty=3)
+    solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec, p=3.0)
     mapper = GeometryFactory.create_mapper("2D_Free", mesh=mesh, num_components=num_components, method='GP')
     x_init = mapper.get_initial_design(L, H)
     lb = np.array([0.0, 0.0, 0.0, 1.0, -2*np.pi, 0.0] * num_components)

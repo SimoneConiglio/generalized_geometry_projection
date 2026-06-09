@@ -34,8 +34,8 @@ def run_3d_cantilever(max_iter=50):
     ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
     L_rhs_vec = Constant((0.0, -1.0, 0.0))
 
-    # Solver (Scalable CG + AMG) with p=1.0
-    solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec, iterative=True, p=1.0)
+    # Solver (Scalable CG + AMG) with p=3.0
+    solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec, iterative=True, p=3.0)
     mapper = GeometryFactory.create_mapper("3D_Free", mesh=mesh, num_components=num_components)
     x_init = mapper.get_initial_design(L, H, D)
     
