@@ -41,27 +41,90 @@
             
   <section id="additive-manufacturing-constraints">
 <h1>Additive Manufacturing Constraints<a class="headerlink" href="#additive-manufacturing-constraints" title="Link to this heading">¶</a></h1>
-<p>The <cite>ggp</cite> framework extends the standard Generalized Geometry Projection (GGP) method to support <strong>Additive Layer Manufacturing (ALM)</strong> constraints. This ensures that the generated topology is printable without internal support structures.</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">ggp</span></code> framework extends the standard Generalized Geometry Projection (GGP) method to support <strong>Additive Layer Manufacturing (ALM)</strong> constraints. This ensures that the generated topology is printable without internal support structures.</p>
+<p>This implementation follows the AMNA (Adapted Moving Node Approach) formulation from:</p>
+<blockquote>
+<div><p>Bhat, K.V., Capasso, G., Coniglio, S., Morlier, J., Gogu, C.
+<em>On some applications of Generalized Geometric Projection to optimal 3D printing</em>.
+Computers &amp; Graphics (2021).</p>
+</div></blockquote>
 <section id="layer-by-layer-parameterization">
 <h2>Layer-by-Layer Parameterization<a class="headerlink" href="#layer-by-layer-parameterization" title="Link to this heading">¶</a></h2>
 <p>In standard GGP, components can change their orientation (<span class="math notranslate nohighlight">\(\theta\)</span>) and vertical position (<span class="math notranslate nohighlight">\(y_c\)</span>) freely. In the ALM formulation (provided by <code class="docutils literal notranslate"><span class="pre">GGP2DALMMapper</span></code>), components are restricted to horizontal tracks of a fixed height (matching the layer height).</p>
 <p>Each component <span class="math notranslate nohighlight">\(j\)</span> in layer <span class="math notranslate nohighlight">\(i\)</span> is defined by only three variables:
 <span class="math notranslate nohighlight">\(x_{i,j} = [X_{c,i,j}, w_{i,j}, M_{i,j}]\)</span></p>
-<p>where:
-- <span class="math notranslate nohighlight">\(X_{c}\)</span> is the horizontal center.
-- <span class="math notranslate nohighlight">\(w\)</span> is the track width.
-- <span class="math notranslate nohighlight">\(M\)</span> is the track mass variable.</p>
+<p>where:</p>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(X_{c}\)</span> is the horizontal center.</p></li>
+<li><p><span class="math notranslate nohighlight">\(w\)</span> is the track width (length of the segment).</p></li>
+<li><p><span class="math notranslate nohighlight">\(M\)</span> is the track mass variable.</p></li>
+</ul>
+</section>
+<section id="amna-box-formulation-paper-eq-40-41">
+<h2>AMNA Box Formulation (Paper Eq. 40-41)<a class="headerlink" href="#amna-box-formulation-paper-eq-40-41" title="Link to this heading">¶</a></h2>
+<p>The characteristic function for each layer segment uses a <strong>product of five regularized Heaviside functions</strong>, one for each boundary of the rectangular layer primitive:</p>
+<div class="math notranslate nohighlight">
+\[\rho^{el}_i = \prod_{k=1}^{5} W(\zeta_k)\]</div>
+<p>where the <span class="math notranslate nohighlight">\(\zeta\)</span> variables represent signed distances from a Gauss point to each boundary edge:</p>
+<div class="math notranslate nohighlight">
+\[\zeta_1 = -L/2 - x_{loc}, \quad
+\zeta_2 = x_{loc} - L/2, \quad
+\zeta_3 = y_{loc} - h/2, \quad
+\zeta_4 = -h/2 - y_{loc}, \quad
+\zeta_5 = y_{loc} - h/2\]</div>
+<p>and the smoothed Heaviside function <span class="math notranslate nohighlight">\(W(\zeta)\)</span> is the 5th-order polynomial:</p>
+<div class="math notranslate nohighlight">
+\[W(\zeta) = \frac{1}{2} - \frac{15}{16\sigma}\zeta + \frac{5}{8\sigma^3}\zeta^3 - \frac{3}{16\sigma^5}\zeta^5\]</div>
+<p>This produces a <strong>flat box/block</strong> density field for each layer, rather than the rounded bar shape used in the Free GGP formulation (GP method). The transition width <span class="math notranslate nohighlight">\(\sigma\)</span> controls the sharpness of the boundary.</p>
 </section>
 <section id="overhang-angle-constraints">
 <h2>Overhang Angle Constraints<a class="headerlink" href="#overhang-angle-constraints" title="Link to this heading">¶</a></h2>
-<p>To be printable without supports, each layer must be sufficiently supported by the layer beneath it. For a layer height <span class="math notranslate nohighlight">\(\Delta h\)</span> and a maximum allowable overhang angle <span class="math notranslate nohighlight">\(\alpha\)</span> (typically 45°), the following linear constraints are enforced between layer <span class="math notranslate nohighlight">\(i\)</span> and layer <span class="math notranslate nohighlight">\(i+1\)</span>:</p>
+<p>To be printable without supports, each layer must be sufficiently supported by the layer beneath it. For a layer height <span class="math notranslate nohighlight">\(\Delta h\)</span> and a maximum allowable overhang angle <span class="math notranslate nohighlight">\(\alpha\)</span> (typically 45°), the following linear constraints are enforced between layer <span class="math notranslate nohighlight">\(i\)</span> and layer <span class="math notranslate nohighlight">\(i+1\)</span> (Paper Eq. 42-45):</p>
 <div class="math notranslate nohighlight">
-\[ \begin{align}\begin{aligned}(x_{c, i+1} - \frac{w_{i+1}}{2}) \ge (x_{c, i} - \frac{w_i}{2}) - \Delta h \cdot \tan(\alpha)\\(x_{c, i+1} + \frac{w_{i+1}}{2}) \le (x_{c, i} + \frac{w_i}{2}) + \Delta h \cdot \tan(\alpha)\end{aligned}\end{align} \]</div>
+\[ \begin{align}\begin{aligned}(x_{c, i+1} + \frac{w_{i+1}}{2}) - (x_{c, i} + \frac{w_i}{2}) \le \Delta h \cdot \tan(\alpha)\\(x_{c, i} - \frac{w_i}{2}) - (x_{c, i+1} - \frac{w_{i+1}}{2}) \le \Delta h \cdot \tan(\alpha)\end{aligned}\end{align} \]</div>
 </section>
 <section id="implementation-in-gemseo">
 <h2>Implementation in GEMSEO<a class="headerlink" href="#implementation-in-gemseo" title="Link to this heading">¶</a></h2>
 <p>These constraints are linear with respect to the design variables. In the provided examples, they are wrapped in an <code class="docutils literal notranslate"><span class="pre">ALMConstraintsDiscipline</span></code> and passed to the GEMSEO optimizer (MMA), which handles them alongside the volume and compliance objectives.</p>
 <p>See the <span class="xref std std-ref">alm_example</span> for a complete implementation.</p>
+</section>
+<section id="current-limitations">
+<h2>Current Limitations<a class="headerlink" href="#current-limitations" title="Link to this heading">¶</a></h2>
+<p>Compared to the full paper formulation, the following features are <strong>not yet implemented</strong>:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Paper Feature</p></th>
+<th class="head"><p>Status</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>AMNA box formulation (Eq. 40-41)</p></td>
+<td><p>✅ Implemented</p></td>
+</tr>
+<tr class="row-odd"><td><p>Overhang angle constraints (Eq. 42-45)</p></td>
+<td><p>✅ Implemented</p></td>
+</tr>
+<tr class="row-even"><td><p>Bridge length constraints (Eq. 46)</p></td>
+<td><p>✅ Implemented (3D only)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Design space rotation <span class="math notranslate nohighlight">\(\theta_0\)</span></p></td>
+<td><p>❌ Not implemented — the build direction is fixed (bottom-to-top)</p></td>
+</tr>
+<tr class="row-even"><td><p>Design space translation <span class="math notranslate nohighlight">\(y_0\)</span></p></td>
+<td><p>❌ Not implemented — the build origin is fixed</p></td>
+</tr>
+<tr class="row-odd"><td><p>Per-component print height <span class="math notranslate nohighlight">\(h_i\)</span></p></td>
+<td><p>❌ Not implemented — all layers share a fixed height</p></td>
+</tr>
+<tr class="row-even"><td><p>KS constraint aggregation (Eq. 47)</p></td>
+<td><p>✅ Implemented via <code class="docutils literal notranslate"><span class="pre">ks_aggregation</span></code> in <code class="docutils literal notranslate"><span class="pre">math_utils</span></code></p></td>
+</tr>
+</tbody>
+</table>
 </section>
 </section>
 
@@ -97,11 +160,14 @@
 <li class="toctree-l1"><a class="reference internal" href="developer_guide.html">Developer Guide</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Additive Manufacturing Constraints</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#layer-by-layer-parameterization">Layer-by-Layer Parameterization</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#amna-box-formulation-paper-eq-40-41">AMNA Box Formulation (Paper Eq. 40-41)</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#overhang-angle-constraints">Overhang Angle Constraints</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#implementation-in-gemseo">Implementation in GEMSEO</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#current-limitations">Current Limitations</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits &amp; Dependencies</a></li>
 </ul>
 
 <div class="relations">
