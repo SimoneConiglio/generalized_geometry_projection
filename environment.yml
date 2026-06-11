@@ -5,6 +5,7 @@ channels:
 dependencies:
   - python=3.10
   - fenics=2019.1.0
+  - fenics-dolfin-adjoint=2019.1.0
   - mshr=2019.1.0
   - setuptools<70
   - h5py
