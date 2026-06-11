@@ -53,7 +53,7 @@ Every time you work on this project, you must activate the environment:
 
 .. code-block:: bash
 
-   conda activate samo_agents
+   conda activate ggp
 
 Step 5: Set the Python Path
 ---------------------------
