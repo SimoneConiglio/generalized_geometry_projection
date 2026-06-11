@@ -22,8 +22,6 @@ Comprehensive documentation, including mathematical background and detailed code
 
 👉 **[Read the Documentation Here](https://simoneconiglio.github.io/generalized_geometry_projection/)**
 
-*Note: If the link returns a 404, please ensure that GitHub Pages is enabled in your repository settings (Settings -> Pages -> Build and deployment -> Source: `gh-pages` branch).*
-
 ## 🚀 Features
 
 - **Modular MDAO Architecture:** Decoupled `GGPVectorizedGeometryDiscipline` and `GGPPhysicsFastDiscipline` inside a unified GEMSEO `MDAChain`.
