@@ -6,7 +6,7 @@
 [![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 
-This repository contains a modular Python framework for Topology Optimization using the **Generalized Geometry Projection (GGP)** method, built on top of **FEniCS** (`dolfin-adjoint`) and **GEMSEO**.
+This repository contains a modular Python framework for Topology Optimization using the **Generalized Geometry Projection (GGP)** method, built on top of **FEniCS** (via `dolfin` and `petsc4py`) and **GEMSEO**.
 
 This framework focuses on extending structural topology optimization to include Additive Layer Manufacturing (ALM) constraints, specifically focusing on layer-by-layer parameterization and overhang angle restrictions to ensure 3D printability.
 
@@ -78,5 +78,5 @@ python examples/ex04_alm_cantilever.py
 The code is structured into the `ggp/` package:
 - `geometry/`: Implements geometric primitive mapping mappers (Free and ALM, 2D and 3D) using regularized Heaviside functions and saturated Kreisselmeier-Steinhauser (KS) aggregation.
 - `physics/`: Implements PDE-based linear elasticity solvers with plane-stress/3D options and SIMP material interpolation.
-- `gemseo_wrappers/`: Contains decoupled GEMSEO disciplines (`GGPVectorizedGeometryDiscipline`, `GGPPhysicsFastDiscipline`, `GGPPhysicsAdjointDiscipline`) facilitating modular MDAO scenario execution.
+- `gemseo_wrappers/`: Contains decoupled GEMSEO disciplines (`GGPVectorizedGeometryDiscipline`, `GGPPhysicsFastDiscipline`) facilitating modular MDAO scenario execution.
 - `utils/`: Includes ALM overhang constraint calculations, mathematical operators, and step-by-step verification/validation tools.
