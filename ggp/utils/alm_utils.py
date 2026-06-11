@@ -1,9 +1,61 @@
 import numpy as np
 
-def create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg, extended=False):
+def create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg, extended=False, x_vars=None):
     """
     Computes the linear overhang constraints for 2D ALM.
+    If extended=True and x_vars is provided, returns nonlinear constraints and jacobian considering support inclination theta0.
+    Returns:
+        If x_vars is None: A, b (linear constraints A*x - b <= 0)
+        If x_vars is provided: cons, jac (nonlinear constraints cons <= 0)
     """
+    if extended and x_vars is not None:
+        theta0 = x_vars[-1]
+        alpha = np.deg2rad(alpha_deg)
+        
+        delta_plus = layer_height * np.tan(alpha + theta0)
+        delta_minus = layer_height * np.tan(alpha - theta0)
+        
+        dd_plus = layer_height / (np.cos(alpha + theta0)**2)
+        dd_minus = -layer_height / (np.cos(alpha - theta0)**2)
+        
+        num_comp = num_layers * comp_per_layer
+        num_vars_per_comp = 4
+        num_vars = num_comp * num_vars_per_comp + 2
+        num_interfaces = num_layers - 1
+        num_cons = num_interfaces * comp_per_layer * 2
+        
+        cons = np.zeros(num_cons)
+        jac = np.zeros((num_cons, num_vars))
+        
+        row = 0
+        for layer in range(num_interfaces):
+            for k in range(comp_per_layer):
+                idx_k = layer * comp_per_layer + k
+                idx_kp1 = (layer + 1) * comp_per_layer + k
+                
+                xc_k, l_k = x_vars[idx_k*4], x_vars[idx_k*4+1]
+                xc_kp1, l_kp1 = x_vars[idx_kp1*4], x_vars[idx_kp1*4+1]
+                
+                # Constraint 1: Xc_{i+1} - Xc_i + 0.5*(L_{i+1} - L_i) - delta_plus <= 0
+                cons[row] = (xc_kp1 - xc_k) + 0.5*(l_kp1 - l_k) - delta_plus
+                jac[row, idx_kp1*4] = 1.0
+                jac[row, idx_k*4] = -1.0
+                jac[row, idx_kp1*4+1] = 0.5
+                jac[row, idx_k*4+1] = -0.5
+                jac[row, -1] = -dd_plus
+                row += 1
+                
+                # Constraint 2: -Xc_{i+1} + Xc_i + 0.5*(L_{i+1} - L_i) - delta_minus <= 0
+                cons[row] = -(xc_kp1 - xc_k) + 0.5*(l_kp1 - l_k) - delta_minus
+                jac[row, idx_kp1*4] = -1.0
+                jac[row, idx_k*4] = 1.0
+                jac[row, idx_kp1*4+1] = 0.5
+                jac[row, idx_k*4+1] = -0.5
+                jac[row, -1] = -dd_minus
+                row += 1
+                
+        return cons, jac
+        
     delta = layer_height * np.tan(np.deg2rad(alpha_deg))
     num_comp = num_layers * comp_per_layer
     num_vars_per_comp = 4 if extended else 3

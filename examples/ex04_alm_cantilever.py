@@ -53,26 +53,42 @@ def run_alm_cantilever(max_iter=50):
     # --- Hybrid Modular Architecture ---
     geom_disc = GGPVectorizedGeometryDiscipline(
         mesh, mapper.num_components, mode='ALM', 
-        num_layers=num_layers, comp_per_layer=comp_per_layer, layer_height=layer_height
+        num_layers=num_layers, comp_per_layer=comp_per_layer, layer_height=layer_height,
+        xt=0.30, pp=10.0, r_gp=0.5
     )
     phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H, volfrac=volfrac)
     
-    from gemseo.core.discipline.discipline import Discipline
-    class ALMConstraintsDiscipline(Discipline):
-        def __init__(self, A, b):
-            super().__init__(name="ALM_Constraints")
-            self.A, self.b = A, b
+    # We create a custom discipline to encapsulate the overhang constraints.
+    # It takes x as input, and outputs the constraint evaluation.
+    class OverhangDiscipline(Discipline):
+        def __init__(self, num_layers, comp_per_layer, layer_height, alpha_deg):
+            super().__init__("OverhangDiscipline")
             self.input_grammar.update_from_names(["x_vars"])
             self.output_grammar.update_from_names(["overhang_cons"])
-        def _run(self, input_data=None):
-            if input_data is not None: self.local_data.update(input_data)
-            x = self.local_data["x_vars"].flatten()
-            self.local_data["overhang_cons"] = self.A @ x - self.b
+            self.default_inputs = {"x_vars": np.zeros(mapper.num_components * 4 + 2)}
+            
+            self.num_layers = num_layers
+            self.comp_per_layer = comp_per_layer
+            self.layer_height = layer_height
+            self.alpha_deg = alpha_deg
+            
+        def _run(self):
+            x = self.local_data["x_vars"]
+            cons, _ = create_alm_overhang_constraints(
+                self.num_layers, self.comp_per_layer, self.layer_height, self.alpha_deg, 
+                extended=True, x_vars=x
+            )
+            self.local_data["overhang_cons"] = cons
+            
         def _compute_jacobian(self, inputs=None, outputs=None):
-            self.jac = {"overhang_cons": {"x_vars": self.A}}
+            x = self.local_data["x_vars"]
+            _, jac = create_alm_overhang_constraints(
+                self.num_layers, self.comp_per_layer, self.layer_height, self.alpha_deg, 
+                extended=True, x_vars=x
+            )
+            self.jac = {"overhang_cons": {"x_vars": jac}}
 
-    A_over, b_over = create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg, extended=True)
-    cons_disc = ALMConstraintsDiscipline(A_over, b_over)
+    cons_disc = OverhangDiscipline(num_layers, comp_per_layer, layer_height, alpha_deg)
     
     chain = MDAChain([geom_disc, phys_disc])
     design_space = gemseo.algos.design_space.DesignSpace()

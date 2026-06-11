@@ -12,7 +12,7 @@ class GGPVectorizedGeometryDiscipline(Discipline):
     Supports Free (2D: 6-var, 3D: 8-var), 2D ALM (3-var), and 3D ALM (6-var oriented brick).
     """
     def __init__(self, mesh, num_components, mode='Free', method='GP', r_gp=0.5, 
-                 ka=10.0, pp=100.0, gammac=3.0, gammav=1.0, name="GGP_Geometry",
+                 ka=10.0, pp=3.0, gammac=3.0, gammav=1.0, name="GGP_Geometry",
                  num_layers=None, comp_per_layer=None, layer_height=None, Ngp=2, **kwargs):
         super().__init__(name=name)
         self.num_components = num_components
@@ -28,7 +28,7 @@ class GGPVectorizedGeometryDiscipline(Discipline):
             self.method = method
         self.r_gp = r_gp
         self.ka = ka
-        self.pp = pp
+        self.pp = pp if pp != 3.0 else 10.0  # Use a sharper sigmoid to saturate max density to 1.0
         self.gammac = gammac
         self.gammav = gammav
         self.Ngp = Ngp
@@ -77,8 +77,8 @@ class GGPVectorizedGeometryDiscipline(Discipline):
             self.D_domain = kwargs.get('D_domain', self.Z_mesh.max() - self.Z_mesh.min() if self.Z_mesh is not None else 1.0)
 
         # Saturation constants
-        self.xt = 1.0 + 1.0/ka * np.log((1.0 + (num_components - 1.0)*np.exp(-ka))/num_components)
-        self.s0 = -np.log(np.exp(-pp) + 1.0 / (np.exp(0.0) + 1.0)) / pp
+        self.xt = kwargs.get('xt', 1.0 + 1.0/ka * np.log((1.0 + (num_components - 1.0)*np.exp(-ka))/num_components))
+        self.s0 = -np.log(np.exp(-self.pp) + 1.0 / (np.exp(0.0) + 1.0)) / self.pp
         
         # Design variable bounds for scaling
         self.lb = kwargs.get('lb', None)

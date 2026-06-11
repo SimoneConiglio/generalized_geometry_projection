@@ -16,6 +16,9 @@ Core Scientific Libraries
    * - `FEniCS <https://fenicsproject.org/>`_ (``dolfin``)
      - LGPL-3.0
      - Finite Element framework providing mesh generation, function spaces, variational forms (UFL), and PDE solvers. Used for all geometry projections and the linear elasticity solver.
+   * - `dolfin-adjoint <https://www.dolfin-adjoint.org/>`_
+     - LGPL-3.0
+     - High-level automated differentiation framework for FEniCS. Originally used for shape derivatives, listed for legacy environment compatibility.
    * - `PETSc <https://petsc.org/>`_ (``petsc4py``)
      - BSD-2-Clause
      - High-performance sparse linear algebra backend. Used for fast global stiffness matrix assembly in CSR format.

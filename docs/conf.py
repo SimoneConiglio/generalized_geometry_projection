@@ -25,6 +25,16 @@ extensions = [
     'nbsphinx',
 ]
 
+autodoc_mock_imports = [
+    'dolfin', 
+    'dolfin_adjoint', 
+    'ufl', 
+    'gemseo', 
+    'numpy', 
+    'scipy', 
+    'petsc4py'
+]
+
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 

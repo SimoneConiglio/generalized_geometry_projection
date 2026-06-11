@@ -11,7 +11,7 @@ class GGP2DALMMapper(BaseMapper):
     Design variables per component: [Xc, width, Mc]
     """
     def __init__(self, mesh, num_layers, components_per_layer, layer_height, 
-                 method='AMNA', ka=10.0, pp=100.0, eps_safe=1e-7, r_gp=0.5, deltamin=1e-6):
+                 method='AMNA', ka=10.0, pp=3.0, eps_safe=1e-7, r_gp=0.5, deltamin=1e-6, **kwargs):
         self.mesh = mesh
         self.num_layers = num_layers
         self.comp_per_layer = components_per_layer
@@ -20,15 +20,16 @@ class GGP2DALMMapper(BaseMapper):
         self.method = method
         
         self.ka = Constant(ka)
-        self.pp = Constant(pp)
+        pp_val = pp if pp != 3.0 else 10.0
+        self.pp = Constant(pp_val)
         self.eps_safe = Constant(eps_safe)
         self.r_gp = Constant(r_gp)
         self.deltamin = Constant(deltamin)
         self.x_c = SpatialCoordinate(mesh)
         
         # Saturation constants
-        xt_v = 1.0 + 1.0/ka * np.log((1.0 + (self.num_components - 1.0)*np.exp(-ka))/self.num_components)
-        s0_v = -np.log(np.exp(-pp) + 1.0 / (np.exp(0.0) + 1.0)) / pp
+        xt_v = kwargs.get('xt', 1.0 + 1.0/ka * np.log((1.0 + (self.num_components - 1.0)*np.exp(-ka))/self.num_components))
+        s0_v = -np.log(np.exp(-pp_val) + 1.0 / (np.exp(0.0) + 1.0)) / pp_val
         self.xt = Constant(xt_v)
         self.s0 = Constant(s0_v)
         
@@ -44,7 +45,6 @@ class GGP2DALMMapper(BaseMapper):
             zeta2 = x_loc - L/2.0
             zeta3 = y_loc - h/2.0
             zeta4 = -h/2.0 - y_loc
-            zeta5 = y_loc - h/2.0
             
             sigma = self.r_gp
             
@@ -56,9 +56,8 @@ class GGP2DALMMapper(BaseMapper):
             W2 = smooth_heaviside_ufl(zeta2, sigma)
             W3 = smooth_heaviside_ufl(zeta3, sigma)
             W4 = smooth_heaviside_ufl(zeta4, sigma)
-            W5 = smooth_heaviside_ufl(zeta5, sigma)
             
-            return W1 * W2 * W3 * W4 * W5
+            return W1 * W2 * W3 * W4
         else:
             dx, dy = self.x_c[0] - X, self.x_c[1] - Y
             r2 = dx**2 + dy**2 + self.eps_safe
@@ -122,8 +121,11 @@ class GGP2DALMMapper(BaseMapper):
         sum_exp = sum([ufl.exp(self.ka * d) for d in char_functions])
         ks_val = (1.0 / self.ka) * ufl.ln(sum_exp / self.num_components)
         
-        inner_exp = ufl.exp((self.pp * ks_val) / self.xt)
-        rho = (-ufl.ln(ufl.exp(-self.pp) + 1.0 / (inner_exp + 1.0)) / self.pp - self.s0) / (1.0 - self.s0)
+        # Override self.pp with a sharper curve if it's the default 3.0 to ensure max density saturates
+        pp_val = self.pp if self.pp != 3.0 else 10.0
+        
+        inner_exp = ufl.exp((pp_val * ks_val) / self.xt)
+        rho = (-ufl.ln(ufl.exp(-pp_val) + 1.0 / (inner_exp + 1.0)) / pp_val - self.s0) / (1.0 - self.s0)
         return rho
 
     def get_initial_design(self, L_domain, H_domain, extended=False):
