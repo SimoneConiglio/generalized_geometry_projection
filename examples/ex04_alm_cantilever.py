@@ -17,7 +17,7 @@ def run_alm_cantilever(max_iter=50):
     volfrac = 0.3
     
     num_layers = 30
-    comp_per_layer = 1
+    comp_per_layer = 4
     layer_height = H / num_layers
     alpha_deg = 45.0
     

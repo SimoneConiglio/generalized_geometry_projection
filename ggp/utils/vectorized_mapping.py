@@ -92,8 +92,8 @@ def compute_local_characteristic_2d_with_grad_np(X_mesh, Y_mesh, X, Y, L, h, T, 
             W_prod_except.append(prod_val)
             
         # Derivatives of zetas wrt local coords and parameters
-        dzeta_dX = [cos_t, -cos_t, sin_t, -sin_t, sin_t]
-        dzeta_dY = [sin_t, -sin_t, -cos_t, cos_t, -cos_t]
+        dzeta_dX = [-cos_t, cos_t, -sin_t, sin_t, -sin_t]
+        dzeta_dY = [-sin_t, sin_t, cos_t, -cos_t, cos_t]
         dzeta_dL = [-0.5, -0.5, 0.0, 0.0, 0.0]
         dzeta_dh = [0.0, 0.0, -0.5, -0.5, -0.5]
         dzeta_dT = [-y_loc, y_loc, -x_loc, x_loc, -x_loc]
