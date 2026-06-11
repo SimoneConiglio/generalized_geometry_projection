@@ -32,39 +32,39 @@ The ``ggp`` package is structured to decouple the geometry parametrization from 
 
     graph TD
         subgraph GEMSEO
-            A[MMA Optimizer] -->|Design Variables 'x'| B(GGPMacroDiscipline)
+            A[MMA Optimizer] -->|x_scaled| B(MDAChain)
+            B -->|Objective & Gradients| A
         end
         
-        subgraph FEniCS Tape
-            B -->|x| C{GeometryFactory: GGP2DMapper}
-            C -->|Density Field 'rho'| D{PhysicsFactory: LinearElasticitySolver}
-            D -->|Compliance 'J', Volume 'V'| B
+        subgraph MDAChain
+            B -->|x_scaled| C(GGPVectorizedGeometryDiscipline)
+            C -->|rho_E, rho_V| D(GGPPhysicsFastDiscipline)
+            D -->|Compliance, Volume| B
+            
+            C -.->|Jacobians: drho/dx| B
+            D -.->|Adjoint Gradients: dJ/drho| B
         end
-        
-        subgraph dolfin-adjoint
-            B -.->|Request Gradient| E(compute_gradient)
-            E -.->|dJ/dx, dV/dx| B
-        end
-        
-        B -->|Objective & Gradients| A
 
-The GEMSEO "Macro-Discipline"
-^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+The GEMSEO Modular Fast Architecture
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-A critical engineering challenge was integrating ``dolfin-adjoint`` (which tracks FEniCS operations) with ``GEMSEO`` (the MDAO orchestration engine).
+A major contribution of this framework is the implementation of a highly efficient **modular MDAChain** that decouples geometry mapping and physical solving while maintaining high performance.
 
-**Why not a modular MDAChain?**
-Initially, we attempted to split the process into two GEMSEO disciplines: a Geometry discipline and a Physics discipline.
-However, GEMSEO's chain rule requires explicitly computing the intermediate Jacobian :math:`\frac{\partial \rho}{\partial x}`. For a 50x50 mesh and 50 design variables, this meant computing and passing a dense 2500x50 matrix every iteration. This completely broke the analytical efficiency of the adjoint method.
+**1. Decoupled Disciplines**
+We implemented two separate GEMSEO disciplines:
+- ``GGPVectorizedGeometryDiscipline``: Maps the design parameters :math:`x` to the density fields ``rho_E`` and ``rho_V``. It computes the analytical Jacobian :math:`\frac{\partial \rho}{\partial x}` using fully vectorized NumPy operations.
+- ``GGPPhysicsFastDiscipline`` (or ``GGPPhysicsAdjointDiscipline``): Solves the elasticity equations and computes adjoint compliance sensitivities.
 
-**The Solution: Monolithic Adjoint Tracking**
-We implemented the ``GGPMacroDiscipline``. This single GEMSEO wrapper takes the primitive variables :math:`x`, constructs ``dolfin_adjoint.Constant`` objects, and runs the entire forward pass (Mapping + Physics).
-When GEMSEO requests the gradient :math:`\frac{\partial J}{\partial x}`, ``dolfin-adjoint`` solves the adjoint PDE and computes the exact sensitivities analytically in a fraction of a second, entirely bypassing the dense Jacobian.
+**2. High-Performance Sparse Assembly**
+To bypass the overhead of symbolic FEniCS adjoint taping in large-scale optimizations, ``GGPPhysicsFastDiscipline`` uses **petsc4py** and **SciPy sparse CSR solvers**. It pre-assembles unit element stiffness matrices and performs global assembly manually, allowing each iteration's state solve and gradient calculation to complete in milliseconds.
+
+**3. Trajectory-Level Validation**
+Using this fast modular architecture, the script ``Main_ggp.py`` reproduces the exact convergence history and post-processing of the original academic MATLAB code to double-precision accuracy across standard benchmarks (Short Cantilever, MBB, L-Shape).
 
 Tape Management & Safe Re-execution
 -----------------------------------
 
-To prevent memory leaks and graph corruption across thousands of optimization iterations, the ``_run`` method executes a strict protocol:
+To prevent memory leaks and graph corruption across thousands of optimization iterations in cases using ``GGPPhysicsAdjointDiscipline`` (which tracks FEniCS operations), the ``_run`` method executes a strict protocol:
 
 1. ``get_working_tape().clear_tape()`` is called to destroy the previous iteration's computational graph.
 2. Fresh ``dolfin_adjoint.Constant`` objects are instantiated.

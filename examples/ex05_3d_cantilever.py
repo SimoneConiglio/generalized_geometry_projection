@@ -7,12 +7,14 @@ from gemseo.mda.mda_chain import MDAChain
 from ggp.geometry.factory import GeometryFactory
 from ggp.physics.factory import PhysicsFactory
 from ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsAdjointDiscipline
+from ggp.utils.validation import StepByStepValidator
+import matplotlib.pyplot as plt
 import os
 
-def run_3d_cantilever(max_iter=50):
+def run_3d_cantilever(max_iter=50, validate=False):
     # Domain: 60 x 30 x 30
     L, H, D = 60.0, 30.0, 30.0
-    nx, ny, nz = 30, 15, 15 # Lower res for desktop profiling
+    nx, ny, nz = 30, 15, 15 
     volfrac = 0.2
     num_components = 40
 
@@ -39,21 +41,35 @@ def run_3d_cantilever(max_iter=50):
     mapper = GeometryFactory.create_mapper("3D_Free", mesh=mesh, num_components=num_components)
     x_init = mapper.get_initial_design(L, H, D)
     
-    # Bounds for [X, Y, Z, L, h, Theta, Phi, Mc]
-    lb = np.array([0.0, 0.0, 0.0, 1.0, 1.0, -np.pi, -np.pi, 0.0] * num_components)
-    ub = np.array([L, H, D, L, H, np.pi, np.pi, 1.0] * num_components)
+    # Validator
+    validator = StepByStepValidator(output_dir="validation_3d") if validate else None
 
     # Hybrid Disciplines
     geom_disc = GGPVectorizedGeometryDiscipline(mesh, num_components, mode='Free')
-    phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H*D, volfrac=volfrac)
+    phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H*D, volfrac=volfrac, validator=validator)
     chain = MDAChain([geom_disc, phys_disc])
     
     design_space = gemseo.algos.design_space.DesignSpace()
-    design_space.add_variable("x_vars", size=len(x_init), lower_bound=lb, upper_bound=ub, value=x_init)
+    design_space.add_variable("x_vars", size=len(x_init), 
+                              lower_bound=np.array([0.0, 0.0, 0.0, 1.0, 1.0, -np.pi, -np.pi, 0.0] * num_components), 
+                              upper_bound=np.array([L, H, D, L, H, np.pi, np.pi, 1.0] * num_components), 
+                              value=x_init)
     
     scenario = create_scenario(disciplines=[chain], objective_name="compliance", design_space=design_space, formulation_name="DisciplinaryOpt")
     scenario.add_constraint("volume", "ineq", positive=False, value=0.0)
     
+    # Validation Hook: Log every iteration
+    if validate:
+        def validation_callback(index):
+            data = chain.local_data
+            validator.export_iteration(
+                design_space.get_current_value(),
+                data["rho_E"], data["rho_V"],
+                data["compliance"], data["volume"],
+                phys_disc.dj_drhoE, phys_disc.dv_drhoV
+            )
+        scenario.add_callback(validation_callback)
+
     print(f">>> Starting 3D Optimization ({nx}x{ny}x{nz} mesh, {num_components} components)...")
     # MMA with conservative move limit (0.01) matching MATLAB
     scenario.execute(algo_name="MMA", max_iter=max_iter, max_optimization_step=0.01)
@@ -68,7 +84,13 @@ def run_3d_cantilever(max_iter=50):
         rho_opt = df.Function(V_rho)
         rho_opt.vector()[:] = rho_opt_arr
         df.File("results/cantilever_3d_optimized.pvd") << rho_opt
-        print("3D results saved to results/cantilever_3d_optimized.pvd (Open in ParaView).")
+        
+        # 3D Plot (Slices)
+        fig = plt.figure(figsize=(10, 7))
+        p = df.plot(rho_opt, cmap="gray_r")
+        plt.title("Optimized 3D GGP Cantilever (ParaView recommended)")
+        plt.savefig("results/cantilever_3d_optimized.png", dpi=300)
+        print("3D results saved.")
 
 if __name__ == "__main__":
     run_3d_cantilever()
