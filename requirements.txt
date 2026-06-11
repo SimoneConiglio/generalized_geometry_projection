@@ -14,6 +14,7 @@ nbsphinx
 jupyterlab
 jupytext
 pandoc
+gemseo-mma>=4.0.0
 # FEniCS dependencies are usually handled via Conda, but listed here for completeness
 # fenics-dolfin
 # fenics-dolfin-adjoint

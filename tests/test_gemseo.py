@@ -39,7 +39,7 @@ def test_hybrid_pipeline_execution():
     scenario.add_constraint("volume", "ineq", positive=False, value=0.0)
     
     # Execute 1 iteration
-    scenario.execute(algo_name="SLSQP", max_iter=1)
+    scenario.execute(algo_name="MMA", max_iter=1)
     
     assert "compliance" in chain.local_data
     assert "volume" in chain.local_data

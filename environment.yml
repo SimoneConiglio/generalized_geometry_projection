@@ -27,3 +27,4 @@ dependencies:
     - google-genai
     - typer
     - requests
+    - gemseo-mma>=4.0.0
