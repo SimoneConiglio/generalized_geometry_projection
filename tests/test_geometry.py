@@ -49,3 +49,20 @@ def test_map_to_density():
 
         assert min_val >= 0.0
         assert max_val <= 1.0
+
+def test_mna_mapping():
+    from ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline
+    mesh = UnitSquareMesh(5, 5)
+    geom_mna = GGPVectorizedGeometryDiscipline(mesh, num_components=1, mode='Free', method='MNA')
+    
+    # 6 parameters: Xc, Yc, L, h, theta, Mc
+    x_vars = np.array([0.5, 0.5, 0.2, 0.2, 0.0, 1.0])
+    
+    # Test _map_logic
+    rho = geom_mna._map_logic(x_vars, power=1.0)
+    assert len(rho) == mesh.num_cells()
+    
+    # Test _map_logic_with_grad
+    rho_grad, jac = geom_mna._map_logic_with_grad(x_vars, power=1.0)
+    assert len(rho_grad) == mesh.num_cells()
+    assert jac.shape == (mesh.num_cells(), 6)
