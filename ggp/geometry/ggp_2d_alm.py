@@ -11,7 +11,7 @@ class GGP2DALMMapper(BaseMapper):
     Design variables per component: [Xc, width, Mc]
     """
     def __init__(self, mesh, num_layers, components_per_layer, layer_height, 
-                 method='GP', ka=10.0, pp=100.0, eps_safe=1e-7, r_gp=0.5, deltamin=1e-6):
+                 method='AMNA', ka=10.0, pp=100.0, eps_safe=1e-7, r_gp=0.5, deltamin=1e-6):
         self.mesh = mesh
         self.num_layers = num_layers
         self.comp_per_layer = components_per_layer
@@ -31,28 +31,54 @@ class GGP2DALMMapper(BaseMapper):
         s0_v = -np.log(np.exp(-pp) + 1.0 / (np.exp(0.0) + 1.0)) / pp
         self.xt = Constant(xt_v)
         self.s0 = Constant(s0_v)
-
+        
     def _compute_local_characteristic(self, X, Y, L, h, T):
-        dx, dy = self.x_c[0] - X, self.x_c[1] - Y
-        r2 = dx**2 + dy**2 + self.eps_safe
-        r = ufl.sqrt(r2)
-        phi = ufl.atan_2(dy, dx + self.eps_safe) - T
-        
-        abs_cos = ufl.sqrt(ufl.cos(phi)**2 + self.eps_safe)
-        abs_sin = ufl.sqrt(ufl.sin(phi)**2 + self.eps_safe)
-        
-        upsi = ufl.conditional(
-            r * abs_cos >= L / 2.0, 
-            ufl.sqrt(ufl.max_value(self.eps_safe, r2 + L**2 / 4.0 - r * L * abs_cos)), 
-            r * abs_sin
-        )
-        
-        # We always use GP for ALM as it's the paper standard
-        zetavar = upsi - h / 2.0
-        z_clipped = ufl.max_value(-1.0 + self.eps_safe, ufl.min_value(1.0 - self.eps_safe, zetavar / self.r_gp))
-        delta_iel = (1.0/np.pi * (ufl.acos(z_clipped) - z_clipped * ufl.sqrt(1.0 - z_clipped**2)))
-        return ufl.conditional(zetavar < -self.r_gp, 1.0, 
-                               ufl.conditional(zetavar > self.r_gp, 0.0, delta_iel))
+        if self.method == 'AMNA':
+            dx = self.x_c[0] - X
+            dy = self.x_c[1] - Y
+            cos_t, sin_t = ufl.cos(T), ufl.sin(T)
+            x_loc = dx * cos_t + dy * sin_t
+            y_loc = -dx * sin_t + dy * cos_t
+            
+            zeta1 = -L/2.0 - x_loc
+            zeta2 = x_loc - L/2.0
+            zeta3 = y_loc - h/2.0
+            zeta4 = -h/2.0 - y_loc
+            zeta5 = y_loc - h/2.0
+            
+            sigma = self.r_gp
+            
+            def smooth_heaviside_ufl(zeta, sig):
+                val = 0.5 - (15.0 / (16.0 * sig)) * zeta + (5.0 / (8.0 * sig**3)) * (zeta**3) - (3.0 / (16.0 * sig**5)) * (zeta**5)
+                return ufl.conditional(zeta < -sig, 1.0, ufl.conditional(zeta > sig, 0.0, val))
+                
+            W1 = smooth_heaviside_ufl(zeta1, sigma)
+            W2 = smooth_heaviside_ufl(zeta2, sigma)
+            W3 = smooth_heaviside_ufl(zeta3, sigma)
+            W4 = smooth_heaviside_ufl(zeta4, sigma)
+            W5 = smooth_heaviside_ufl(zeta5, sigma)
+            
+            return W1 * W2 * W3 * W4 * W5
+        else:
+            dx, dy = self.x_c[0] - X, self.x_c[1] - Y
+            r2 = dx**2 + dy**2 + self.eps_safe
+            r = ufl.sqrt(r2)
+            phi = ufl.atan_2(dy, dx + self.eps_safe) - T
+            
+            abs_cos = ufl.sqrt(ufl.cos(phi)**2 + self.eps_safe)
+            abs_sin = ufl.sqrt(ufl.sin(phi)**2 + self.eps_safe)
+            
+            upsi = ufl.conditional(
+                r * abs_cos >= L / 2.0, 
+                ufl.sqrt(ufl.max_value(self.eps_safe, r2 + L**2 / 4.0 - r * L * abs_cos)), 
+                r * abs_sin
+            )
+            
+            zetavar = upsi - h / 2.0
+            z_clipped = ufl.max_value(-1.0 + self.eps_safe, ufl.min_value(1.0 - self.eps_safe, zetavar / self.r_gp))
+            delta_iel = (1.0/np.pi * (ufl.acos(z_clipped) - z_clipped * ufl.sqrt(1.0 - z_clipped**2)))
+            return ufl.conditional(zetavar < -self.r_gp, 1.0, 
+                                   ufl.conditional(zetavar > self.r_gp, 0.0, delta_iel))
 
     def map_to_density(self, ctrls):
         """

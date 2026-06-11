@@ -19,3 +19,4 @@ documentation for details.
    developer_guide
    alm_guide
    examples
+   credits

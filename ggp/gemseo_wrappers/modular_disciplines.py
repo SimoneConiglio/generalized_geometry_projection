@@ -21,7 +21,11 @@ class GGPVectorizedGeometryDiscipline(Discipline):
             self.mode = '2D_ALM' if self.dim == 2 else '3D_ALM'
         else:
             self.mode = mode
-        self.method = method
+        # Default to AMNA for ALM modes (paper Eq. 40-41) unless explicitly overridden
+        if method == 'GP' and mode == 'ALM':
+            self.method = 'AMNA'
+        else:
+            self.method = method
         self.r_gp = r_gp
         self.ka = ka
         self.pp = pp
