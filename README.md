@@ -26,9 +26,12 @@ Comprehensive documentation, including mathematical background and detailed code
 
 ## 🚀 Features
 
-- **Object-Oriented Architecture:** Clean separation of Geometry Mapping (`GGP2DMapper`) and Physics Solvers (`LinearElasticitySolver`) using Factory patterns.
-- **High Performance Adjoint Gradients:** Utilizes a monolithic GEMSEO `MacroDiscipline` to leverage `dolfin-adjoint`'s highly efficient analytical chain rule, avoiding massive dense Jacobian assemblies.
-- **Topology Optimization Benchmarks:** Includes standard benchmarks out-of-the-box (Short Cantilever, MBB Beam, L-Shape Bracket).
+- **Modular MDAO Architecture:** Decoupled `GGPVectorizedGeometryDiscipline` and `GGPPhysicsFastDiscipline` inside a unified GEMSEO `MDAChain`.
+- **Vectorized Geometric Mapping:** Analytic Jacobians for Free (2D/3D) and ALM (2D/3D) mappers computed via highly-optimized vectorized NumPy logic.
+- **High-Speed Stiffness Assembly:** Manual global stiffness matrix assembly using `petsc4py` and SciPy sparse CSR formats, bypassing FEniCS adjoint taping overhead.
+- **Bit-Exact Baseline Reproduction:** Verification against academic GGP MATLAB baselines to double-precision compliance and volume fraction metrics.
+- **Topology Optimization Benchmarks:** Includes standard pre-configured benchmarks (Short Cantilever, MBB Beam, L-Shape Bracket, ALM Cantilever).
+- **Robust Test Coverage:** Thorough unit and regression tests covering 3D domains, iterative solvers, and overhang restrictions with **>93% coverage**.
 
 ## 🛠️ Installation
 
@@ -73,6 +76,7 @@ python examples/ex04_alm_cantilever.py
 ## 🏗️ Architecture
 
 The code is structured into the `ggp/` package:
-- `geometry/`: Contains the `GGP2DMapper` which maps design primitives to a FEniCS density field using Saturated Kreisselmeier-Steinhauser (KS) aggregation and regularized Heaviside functions.
-- `physics/`: Contains the `LinearElasticitySolver` with SIMP penalization.
-- `gemseo_wrappers/`: Contains the `GGPMacroDiscipline`, bridging the FEniCS world with GEMSEO's optimization algorithms (e.g., `NLOPT_MMA`).
+- `geometry/`: Implements geometric primitive mapping mappers (Free and ALM, 2D and 3D) using regularized Heaviside functions and saturated Kreisselmeier-Steinhauser (KS) aggregation.
+- `physics/`: Implements PDE-based linear elasticity solvers with plane-stress/3D options and SIMP material interpolation.
+- `gemseo_wrappers/`: Contains decoupled GEMSEO disciplines (`GGPVectorizedGeometryDiscipline`, `GGPPhysicsFastDiscipline`, `GGPPhysicsAdjointDiscipline`) facilitating modular MDAO scenario execution.
+- `utils/`: Includes ALM overhang constraint calculations, mathematical operators, and step-by-step verification/validation tools.
