@@ -1,12 +1,13 @@
 import numpy as np
 
-def create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg):
+def create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg, extended=False):
     """
     Computes the linear overhang constraints for 2D ALM.
     """
     delta = layer_height * np.tan(np.deg2rad(alpha_deg))
     num_comp = num_layers * comp_per_layer
-    num_vars = num_comp * 3
+    num_vars_per_comp = 4 if extended else 3
+    num_vars = num_comp * num_vars_per_comp + (2 if extended else 0)
     num_interfaces = num_layers - 1
     num_cons = num_interfaces * comp_per_layer * 2
     
@@ -20,17 +21,17 @@ def create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, al
             idx_kp1 = (layer + 1) * comp_per_layer + k
             
             # Constraint 1: Xc_{k+1} - Xc_k + 0.5*L_{k+1} - 0.5*L_k <= delta
-            A[row, 3 * idx_k] = -1.0
-            A[row, 3 * idx_k + 1] = -0.5
-            A[row, 3 * idx_kp1] = 1.0
-            A[row, 3 * idx_kp1 + 1] = 0.5
+            A[row, num_vars_per_comp * idx_k] = -1.0
+            A[row, num_vars_per_comp * idx_k + 1] = -0.5
+            A[row, num_vars_per_comp * idx_kp1] = 1.0
+            A[row, num_vars_per_comp * idx_kp1 + 1] = 0.5
             row += 1
             
             # Constraint 2: -Xc_{k+1} + Xc_k + 0.5*L_{k+1} - 0.5*L_k <= delta
-            A[row, 3 * idx_k] = 1.0
-            A[row, 3 * idx_k + 1] = -0.5
-            A[row, 3 * idx_kp1] = -1.0
-            A[row, 3 * idx_kp1 + 1] = 0.5
+            A[row, num_vars_per_comp * idx_k] = 1.0
+            A[row, num_vars_per_comp * idx_k + 1] = -0.5
+            A[row, num_vars_per_comp * idx_kp1] = -1.0
+            A[row, num_vars_per_comp * idx_kp1 + 1] = 0.5
             row += 1
             
     return A, b

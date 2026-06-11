@@ -38,9 +38,17 @@ def run_alm_cantilever(max_iter=50):
     solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec, p=3.0)
     mapper = GeometryFactory.create_mapper("2D_ALM", mesh=mesh, num_layers=num_layers, 
                                           components_per_layer=comp_per_layer, layer_height=layer_height)
-    x_init = mapper.get_initial_design(L, H)
-    lb = np.array([0.0, 1.0, 0.0] * mapper.num_components)
-    ub = np.array([L, L, 1.0] * mapper.num_components)
+    x_init = mapper.get_initial_design(L, H, extended=True)
+    
+    lb_comp = [0.0, 1.0, 0.0, 0.0] * mapper.num_components
+    ub_comp = [L, L, 1.0, layer_height] * mapper.num_components
+    
+    # Add bounds for y0, theta0
+    lb_global = [-H/2, -np.pi/4]
+    ub_global = [H/2, np.pi/4]
+    
+    lb = np.array(lb_comp + lb_global)
+    ub = np.array(ub_comp + ub_global)
 
     # --- Hybrid Modular Architecture ---
     geom_disc = GGPVectorizedGeometryDiscipline(
@@ -63,7 +71,7 @@ def run_alm_cantilever(max_iter=50):
         def _compute_jacobian(self, inputs=None, outputs=None):
             self.jac = {"overhang_cons": {"x_vars": self.A}}
 
-    A_over, b_over = create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg)
+    A_over, b_over = create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg, extended=True)
     cons_disc = ALMConstraintsDiscipline(A_over, b_over)
     
     chain = MDAChain([geom_disc, phys_disc])

@@ -111,17 +111,34 @@ class GGPVectorizedGeometryDiscipline(Discipline):
                     )
                     char_functions.append(W * (p[7]**power))
         elif self.mode == '2D_ALM':
-            params = x_vars.reshape(self.num_components, 3)
-            h_fixed = self.layer_height
-            theta_fixed = 0.0
+            is_extended = len(x_vars) == (self.num_components * 4 + 2)
+            if is_extended:
+                y0 = x_vars[-2]
+                theta0 = x_vars[-1]
+                params = x_vars[:-2].reshape(self.num_components, 4)
+                num_vars = 4
+            else:
+                y0 = 0.0
+                theta0 = 0.0
+                params = x_vars.reshape(self.num_components, 3)
+                num_vars = 3
+                
             for layer in range(self.num_layers):
                 y_fixed = (layer + 0.5) * self.layer_height
                 for i in range(self.comp_per_layer):
                     idx = layer * self.comp_per_layer + i
                     p = params[idx]
-                    W_gp = compute_local_characteristic_np(self.X_eval_flat, self.Y_eval_flat, p[0], y_fixed, p[1], h_fixed, theta_fixed, self.r_gp, method=self.method)
+                    Xc, width, Mc = p[0], p[1], p[2]
+                    hc = p[3] if is_extended else self.layer_height
+                    
+                    Xc_g = Xc * np.cos(theta0) - y_fixed * np.sin(theta0)
+                    Yc_g = y0 + Xc * np.sin(theta0) + y_fixed * np.cos(theta0)
+                    
+                    W_gp = compute_local_characteristic_np(
+                        self.X_eval_flat, self.Y_eval_flat, Xc_g, Yc_g, width, hc, theta0, self.r_gp, method=self.method
+                    )
                     W_el = np.sum(W_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
-                    char_functions.append(W_el * (p[2]**power))
+                    char_functions.append(W_el * (Mc**power))
         elif self.mode == '3D_ALM':
             # Oriented Brick in Layered 3D
             # variables per component: [Xc, Yc, L, W, Theta, Mc]
@@ -180,31 +197,66 @@ class GGPVectorizedGeometryDiscipline(Discipline):
                 ])
             num_vars = 6
         elif self.mode == '2D_ALM':
-            params = x_vars.reshape(self.num_components, 3)
-            h_fixed = self.layer_height
-            theta_fixed = 0.0
+            is_extended = len(x_vars) == (self.num_components * 4 + 2)
+            if is_extended:
+                y0 = x_vars[-2]
+                theta0 = x_vars[-1]
+                params = x_vars[:-2].reshape(self.num_components, 4)
+                num_vars = 4
+                dWdy0_total = np.zeros(self.num_elements)
+                dWdt0_total = np.zeros(self.num_elements)
+            else:
+                y0 = 0.0
+                theta0 = 0.0
+                params = x_vars.reshape(self.num_components, 3)
+                num_vars = 3
+                
             for layer in range(self.num_layers):
                 y_fixed = (layer + 0.5) * self.layer_height
                 for i in range(self.comp_per_layer):
                     idx = layer * self.comp_per_layer + i
                     p = params[idx]
+                    Xc, width, Mc = p[0], p[1], p[2]
+                    hc = p[3] if is_extended else self.layer_height
+                    
+                    Xc_g = Xc * np.cos(theta0) - y_fixed * np.sin(theta0)
+                    Yc_g = y0 + Xc * np.sin(theta0) + y_fixed * np.cos(theta0)
+                    
                     W_gp, dWdX_gp, dWdY_gp, dWdL_gp, dWdh_gp, dWdT_gp = compute_local_characteristic_2d_with_grad_np(
-                        self.X_eval_flat, self.Y_eval_flat, p[0], y_fixed, p[1], h_fixed, theta_fixed, self.r_gp, method=self.method
+                        self.X_eval_flat, self.Y_eval_flat, Xc_g, Yc_g, width, hc, theta0, self.r_gp, method=self.method
                     )
+                    
+                    # Chain rule for gradients wrt original variables
+                    an_Xc_gp = dWdX_gp * np.cos(theta0) + dWdY_gp * np.sin(theta0)
+                    
                     W_el = np.sum(W_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
-                    dWdX_el = np.sum(dWdX_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                    dWdX_el = np.sum(an_Xc_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
                     dWdL_el = np.sum(dWdL_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
                     
-                    V_el = W_el * (p[2]**power)
+                    V_el = W_el * (Mc**power)
                     char_functions.append(V_el)
                     
-                    m_p = p[2]**power
-                    m_p_minus_1 = power * (p[2]**(power - 1.0)) if power > 0 else 0.0
+                    m_p = Mc**power
+                    m_p_minus_1 = power * (Mc**(power - 1.0)) if power > 0 else 0.0
                     
-                    char_grads.append([
-                        dWdX_el * m_p, dWdL_el * m_p, W_el * m_p_minus_1
-                    ])
-            num_vars = 3
+                    if is_extended:
+                        dWdh_el = np.sum(dWdh_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                        
+                        an_y0_gp = dWdY_gp
+                        an_t0_gp = dWdX_gp * (-Xc * np.sin(theta0) - y_fixed * np.cos(theta0)) + \
+                                   dWdY_gp * (Xc * np.cos(theta0) - y_fixed * np.sin(theta0)) + dWdT_gp
+                        
+                        dWdy0_el = np.sum(an_y0_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                        dWdt0_el = np.sum(an_t0_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                        
+                        char_grads.append([
+                            dWdX_el * m_p, dWdL_el * m_p, W_el * m_p_minus_1, dWdh_el * m_p,
+                            dWdy0_el * m_p, dWdt0_el * m_p
+                        ])
+                    else:
+                        char_grads.append([
+                            dWdX_el * m_p, dWdL_el * m_p, W_el * m_p_minus_1
+                        ])
         else:
             # Fallback to finite difference or implement other modes
             return self._map_logic(x_vars, power), None
@@ -226,11 +278,21 @@ class GGPVectorizedGeometryDiscipline(Discipline):
         ds_dxs = (inner_exp / (inner_exp + 1.0)**2) / (a * (np.exp(-pa) + 1.0/(inner_exp + 1.0))) / (1.0 - self.s0)
         
         # Total Jacobian: drho/dp_ij = (ds/dxs) * (dKS/dV_i) * (dVi/dp_ij)
-        total_jac = np.zeros((self.num_elements, self.num_components * num_vars))
-        for i in range(self.num_components):
-            for j in range(num_vars):
-                total_jac[:, i*num_vars + j] = ds_dxs * dKS_dV[i] * char_grads[i][j]
+        if self.mode == '2D_ALM' and len(x_vars) == (self.num_components * 4 + 2):
+            total_jac = np.zeros((self.num_elements, self.num_components * num_vars + 2))
+            for i in range(self.num_components):
+                for j in range(num_vars):
+                    total_jac[:, i*num_vars + j] = ds_dxs * dKS_dV[i] * char_grads[i][j]
                 
+                # Accumulate global variables gradient contributions
+                total_jac[:, -2] += ds_dxs * dKS_dV[i] * char_grads[i][4] # y0
+                total_jac[:, -1] += ds_dxs * dKS_dV[i] * char_grads[i][5] # theta0
+        else:
+            total_jac = np.zeros((self.num_elements, self.num_components * num_vars))
+            for i in range(self.num_components):
+                for j in range(num_vars):
+                    total_jac[:, i*num_vars + j] = ds_dxs * dKS_dV[i] * char_grads[i][j]
+                    
         return rho, total_jac
 
     def _run(self, input_data=None):

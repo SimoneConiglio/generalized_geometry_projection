@@ -82,22 +82,42 @@ class GGP2DALMMapper(BaseMapper):
 
     def map_to_density(self, ctrls):
         """
-        ctrls: flattened array of [Xc, width, Mc] for each component.
-        Length: num_components * 3
+        ctrls: flattened array of variables.
+        If length is num_components * 3: uses [Xc, width, Mc] with y0=0, theta0=0
+        If length is num_components * 4 + 2: uses [Xc, width, Mc, hc] + [y0, theta0]
         """
         parameters["form_compiler"]["quadrature_degree"] = 4
         char_functions = []
         
-        h_fixed = Constant(self.layer_height)
-        theta_fixed = Constant(0.0)
+        is_extended = len(ctrls) == (self.num_components * 4 + 2)
+        if is_extended:
+            y0 = ctrls[-2]
+            theta0 = ctrls[-1]
+            num_vars = 4
+        else:
+            y0 = Constant(0.0)
+            theta0 = Constant(0.0)
+            num_vars = 3
         
         for layer in range(self.num_layers):
-            y_fixed = Constant((layer + 0.5) * self.layer_height)
+            y_fixed = (layer + 0.5) * self.layer_height
             for i in range(self.comp_per_layer):
-                idx = (layer * self.comp_per_layer + i) * 3
-                # variables: Xc=ctrls[idx], width=ctrls[idx+1], Mc=ctrls[idx+2]
-                W_i = self._compute_local_characteristic(ctrls[idx], y_fixed, ctrls[idx+1], h_fixed, theta_fixed)
-                char_functions.append(W_i * ctrls[idx+2])
+                idx = (layer * self.comp_per_layer + i) * num_vars
+                Xc = ctrls[idx]
+                width = ctrls[idx+1]
+                Mc = ctrls[idx+2]
+                
+                if is_extended:
+                    hc = ctrls[idx+3]
+                else:
+                    hc = Constant(self.layer_height)
+                
+                # Transform to global rotated coordinates
+                Xc_g = Xc * ufl.cos(theta0) - y_fixed * ufl.sin(theta0)
+                Yc_g = y0 + Xc * ufl.sin(theta0) + y_fixed * ufl.cos(theta0)
+                
+                W_i = self._compute_local_characteristic(Xc_g, Yc_g, width, hc, theta0)
+                char_functions.append(W_i * Mc)
         
         sum_exp = sum([ufl.exp(self.ka * d) for d in char_functions])
         ks_val = (1.0 / self.ka) * ufl.ln(sum_exp / self.num_components)
@@ -106,12 +126,19 @@ class GGP2DALMMapper(BaseMapper):
         rho = (-ufl.ln(ufl.exp(-self.pp) + 1.0 / (inner_exp + 1.0)) / self.pp - self.s0) / (1.0 - self.s0)
         return rho
 
-    def get_initial_design(self, L_domain, H_domain):
+    def get_initial_design(self, L_domain, H_domain, extended=False):
         x_init = []
         for layer in range(self.num_layers):
             for i in range(self.comp_per_layer):
                 xc = (i + 1) * L_domain / (self.comp_per_layer + 1)
                 width = L_domain / (self.comp_per_layer)
                 mc = 0.5
-                x_init.extend([xc, width, mc])
+                if extended:
+                    x_init.extend([xc, width, mc, self.layer_height])
+                else:
+                    x_init.extend([xc, width, mc])
+        
+        if extended:
+            x_init.extend([0.0, 0.0]) # y0, theta0
+            
         return np.array(x_init)
