@@ -30,7 +30,7 @@ jobs:
     - name: Set up Conda Environment
       uses: conda-incubator/setup-miniconda@v3
       with:
-        activate-environment: samo_agents
+        activate-environment: ggp
         environment-file: environment.yml
         auto-activate-base: false
         miniforge-version: latest

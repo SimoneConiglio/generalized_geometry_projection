@@ -1,6 +1,3 @@
-google-genai
-typer
-requests
 numpy
 scipy
 pytest
@@ -15,8 +12,3 @@ jupyterlab
 jupytext
 pandoc
 gemseo-mma>=4.0.0
-# FEniCS dependencies are usually handled via Conda, but listed here for completeness
-# fenics-dolfin
-# fenics-dolfin-adjoint
-# gemseo
-# nlopt

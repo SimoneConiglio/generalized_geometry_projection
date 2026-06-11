@@ -47,7 +47,7 @@ The framework relies heavily on FEniCS, which is best installed via Conda.
    An `environment.yml` is provided to ensure all FEniCS dependencies and scientific libraries are correctly resolved.
    ```bash
    conda env create -f environment.yml
-   conda activate samo_agents
+   conda activate ggp
    ```
 
 3. **Verify Installation:**

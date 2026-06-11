@@ -1,4 +1,4 @@
-name: samo_agents
+name: ggp
 channels:
   - conda-forge
   - defaults
@@ -10,7 +10,6 @@ dependencies:
   - h5py
   - nlopt
   - gemseo
-  - dolfin-adjoint
   - pip
   - pytest
   - pytest-cov
@@ -24,7 +23,4 @@ dependencies:
   - jupytext
   - pandoc
   - pip:
-    - google-genai
-    - typer
-    - requests
     - gemseo-mma>=4.0.0
