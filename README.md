@@ -1,7 +1,7 @@
 # Generalized Geometry Projection (GGP) for Additive Manufacturing
 
 [![Tests](https://github.com/SimoneConiglio/generalized_geometry_projection/actions/workflows/tests.yml/badge.svg)](https://github.com/SimoneConiglio/generalized_geometry_projection/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https://raw.githubusercontent.com/SimoneConiglio/generalized_geometry_projection/gh-pages/badges/coverage.json&cacheSeconds=3600)](https://simoneconiglio.github.io/generalized_geometry_projection/)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FSimoneConiglio%2Fgeneralized_geometry_projection%2Fgh-pages%2Fbadges%2Fcoverage.json&cacheSeconds=3600)](https://simoneconiglio.github.io/generalized_geometry_projection/)
 [![Docs](https://github.com/SimoneConiglio/generalized_geometry_projection/actions/workflows/docs.yml/badge.svg)](https://simoneconiglio.github.io/generalized_geometry_projection/)
 [![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
