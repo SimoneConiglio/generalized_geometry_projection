@@ -2,7 +2,7 @@
 Command-Line Interface (CLI)
 ================================
 
-SAMO provides a unified Command-Line Interface to quickly run topology optimizations with varying algorithms, formulations, and test cases.
+GGP provides a unified Command-Line Interface to quickly run topology optimizations with varying algorithms, formulations, and test cases.
 
 Running the CLI
 ===============

@@ -4,7 +4,7 @@ import sys
 
 def main():
     parser = argparse.ArgumentParser(
-        description="SAMO: Simulation and Analysis of Manufacturing Operations CLI",
+        description="GGP: Generalized Geometry Projection CLI",
         prog="ggp"
     )
     subparsers = parser.add_subparsers(dest="command", help="Available subcommands")
