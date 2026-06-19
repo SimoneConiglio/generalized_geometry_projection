@@ -135,8 +135,13 @@ We implemented two separate GEMSEO disciplines:
 - ``GGPVectorizedGeometryDiscipline``: Maps the design parameters :math:`x` to the density fields ``rho_E`` and ``rho_V``. It computes the analytical Jacobian :math:`\frac{\partial \rho}{\partial x}` using fully vectorized NumPy operations.
 - ``GGPPhysicsFastDiscipline`` (or ``GGPPhysicsAdjointDiscipline``): Solves the elasticity equations and computes adjoint compliance sensitivities.
 
-**2. High-Performance Sparse Assembly**
-To bypass the overhead of symbolic FEniCS adjoint taping in large-scale optimizations, ``GGPPhysicsFastDiscipline`` uses **petsc4py** and **SciPy sparse CSR solvers**. It pre-assembles unit element stiffness matrices and performs global assembly manually, allowing each iteration's state solve and gradient calculation to complete in milliseconds.
+**2. High-Performance Sparse Assembly & Linear Solver**
+To bypass the overhead of symbolic FEniCS adjoint taping in large-scale optimizations, ``GGPPhysicsFastDiscipline`` uses **SciPy sparse CSR solvers** and vectorized NumPy operations. 
+
+The linear system resolution is highly optimized:
+- **Pre-computed Elementary Matrix:** The elementary stiffness matrix is **not** assembled at each iteration. Because the framework uses a structured grid, a single reference unit element stiffness matrix (:math:`K_{ref}` for :math:`E=1.0`) is computed via FEniCS once during initialization.
+- **Global Assembly:** At each outer iteration, the global matrix is assembled instantly by computing the penalized Young's modulus :math:`E(\rho_e)` for each element, scaling :math:`K_{ref}`, and injecting the blocks directly into a SciPy Sparse Coordinate (COO) matrix.
+- **Direct Resolution:** The COO matrix is converted to a Compressed Sparse Row (CSR) format, Dirichlet boundary conditions are applied directly to the internal data arrays (to bypass slow list-of-lists modifications), and the system :math:`K U = F` is solved using ``scipy.sparse.linalg.spsolve`` (which utilizes the high-performance **SuperLU/UMFPACK** direct solvers). This allows each iteration's state solve and exact analytical gradient calculation to complete in milliseconds.
 
 **3. Trajectory-Level Validation**
 Using this fast modular architecture, the script ``Main_ggp.py`` reproduces the exact convergence history and post-processing of the original academic MATLAB code to double-precision accuracy across standard benchmarks (Short Cantilever, MBB, L-Shape).
