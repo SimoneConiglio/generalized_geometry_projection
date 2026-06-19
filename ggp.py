@@ -18,13 +18,29 @@ def main():
                             choices=["Free", "ALM", "2D_Free", "3D_Free"], 
                             help="GGP formulation type")
     opt_parser.add_argument("--max-iter", type=int, default=50, help="Maximum number of outer optimization iterations")
+    opt_parser.add_argument("--algorithm", type=str, default="MMA", help="Optimization algorithm (e.g. MMA, SLP, CONLIN)")
+    opt_parser.add_argument("--length", type=float, default=None, help="Domain length L")
+    opt_parser.add_argument("--height", type=float, default=None, help="Domain height H")
+    opt_parser.add_argument("--nelx", type=int, default=None, help="Number of elements in X direction")
+    opt_parser.add_argument("--nely", type=int, default=None, help="Number of elements in Y direction")
+    opt_parser.add_argument("--volfrac", type=float, default=0.4, help="Target volume fraction constraint")
     
     args = parser.parse_args()
     
     if args.command == "optimize":
         from ggp.cli.runners.free_runner import run_main_ggp
         print(f"Running GGP Optimization ({args.formulation} formulation)...")
-        run_main_ggp(bc_type=args.use_case, max_iter=args.max_iter, mode=args.formulation)
+        run_main_ggp(
+            bc_type=args.use_case, 
+            max_iter=args.max_iter, 
+            mode=args.formulation,
+            algorithm=args.algorithm,
+            L_opt=args.length,
+            H_opt=args.height,
+            nelx_opt=args.nelx,
+            nely_opt=args.nely,
+            volfrac_opt=args.volfrac
+        )
     else:
         parser.print_help()
 

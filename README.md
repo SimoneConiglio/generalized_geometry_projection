@@ -61,8 +61,8 @@ A unified Command-Line Interface (`ggp.py`) is provided in the project root to q
 # Run the Short Cantilever benchmark using the Free formulation
 python ggp.py optimize --use-case Short_Cantilever --formulation Free --max-iter 50
 
-# Run the MBB Beam benchmark using the Free formulation
-python ggp.py optimize --use-case MBB --formulation Free --max-iter 50
+# Run the MBB Beam benchmark using the Free formulation with SLP and custom mesh
+python ggp.py optimize --use-case MBB --formulation Free --algorithm SLP --nelx 120 --nely 40 --volfrac 0.5
 
 # Run the L-Shape Bracket benchmark using the Free formulation
 python ggp.py optimize --use-case L-shape --formulation Free --max-iter 50

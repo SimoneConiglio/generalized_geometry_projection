@@ -37,17 +37,34 @@ This command runs an end-to-end topology optimization scenario.
   
   * *Default:* ``50``
 
+* ``--algorithm`` : Optimization algorithm.
+  
+  * *Choices (GEMSEO solvers):* ``MMA``, ``SLP``, ``CONLIN``
+  * *Default:* ``MMA``
+
+* ``--length`` & ``--height`` : Domain length (L) and height (H).
+  
+  * *Default:* Depends on the ``--use-case``.
+
+* ``--nelx`` & ``--nely`` : Number of elements in X and Y directions.
+  
+  * *Default:* Depends on the ``--use-case``.
+
+* ``--volfrac`` : Target volume fraction constraint.
+  
+  * *Default:* ``0.4``
+
 Examples
 ========
 
-Run a standard Free formulation optimization on an MBB beam:
+Run a standard Free formulation optimization on an MBB beam with SLP algorithm:
 
 .. code-block:: bash
 
-   python ggp.py optimize --use-case MBB --formulation Free --max-iter 100
+   python ggp.py optimize --use-case MBB --formulation Free --algorithm SLP --max-iter 100
 
-Run an ALM continuous formulation optimization:
+Run an ALM continuous formulation optimization with a custom mesh and volume fraction:
 
 .. code-block:: bash
 
-   python ggp.py optimize --use-case Short_Cantilever --formulation ALM --max-iter 30
+   python ggp.py optimize --use-case Short_Cantilever --formulation ALM --max-iter 30 --nelx 120 --nely 60 --volfrac 0.5

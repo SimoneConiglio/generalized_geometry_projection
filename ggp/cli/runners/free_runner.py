@@ -265,20 +265,24 @@ class GGPHybridPhysicsDiscipline(GGPPhysicsFastDiscipline):
                 plt.savefig(f"{self.Path}component_{outit-1:03d}.png")
                 plt.close()
 
-def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free"):
+def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm="MMA", L_opt=None, H_opt=None, nelx_opt=None, nely_opt=None, volfrac_opt=0.4):
     print(f"\n=================================================================")
-    print(f"   Running Main GGP (GEMSEO + FEniCS + petsc4py) | BC: {bc_type} | Mode: {mode}")
+    print(f"   Running Main GGP (GEMSEO + FEniCS + petsc4py) | BC: {bc_type} | Mode: {mode} | Algo: {algorithm}")
     print(f"=================================================================\n")
     
     # Mesh definition
     if bc_type == "L-shape":
-        L, H = 60.0, 60.0
-        nelx, nely = 60, 60
+        L = L_opt if L_opt is not None else 60.0
+        H = H_opt if H_opt is not None else 60.0
+        nelx = nelx_opt if nelx_opt is not None else 60
+        nely = nely_opt if nely_opt is not None else 60
     else:
-        L, H = 60.0, 30.0
-        nelx, nely = 60, 30
+        L = L_opt if L_opt is not None else 60.0
+        H = H_opt if H_opt is not None else 30.0
+        nelx = nelx_opt if nelx_opt is not None else 60
+        nely = nely_opt if nely_opt is not None else 30
         
-    volfrac = 0.4
+    volfrac = volfrac_opt
     
     mesh = df.RectangleMesh.create([df.Point(0, 0), df.Point(L, H)], [nelx, nely], df.CellType.Type.quadrilateral)
     V_u = df.VectorFunctionSpace(mesh, "CG", 1)
@@ -470,7 +474,7 @@ def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free"):
             scenario.add_constraint("overhang_cons", constraint_type="ineq", positive=False, value=0.0)
         
         algo_options = {
-            "algo_name": "MMA",
+            "algo_name": algorithm,
             "max_iter": max_iter,
             "max_optimization_step": 0.05,
             "max_asymptote_distance":0.05,
