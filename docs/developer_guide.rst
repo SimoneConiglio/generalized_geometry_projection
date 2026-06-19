@@ -64,6 +64,44 @@ To combine multiple overlapping components into a single global density field :m
 
 Because the KS function can exceed 1.0 (causing issues for physics solvers), we apply a **smooth saturation function** to strictly bound the final density :math:`\rho \in [0, 1]`.
 
+Finite Element Solver
+---------------------
+
+The physical evaluation is handled by a FEniCS-based Linear Elasticity solver. It takes the projected continuous density field :math:`\rho(x, y)` and evaluates the mechanical compliance (stiffness) of the structure.
+
+**1. Material Penalization (SIMP)**
+We use the Solid Isotropic Material with Penalization (SIMP) model to interpolate the Young's modulus :math:`E`:
+
+.. math::
+    E(\rho) = E_{min} + \rho^p (E_0 - E_{min})
+
+where :math:`p=3.0` is the penalization power, :math:`E_0 = 1.0` is the solid stiffness, and :math:`E_{min} = 10^{-6}` is a tiny void stiffness to prevent a singular matrix.
+
+**2. Constitutive Relations**
+The stress tensor :math:`\sigma(u)` for a displacement field :math:`u` under the assumption of linear isotropic elasticity is:
+
+.. math::
+    \sigma(u) = \lambda \text{tr}(\varepsilon(u)) I + 2\mu \varepsilon(u)
+
+where the linear strain is :math:`\varepsilon(u) = \frac{1}{2}(\nabla u + (\nabla u)^T)`. For 2D Plane Stress formulations, the Lamé parameters are defined using Poisson's ratio :math:`\nu = 0.3`:
+
+.. math::
+    \lambda = \frac{E \nu}{1 - \nu^2}, \quad \mu = \frac{E}{2(1+\nu)}
+
+**3. Variational Weak Form**
+The solver finds the displacement :math:`u \in V` that satisfies the weak form of the equilibrium equation:
+
+.. math::
+    \int_\Omega \sigma(u) : \varepsilon(v) d\Omega = \int_{\partial \Omega_N} t \cdot v ds \quad \forall v \in V
+
+where :math:`t` is the traction boundary load applied on :math:`\partial \Omega_N`.
+
+**4. Compliance Objective**
+The objective function for stiffness maximization is the compliance :math:`C`, computed as the external work done by the applied loads:
+
+.. math::
+    C = \int_{\partial \Omega_N} t \cdot u ds
+
 Architecture & Object-Oriented Design
 -------------------------------------
 
