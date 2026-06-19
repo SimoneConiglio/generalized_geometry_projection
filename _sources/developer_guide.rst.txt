@@ -8,12 +8,14 @@ Mathematical Foundation
 
 The **Generalized Geometry Projection (GGP)** method parametrizes a design domain using explicit geometric primitives (e.g., rectangles, ellipses) rather than a dense grid of pixel densities. This framework implements the 2D Free formulation based on the original work by Coniglio et al.
 
-### 1. Primitive Mapping
+1. Primitive Mapping
+^^^^^^^^^^^^^^^^^^^^
 
 Each component :math:`i` is defined by a set of continuous variables :math:`x_i = [X_c, Y_c, L, H, \theta]`.
 The signed distance field :math:`\psi_i(x, y)` of a primitive is smoothed to ensure differentiability. The local density :math:`\rho_i(x, y)` is obtained via a **Regularized Heaviside function**, ensuring that the density smoothly transitions from 1 (inside the component) to 0 (outside) over a narrow band :math:`\epsilon_{mna}`.
 
-### 2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation
+2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To combine multiple overlapping components into a single global density field :math:`\rho(x, y)`, the KS function is used as a smooth approximation of the maximum operator:
 
@@ -75,7 +77,8 @@ Performance Monitoring
 
 To track the evolution of code performance and identify bottlenecks, a profiling infrastructure is provided.
 
-### 1. Running the Profiling Suite
+1. Running the Profiling Suite
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
 To run a fast profile of all standard benchmarks (5 iterations each), execute:
 
@@ -88,7 +91,8 @@ This script will:
 - Generate detailed ``.prof`` files in the ``performance_logs/`` directory.
 - Log the average time per iteration and the Git commit hash to ``performance_history.json``.
 
-### 2. Analyzing Bottlenecks
+2. Analyzing Bottlenecks
+^^^^^^^^^^^^^^^^^^^^^^^^
 
 Detailed profiling data can be visualized using tools like `snakeviz`:
 

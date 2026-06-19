@@ -488,13 +488,21 @@ window.runMermaid = runMermaid;</script>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Developer Guide</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#mathematical-foundation">Mathematical Foundation</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mathematical-foundation">Mathematical Foundation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#primitive-mapping">1. Primitive Mapping</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#saturated-kreisselmeier-steinhauser-ks-aggregation">2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#architecture-object-oriented-design">Architecture &amp; Object-Oriented Design</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#the-gemseo-modular-fast-architecture">The GEMSEO Modular Fast Architecture</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#tape-management-safe-re-execution">Tape Management &amp; Safe Re-execution</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#performance-monitoring">Performance Monitoring</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#performance-monitoring">Performance Monitoring</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#running-the-profiling-suite">1. Running the Profiling Suite</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#analyzing-bottlenecks">2. Analyzing Bottlenecks</a></li>
+</ul>
+</li>
 <li class="toctree-l2"><a class="reference internal" href="#citations">Citations</a></li>
 </ul>
 </li>
@@ -534,14 +542,18 @@ window.runMermaid = runMermaid;</script>
 <section id="mathematical-foundation">
 <h2>Mathematical Foundation<a class="headerlink" href="#mathematical-foundation" title="Link to this heading"></a></h2>
 <p>The <strong>Generalized Geometry Projection (GGP)</strong> method parametrizes a design domain using explicit geometric primitives (e.g., rectangles, ellipses) rather than a dense grid of pixel densities. This framework implements the 2D Free formulation based on the original work by Coniglio et al.</p>
-<p>### 1. Primitive Mapping</p>
+<section id="primitive-mapping">
+<h3>1. Primitive Mapping<a class="headerlink" href="#primitive-mapping" title="Link to this heading"></a></h3>
 <p>Each component <span class="math notranslate nohighlight">\(i\)</span> is defined by a set of continuous variables <span class="math notranslate nohighlight">\(x_i = [X_c, Y_c, L, H, \theta]\)</span>.
 The signed distance field <span class="math notranslate nohighlight">\(\psi_i(x, y)\)</span> of a primitive is smoothed to ensure differentiability. The local density <span class="math notranslate nohighlight">\(\rho_i(x, y)\)</span> is obtained via a <strong>Regularized Heaviside function</strong>, ensuring that the density smoothly transitions from 1 (inside the component) to 0 (outside) over a narrow band <span class="math notranslate nohighlight">\(\epsilon_{mna}\)</span>.</p>
-<p>### 2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation</p>
+</section>
+<section id="saturated-kreisselmeier-steinhauser-ks-aggregation">
+<h3>2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation<a class="headerlink" href="#saturated-kreisselmeier-steinhauser-ks-aggregation" title="Link to this heading"></a></h3>
 <p>To combine multiple overlapping components into a single global density field <span class="math notranslate nohighlight">\(\rho(x, y)\)</span>, the KS function is used as a smooth approximation of the maximum operator:</p>
 <div class="math notranslate nohighlight">
 \[KS(\rho) = \frac{1}{\kappa_a} \ln \left( \frac{1}{N} \sum_{i=1}^N \exp(\kappa_a \rho_i) \right)\]</div>
 <p>Because the KS function can exceed 1.0 (causing issues for physics solvers), we apply a <strong>smooth saturation function</strong> to strictly bound the final density <span class="math notranslate nohighlight">\(\rho \in [0, 1]\)</span>.</p>
+</section>
 </section>
 <section id="architecture-object-oriented-design">
 <h2>Architecture &amp; Object-Oriented Design<a class="headerlink" href="#architecture-object-oriented-design" title="Link to this heading"></a></h2>
@@ -586,7 +598,8 @@ Using this fast modular architecture, the script <code class="docutils literal n
 <section id="performance-monitoring">
 <h2>Performance Monitoring<a class="headerlink" href="#performance-monitoring" title="Link to this heading"></a></h2>
 <p>To track the evolution of code performance and identify bottlenecks, a profiling infrastructure is provided.</p>
-<p>### 1. Running the Profiling Suite</p>
+<section id="running-the-profiling-suite">
+<h3>1. Running the Profiling Suite<a class="headerlink" href="#running-the-profiling-suite" title="Link to this heading"></a></h3>
 <p>To run a fast profile of all standard benchmarks (5 iterations each), execute:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nv">PYTHONPATH</span><span class="o">=</span><span class="nv">$PYTHONPATH</span>:.<span class="w"> </span>python<span class="w"> </span>profile_suite.py
 </pre></div>
@@ -595,12 +608,15 @@ Using this fast modular architecture, the script <code class="docutils literal n
 - Run all 4 benchmarks.
 - Generate detailed <code class="docutils literal notranslate"><span class="pre">.prof</span></code> files in the <code class="docutils literal notranslate"><span class="pre">performance_logs/</span></code> directory.
 - Log the average time per iteration and the Git commit hash to <code class="docutils literal notranslate"><span class="pre">performance_history.json</span></code>.</p>
-<p>### 2. Analyzing Bottlenecks</p>
+</section>
+<section id="analyzing-bottlenecks">
+<h3>2. Analyzing Bottlenecks<a class="headerlink" href="#analyzing-bottlenecks" title="Link to this heading"></a></h3>
 <p>Detailed profiling data can be visualized using tools like <cite>snakeviz</cite>:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>snakeviz
 snakeviz<span class="w"> </span>performance_logs/short_cantilever.prof
 </pre></div>
 </div>
+</section>
 </section>
 <section id="citations">
 <h2>Citations<a class="headerlink" href="#citations" title="Link to this heading"></a></h2>
