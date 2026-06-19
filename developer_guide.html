@@ -462,7 +462,7 @@ window.runMermaid = runMermaid;</script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Additive Manufacturing Constraints" href="alm_guide.html" />
-    <link rel="prev" title="Installation Guide" href="installation.html" /> 
+    <link rel="prev" title="Command-Line Interface (CLI)" href="cli_guide.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -487,10 +487,12 @@ window.runMermaid = runMermaid;</script>
               <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli_guide.html">Command-Line Interface (CLI)</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Developer Guide</a><ul>
 <li class="toctree-l2"><a class="reference internal" href="#mathematical-foundation">Mathematical Foundation</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#primitive-mapping">1. Primitive Mapping</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#saturated-kreisselmeier-steinhauser-ks-aggregation">2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#continuous-additive-layer-manufacturing-alm-mapping">3. Continuous Additive Layer Manufacturing (ALM) Mapping</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#finite-element-solver">Finite Element Solver</a></li>
@@ -583,6 +585,20 @@ To ensure strict differentiability for gradient-based optimization, the local de
 <div class="math notranslate nohighlight">
 \[KS(\rho) = \frac{1}{\kappa_a} \ln \left( \frac{1}{N} \sum_{i=1}^N \exp(\kappa_a \rho_i) \right)\]</div>
 <p>Because the KS function can exceed 1.0 (causing issues for physics solvers), we apply a <strong>smooth saturation function</strong> to strictly bound the final density <span class="math notranslate nohighlight">\(\rho \in [0, 1]\)</span>.</p>
+</section>
+<section id="continuous-additive-layer-manufacturing-alm-mapping">
+<h3>3. Continuous Additive Layer Manufacturing (ALM) Mapping<a class="headerlink" href="#continuous-additive-layer-manufacturing-alm-mapping" title="Link to this heading"></a></h3>
+<p>To rigorously enforce Additive Manufacturing overhang constraints natively through the geometry parameterization, the framework employs a continuous layer mapping formulation (matching the original ALM paper).</p>
+<p>Instead of deploying floating primitives, the ALM formulation constructs a cohesive part made of <span class="math notranslate nohighlight">\(N_y\)</span> stacked horizontal layers (or trapezoidal segments).
+The design variables represent continuous nodal coordinates exactly at the layer interfaces:</p>
+<ul class="simple">
+<li><p><strong>Horizontal Coordinates</strong> <span class="math notranslate nohighlight">\(X_k \in \mathbb{R}^{N_y \times N_p}\)</span></p></li>
+<li><p><strong>Layer Widths</strong> <span class="math notranslate nohighlight">\(L_k \in \mathbb{R}^{N_y \times N_p}\)</span></p></li>
+<li><p><strong>Layer Heights</strong> <span class="math notranslate nohighlight">\(h \in \mathbb{R}^{N_y}\)</span></p></li>
+<li><p><strong>Component Densities</strong> <span class="math notranslate nohighlight">\(m \in \mathbb{R}^{N_p}\)</span></p></li>
+</ul>
+<p>The total number of optimization parameters is exactly <span class="math notranslate nohighlight">\((2 \times N_y \times N_p) + N_y + N_p\)</span>.</p>
+<p>The continuous mapping analytically interpolates between the top boundary <span class="math notranslate nohighlight">\((X_{k+1}, L_{k+1}, y_{k+1})\)</span> and bottom boundary <span class="math notranslate nohighlight">\((X_k, L_k, y_k)\)</span> of each layer <span class="math notranslate nohighlight">\(k\)</span> to construct continuous trapezoidal blocks. The constraints on these <span class="math notranslate nohighlight">\(X_k\)</span> coordinates mathematically guarantee maximum overhang angle requirements between consecutive layers without needing heuristic density filters.</p>
 </section>
 </section>
 <section id="finite-element-solver">
@@ -690,7 +706,7 @@ snakeviz<span class="w"> </span>performance_logs/short_cantilever.prof
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="installation.html" class="btn btn-neutral float-left" title="Installation Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="cli_guide.html" class="btn btn-neutral float-left" title="Command-Line Interface (CLI)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="alm_guide.html" class="btn btn-neutral float-right" title="Additive Manufacturing Constraints" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 

@@ -16,6 +16,7 @@ documentation for details.
    :caption: Contents:
 
    installation
+   cli_guide
    developer_guide
    alm_guide
    scp_uno_guide
