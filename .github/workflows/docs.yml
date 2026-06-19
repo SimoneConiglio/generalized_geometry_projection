@@ -28,7 +28,7 @@ jobs:
         sudo apt-get install -y pandoc
         python -m pip install --upgrade pip
         pip install "setuptools<70"
-        pip install sphinx sphinx_book_theme sphinx-copybutton sphinxcontrib-mermaid nbsphinx jupytext ipython
+        pip install sphinx sphinx_rtd_theme sphinx-copybutton sphinxcontrib-mermaid nbsphinx jupytext ipython
 
     - name: Build Sphinx Documentation
       run: |
