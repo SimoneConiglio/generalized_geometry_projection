@@ -128,19 +128,26 @@ class GGP2DALMMapper(BaseMapper):
         rho = (-ufl.ln(ufl.exp(-pp_val) + 1.0 / (inner_exp + 1.0)) / pp_val - self.s0) / (1.0 - self.s0)
         return rho
 
-    def get_initial_design(self, L_domain, H_domain, extended=False):
-        x_init = []
-        for layer in range(self.num_layers):
-            for i in range(self.comp_per_layer):
-                xc = (i + 1) * L_domain / (self.comp_per_layer + 1)
-                width = L_domain / (self.comp_per_layer)
-                mc = 0.5
-                if extended:
-                    x_init.extend([xc, width, mc, self.layer_height])
-                else:
-                    x_init.extend([xc, width, mc])
+    def get_initial_design(self, L_domain, H_domain, extended=False, initial_mc=1.0, initial_volfrac=0.3):
+        np_val = self.comp_per_layer
+        nY = self.num_layers
         
-        if extended:
-            x_init.extend([0.0, 0.0]) # y0, theta0
-            
-        return np.array(x_init)
+        # x: size np_val * nY
+        x = np.linspace(0, L_domain, np_val + 2)[1:-1]
+        x = np.tile(x, nY)
+        
+        # L: size np_val * nY
+        L = (L_domain / np_val) * initial_volfrac * np.ones(np_val * nY)
+        
+        # h: size nY
+        h = (H_domain / nY) * np.ones(nY)
+        
+        # m: size np_val
+        m = initial_mc * np.ones(np_val)
+        
+        x_init = np.concatenate([x, L, h, m])
+        return x_init
+        
+    @property
+    def num_components_continuous(self):
+        return 2 * self.comp_per_layer * self.num_layers + self.num_layers + self.comp_per_layer

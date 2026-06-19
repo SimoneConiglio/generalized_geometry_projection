@@ -265,9 +265,9 @@ class GGPHybridPhysicsDiscipline(GGPPhysicsFastDiscipline):
                 plt.savefig(f"{self.Path}component_{outit-1:03d}.png")
                 plt.close()
 
-def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, nelx=60, nely=30):
+def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free"):
     print(f"\n=================================================================")
-    print(f"   Running Main GGP (GEMSEO + FEniCS + petsc4py) | BC: {bc_type}")
+    print(f"   Running Main GGP (GEMSEO + FEniCS + petsc4py) | BC: {bc_type} | Mode: {mode}")
     print(f"=================================================================\n")
     
     # Mesh definition
@@ -279,7 +279,6 @@ def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, nelx=60, nely=30):
         nelx, nely = 60, 30
         
     volfrac = 0.4
-    num_components = 18
     
     mesh = df.RectangleMesh.create([df.Point(0, 0), df.Point(L, H)], [nelx, nely], df.CellType.Type.quadrilateral)
     V_u = df.VectorFunctionSpace(mesh, "CG", 1)
@@ -299,148 +298,194 @@ def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, nelx=60, nely=30):
         dists = np.linalg.norm(dof_coords - np.array([L, H/2.0]), axis=1)
         tip_y_dof = np.intersect1d(np.where(dists < 1e-3)[0], y_dofs)[0]
         f_vec[tip_y_dof] = -1.0
-        
     elif bc_type == "MBB":
-        def left_symmetry(x, on_boundary): return on_boundary and df.near(x[0], 0.0)
-        def bottom_right_support(x, on_boundary): return on_boundary and df.near(x[0], L, 1.0) and df.near(x[1], 0.0, 1.0)
+        def left_sym(x, on_boundary): return on_boundary and df.near(x[0], 0.0)
+        def right_supp(x, on_boundary): return on_boundary and df.near(x[0], L) and df.near(x[1], 0.0)
         bc = [
-            DirichletBC(V_u.sub(0), Constant(0.0), left_symmetry),
-            DirichletBC(V_u.sub(1), Constant(0.0), bottom_right_support, method="pointwise")
+            DirichletBC(V_u.sub(0), Constant(0.0), left_sym),
+            DirichletBC(V_u.sub(1), Constant(0.0), right_supp)
         ]
         dists = np.linalg.norm(dof_coords - np.array([0.0, H]), axis=1)
-        top_y_dof = np.intersect1d(np.where(dists < 1e-3)[0], y_dofs)[0]
-        f_vec[top_y_dof] = -1.0
-        
+        tip_y_dof = np.intersect1d(np.where(dists < 1e-3)[0], y_dofs)[0]
+        f_vec[tip_y_dof] = -1.0
     elif bc_type == "L-shape":
         def top_boundary(x, on_boundary): return on_boundary and df.near(x[1], H)
         bc = [DirichletBC(V_u, Constant((0.0, 0.0)), top_boundary)]
         dists = np.linalg.norm(dof_coords - np.array([L, H/2.0]), axis=1)
-        mid_y_dof = np.intersect1d(np.where(dists < 1e-3)[0], y_dofs)[0]
-        f_vec[mid_y_dof] = -1.0
+        tip_y_dof = np.intersect1d(np.where(dists < 1e-3)[0], y_dofs)[0]
+        f_vec[tip_y_dof] = -1.0
         
-        # Passive elements: top right quadrant
-        midpoints = V_dg.tabulate_dof_coordinates()
-        xc_mid, yc_mid = midpoints[:, 0], midpoints[:, 1]
-        emptyelts = np.where((xc_mid >= L/2.0 - 1e-5) & (yc_mid >= H/2.0 - 1e-5))[0]
+        centers_x = dof_coords[::2, 0]
+        centers_y = dof_coords[::2, 1]
+        emptyelts_mask = (centers_x > L/2.0) & (centers_y > H/2.0)
+        # Convert mask to element indices (assuming regular numbering, approx)
+        x_centers = np.linspace(0.5, L-0.5, nelx)
+        y_centers = np.linspace(0.5, H-0.5, nely)
+        XX, YY = np.meshgrid(x_centers, y_centers)
+        elts_mask = (XX > L/2.0) & (YY > H/2.0)
+        emptyelts = np.where(elts_mask.flatten(order='F'))[0].tolist()
+        volfrac = 0.4
         
-    boundaries = df.MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
-    boundaries.set_all(0)
-    ds_load = df.Measure("ds", domain=mesh, subdomain_data=boundaries)
+    ds_load = df.Measure("ds", domain=mesh)
     
+    # Physics Solver creation
     solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=Constant((0.0, 0.0)), p=3.0, plane_stress=True)
     
     # Exact GGP-MATLAB Initialization to replicate baseline coordinates
-    ncx = 1
-    ncy = 1
-    xp = np.linspace(0.0, L, ncx + 2)
-    yp = np.linspace(0.0, H, ncy + 2)
-    xx, yy = np.meshgrid(xp, yp)
-    xx_flat = xx.flatten(order='F')
-    yy_flat = yy.flatten(order='F')
+    if mode == "Free":
+        ncx, ncy = 1, 1
+        num_components = 2*(ncx + 2)*(ncy + 2)
+        # Nodal coordinates (0-based)
+        Xx_idx, Yy_idx = np.where(np.ones((1 + nely, 1 + nelx)).T)
+        Xx = Xx_idx.astype(float)
+        Yy = (nely - Yy_idx).astype(float)
+        xp = np.linspace(np.min(Xx), np.max(Xx), ncx + 2)
+        yp = np.linspace(np.min(Yy), np.max(Yy), ncy + 2)
+        xx, yy = np.meshgrid(xp, yp)
+        xx_flat = xx.flatten(order='F')
+        yy_flat = yy.flatten(order='F')
+        
+        Xc_init = np.tile(xx_flat, 2)
+        Yc_init = np.tile(yy_flat, 2)
+        Lc_init = 2.0 * np.sqrt((nelx / (ncx + 2))**2 + (nely / (ncy + 2))**2) * np.ones_like(Xc_init)
+        
+        angle = np.arctan2(nely / ncy, nelx / ncx)
+        half_len = len(Xc_init) // 2
+        Tc_init = angle * np.concatenate([np.ones(half_len), -np.ones(half_len)])
+        hc_init = 2.0 * np.ones_like(Xc_init)
+        initial_d = 0.5 
+        Mc_init = initial_d * np.ones_like(Xc_init)
+        
+        x_init = np.column_stack([Xc_init, Yc_init, Lc_init, hc_init, Tc_init, Mc_init]).flatten()
+        
+        # Build upper and lower bounds
+        Xl = (np.min(Xx) - 1.0) * np.ones_like(Xc_init)
+        Xu = (np.max(Xx) + 1.0) * np.ones_like(Xc_init)
+        Yl = (np.min(Yy) - 1.0) * np.ones_like(Xc_init)
+        Yu = (np.max(Yy) + 1.0) * np.ones_like(Xc_init)
+        Ll = np.zeros_like(Xc_init)
+        Lu = np.sqrt(nelx**2 + nely**2) * np.ones_like(Xc_init)
+        minh =1
+        hl = minh * np.ones_like(Xc_init)
+        hu = np.sqrt(nelx**2 + nely**2) * np.ones_like(Xc_init)
+        Tl = -2.0 * np.pi * np.ones_like(Xc_init)
+        Tu = 2.0 * np.pi * np.ones_like(Xc_init)
+        Ml = np.zeros_like(Xc_init)
+        Mu = np.ones_like(Xc_init)
+        
+        lb = np.column_stack([Xl, Yl, Ll, hl, Tl, Ml]).flatten()
+        ub = np.column_stack([Xu, Yu, Lu, hu, Tu, Mu]).flatten()
+        
+        kwargs = {}
+    elif mode == "ALM":
+        num_layers = 10
+        comp_per_layer = 5
+        layer_height = H / num_layers
+        num_components = num_layers * comp_per_layer
+        
+        x_init = np.zeros(num_components * 3)
+        lb = np.zeros_like(x_init)
+        ub = np.zeros_like(x_init)
+        
+        x_c = np.linspace(L/(2*comp_per_layer), L - L/(2*comp_per_layer), comp_per_layer)
+        Xc_init = np.tile(x_c, num_layers)
+        
+        x_init[0::3] = Xc_init
+        x_init[1::3] = 10.0  # Width
+        x_init[2::3] = 0.5   # Mc
+        
+        lb[0::3] = -1.0
+        ub[0::3] = L + 1.0
+        lb[1::3] = 0.0
+        ub[1::3] = np.sqrt(L**2 + H**2)
+        lb[2::3] = 0.0
+        ub[2::3] = 1.0
+        
+        kwargs = {'num_layers': num_layers, 'comp_per_layer': comp_per_layer, 'layer_height': layer_height}
     
-    Xc_init = np.tile(xx_flat, 2)
-    Yc_init = np.tile(yy_flat, 2)
-    Lc_init = 2.0 * np.sqrt((L / (ncx + 2))**2 + (H / (ncy + 2))**2) * np.ones_like(Xc_init)
     
-    angle = np.arctan2(H / ncy, L / ncx)
-    half_len = len(Xc_init) // 2
-    Tc_init = angle * np.concatenate([np.ones(half_len), -np.ones(half_len)])
-    hc_init = 2.0 * np.ones_like(Xc_init)
-    Mc_init = 0.5 * np.ones_like(Xc_init)
-    
-    x_init = np.zeros(num_components * 6)
-    x_init[0::6], x_init[1::6], x_init[2::6] = Xc_init, Yc_init, Lc_init
-    x_init[3::6], x_init[4::6], x_init[5::6] = hc_init, Tc_init, Mc_init
-    
-    # Setup bounds exactly matching baseline
-    Xl = (0.0 - 1.0) * np.ones_like(Xc_init)
-    Xu = (L + 1.0) * np.ones_like(Xc_init)
-    Yl = (0.0 - 1.0) * np.ones_like(Xc_init)
-    Yu = (H + 1.0) * np.ones_like(Xc_init)
-    Ll = np.zeros_like(Xc_init)
-    Lu = np.sqrt(L**2 + H**2) * np.ones_like(Xc_init)
-    hl = 1.0 * np.ones_like(Xc_init)
-    hu = np.sqrt(L**2 + H**2) * np.ones_like(Xc_init)
-    Tl = -2.0 * np.pi * np.ones_like(Xc_init)
-    Tu = 2.0 * np.pi * np.ones_like(Xc_init)
-    Ml = np.zeros_like(Xc_init)
-    Mu = np.ones_like(Xc_init)
-    
-    lb = np.zeros(num_components * 6)
-    lb[0::6], lb[1::6], lb[2::6] = Xl, Yl, Ll
-    lb[3::6], lb[4::6], lb[5::6] = hl, Tl, Ml
-    
-    ub = np.zeros(num_components * 6)
-    ub[0::6], ub[1::6], ub[2::6] = Xu, Yu, Lu
-    ub[3::6], ub[4::6], ub[5::6] = hu, Tu, Mu
-    
-    geom_disc = GGPVectorizedGeometryDiscipline(mesh, num_components, mode='Free', L_domain=L, H_domain=H, Ngp=2, lb=lb, ub=ub)
     phys_disc = GGPHybridPhysicsDiscipline(solver, mesh, mesh_area=L*H, volfrac=volfrac, emptyelts=emptyelts, L=L, H=H, bc_type=bc_type, max_iter=max_iter)
-    phys_disc.geom_disc = geom_disc
     
     phys_disc.f_vec = f_vec
     phys_disc.f_vec[phys_disc.fixed_dofs] = 0.0
     
-    chain = MDAChain([geom_disc, phys_disc])
+    # GEMSEO Design Space
+    from gemseo import create_scenario, create_design_space
+    from gemseo.core.discipline.discipline import Discipline
+    from ggp.utils.alm_utils import create_alm_overhang_constraints
     
-    # Scale design variable vector to [0, 1] for MMA optimizer matching Matlab behavior
-    X = (x_init - lb) / (ub - lb)
+    current_x = (x_init - lb) / (ub - lb)
+    r_gp_values = [1.5, 1.0, 0.5] if mode != 'Free' else [0.5]
     
-    # MMA initialization
-    m_mma = 1
-    n_mma = len(X)
-    eeen = np.ones(n_mma)
-    eeem = np.ones(m_mma)
-    zeron = np.zeros(n_mma)
-    zerom = np.zeros(m_mma)
-    xval = X.copy()
-    xold1 = xval.copy()
-    xold2 = xval.copy()
-    xmin = zeron.copy()
-    xmax = eeen.copy()
-    low = xmin.copy()
-    upp = xmax.copy()
-    C = 1000.0 * eeem
-    d = 0.0 * eeem
-    a0 = 1.0
-    a = zerom.copy()
+    class OverhangDiscipline(Discipline):
+        def __init__(self, num_layers, comp_per_layer, layer_height, alpha_deg, lb, ub):
+            super().__init__("OverhangDiscipline")
+            self.input_grammar.update_from_names(["x_vars"])
+            self.output_grammar.update_from_names(["overhang_cons"])
+            self.default_inputs = {"x_vars": np.zeros(num_layers * comp_per_layer * 3)}
+            self.A, self.b = create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg, extended=False)
+            self.lb = lb
+            self.ub = ub
+            
+        def _run(self, input_data=None):
+            if input_data is not None:
+                self.local_data.update(input_data)
+            x = self.local_data["x_vars"]
+            x_unscaled = self.lb + x * (self.ub - self.lb)
+            cons = self.A @ x_unscaled - self.b
+            self.local_data["overhang_cons"] = cons
+            
+        def _compute_jacobian(self, inputs=None, outputs=None):
+            jac = self.A * (self.ub - self.lb)
+            self.jac = {"overhang_cons": {"x_vars": np.atleast_2d(jac)}}
     
-    outit = 0
-    print("\nStarting optimization loop...")
-    while outit < max_iter:
-        outit += 1
+    for step_idx, r in enumerate(r_gp_values):
+        print(f"\n{'='*50}")
+        print(f"   Starting Optimization Phase {step_idx+1}/{len(r_gp_values)} | r_gp = {r}")
+        print(f"{'='*50}")
         
-        # 1. Execute Geometry mapping
-        geom_disc.execute({"x_vars": xval})
-        rho_E = geom_disc.local_data["rho_E"]
-        rho_V = geom_disc.local_data["rho_V"]
+        geom_disc = GGPVectorizedGeometryDiscipline(mesh, num_components, mode=mode, L_domain=L, H_domain=H, Ngp=2, r_gp=r, pp=100.0, lb=lb, ub=ub, **kwargs)
+        phys_disc.geom_disc = geom_disc
+        chain = MDAChain([geom_disc, phys_disc])
         
-        # 2. Execute Physics solver
-        phys_disc.execute({"rho_E": rho_E, "rho_V": rho_V})
-        # Compliance and volume
-        c_val = np.exp(phys_disc.local_data["compliance"][0]) - 1.0
-        v_val = (phys_disc.local_data["volume"][0] / 100.0) * volfrac + volfrac
+        # Deactivate gradient history storage on the chain
+        if hasattr(chain, 'cache'): chain.cache = None
+        if hasattr(chain, 'cache_type'): chain.cache_type = Discipline.CacheType.NONE
         
-        # 3. Gradients calculation via GEMSEO linearization
-        jac = geom_disc.linearize(input_data={"x_vars": xval}, compute_all_jacobians=True)
-        jac_E = jac["rho_E"]["x_vars"]
-        jac_V = jac["rho_V"]["x_vars"]
+        disciplines_to_add = [chain]
+        if mode == "ALM":
+            cons_disc = OverhangDiscipline(num_layers, comp_per_layer, layer_height, 45.0, lb, ub)
+            if hasattr(cons_disc, 'cache'): cons_disc.cache = None
+            if hasattr(cons_disc, 'cache_type'): cons_disc.cache_type = Discipline.CacheType.NONE
+            disciplines_to_add.append(cons_disc)
+            
+        design_space = create_design_space()
+        design_space.add_variable("x_vars", size=len(current_x), lower_bound=0.0, upper_bound=1.0, value=current_x)
         
-        df0dx = phys_disc.dj_drhoE @ jac_E
-        dfdx = phys_disc.dv_drhoV @ jac_V
-        
-        # 4. MMA step
-        f0val = np.log(c_val + 1.0)
-        fval = np.array([(v_val - volfrac) / volfrac * 100.0])
-        
-        X, ymma, zmma, lam, xsi, eta, mu, zet, S, low, upp = mmasub(
-            m_mma, n_mma, outit, xval, xmin, xmax, xold1, xold2,
-            f0val, df0dx, fval, dfdx, low, upp, a0, a, C, d
+        scenario = create_scenario(
+            disciplines_to_add, "compliance", design_space, maximize_objective=False, formulation_name="MDF"
         )
+        scenario.add_constraint("volume", constraint_type="ineq", positive=False, value=0.0)
+        if mode == "ALM":
+            scenario.add_constraint("overhang_cons", constraint_type="ineq", positive=False, value=0.0)
         
-        xold2 = xold1.copy()
-        xold1 = xval.copy()
-        xval = X.copy()
+        algo_options = {
+            "algo_name": "MMA",
+            "max_iter": max_iter,
+            "max_optimization_step": 0.05,
+            "max_asymptote_distance":0.05,
+            "initial_asymptotes_distance": 0.05,
+            "min_asymptote_distance":0.001,
+            "use_penalty_formulation": True,
+            "ftol_rel": 1e-12,
+            "xtol_rel": 1e-12,
+            "ftol_abs": 1e-12,
+            "xtol_abs": 1e-12,
+            "max_inner_iterations": 500,
+        }
+        scenario.execute(**algo_options)
+        
+        current_x = scenario.design_space.get_current_value().copy()
         
     # Final values printing
     if len(phys_disc.cvec) > 0:
@@ -452,10 +497,3 @@ def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, nelx=60, nely=30):
     else:
         print("Optimization did not run any evaluations.")
 
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(description="Main GGP Optimization using GEMSEO, FEniCS, and petsc4py fast disciplines.")
-    parser.add_argument("--bc", type=str, default="Short_Cantilever", choices=["Short_Cantilever", "MBB", "L-shape"], help="Boundary condition type.")
-    parser.add_argument("--max_iter", type=int, default=50, help="Maximum number of optimization iterations.")
-    args = parser.parse_args()
-    
-    run_main_ggp(bc_type=args.bc, max_iter=args.max_iter)

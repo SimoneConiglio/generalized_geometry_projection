@@ -1,6 +1,6 @@
 import numpy as np
 from gemseo.core.discipline.discipline import Discipline
-from ..utils.vectorized_mapping import compute_local_characteristic_np, smooth_saturation_np, compute_local_characteristic_2d_with_grad_np
+from ..utils.vectorized_mapping import compute_local_characteristic_np, smooth_saturation_np, compute_local_characteristic_2d_with_grad_np, compute_continuous_ALM_characteristic_np
 import dolfin as df
 from dolfin import *
 from dolfin_adjoint import *
@@ -21,9 +21,9 @@ class GGPVectorizedGeometryDiscipline(Discipline):
             self.mode = '2D_ALM' if self.dim == 2 else '3D_ALM'
         else:
             self.mode = mode
-        # Default to AMNA for ALM modes (paper Eq. 40-41) unless explicitly overridden
+            
         if method == 'GP' and mode == 'ALM':
-            self.method = 'AMNA'
+            self.method = 'GP'
         else:
             self.method = method
         self.r_gp = r_gp
@@ -87,6 +87,12 @@ class GGPVectorizedGeometryDiscipline(Discipline):
         # IO Grammars
         self.input_grammar.update_from_names(["x_vars"])
         self.output_grammar.update_from_names(["rho_E", "rho_V"])
+        
+        # Deactivate gradient history storage (cache) to avoid RAM/wall-clock penalties
+        if hasattr(self, 'cache'):
+            self.cache = None
+        if hasattr(self, 'cache_type'):
+            self.cache_type = Discipline.CacheType.NONE
 
     def _map_logic(self, x_vars, power):
         char_functions = []
@@ -110,35 +116,54 @@ class GGPVectorizedGeometryDiscipline(Discipline):
                         method=self.method, Z_mesh=self.Z_mesh, Z=p[2], P=p[6]
                     )
                     char_functions.append(W * (p[7]**power))
-        elif self.mode == '2D_ALM':
-            is_extended = len(x_vars) == (self.num_components * 4 + 2)
-            if is_extended:
-                y0 = x_vars[-2]
-                theta0 = x_vars[-1]
-                params = x_vars[:-2].reshape(self.num_components, 4)
-                num_vars = 4
-            else:
-                y0 = 0.0
-                theta0 = 0.0
-                params = x_vars.reshape(self.num_components, 3)
-                num_vars = 3
+        elif self.mode in ['ALM', '2D_ALM']:
+            is_continuous = len(x_vars) == (2 * self.comp_per_layer * self.num_layers + self.num_layers + self.comp_per_layer)
+            if is_continuous:
+                np_val = self.comp_per_layer
+                nY = self.num_layers
                 
-            for layer in range(self.num_layers):
-                y_fixed = (layer + 0.5) * self.layer_height
-                for i in range(self.comp_per_layer):
-                    idx = layer * self.comp_per_layer + i
-                    p = params[idx]
-                    Xc, width, Mc = p[0], p[1], p[2]
-                    hc = p[3] if is_extended else self.layer_height
+                h = x_vars[2*np_val*nY : 2*np_val*nY + nY]
+                y_nodes = np.zeros(nY + 1)
+                y_nodes[1:] = np.cumsum(h)
+                Yk = np.tile(y_nodes[:-1], (np_val, 1)).T
+                
+                p_dict = {'method': self.method, 'r': self.r_gp, 'deltamin': 1e-6, 'q': 10.0, 'E0': 1.0, 'Emin': 1e-6, 'gammac': 3.0, 'penalty': 3.0, 'saturation': False}
+                
+                W, dW_dX, dW_dL, dW_dh = compute_continuous_ALM_characteristic_np(x_vars, self.Y_eval_flat, x_vars, p_dict, np_val, nY, Yk, self.num_elements)
+                
+                m = x_vars[2*np_val*nY + nY : ]
+                for i in range(np_val):
+                    W_el = np.sum(W[i, :].reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                    char_functions.append(W_el * (m[i]**power))
+            else:
+                is_extended = len(x_vars) == (self.num_components * 4 + 2)
+                if is_extended:
+                    y0 = x_vars[-2]
+                    theta0 = x_vars[-1]
+                    params = x_vars[:-2].reshape(self.num_components, 4)
+                    num_vars = 4
+                else:
+                    y0 = 0.0
+                    theta0 = 0.0
+                    params = x_vars.reshape(self.num_components, 3)
+                    num_vars = 3
                     
-                    Xc_g = Xc * np.cos(theta0) - y_fixed * np.sin(theta0)
-                    Yc_g = y0 + Xc * np.sin(theta0) + y_fixed * np.cos(theta0)
-                    
-                    W_gp = compute_local_characteristic_np(
-                        self.X_eval_flat, self.Y_eval_flat, Xc_g, Yc_g, width, hc, theta0, self.r_gp, method=self.method
-                    )
-                    W_el = np.sum(W_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
-                    char_functions.append(W_el * (Mc**power))
+                for layer in range(self.num_layers):
+                    y_fixed = (layer + 0.5) * self.layer_height
+                    for i in range(self.comp_per_layer):
+                        idx = layer * self.comp_per_layer + i
+                        p = params[idx]
+                        Xc, width, Mc = p[0], p[1], p[2]
+                        hc = p[3] if is_extended else self.layer_height
+                        
+                        Xc_g = Xc * np.cos(theta0) - y_fixed * np.sin(theta0)
+                        Yc_g = y0 + Xc * np.sin(theta0) + y_fixed * np.cos(theta0)
+                        
+                        W_gp = compute_local_characteristic_np(
+                            self.X_eval_flat, self.Y_eval_flat, Xc_g, Yc_g, width, hc, theta0, self.r_gp, method='GP'
+                        )
+                        W_el = np.sum(W_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                        char_functions.append(W_el * (Mc**power))
         elif self.mode == '3D_ALM':
             # Oriented Brick in Layered 3D
             # variables per component: [Xc, Yc, L, W, Theta, Mc]
@@ -196,67 +221,108 @@ class GGPVectorizedGeometryDiscipline(Discipline):
                     dWdh_el * m_p, dWdT_el * m_p, W_el * m_p_minus_1
                 ])
             num_vars = 6
-        elif self.mode == '2D_ALM':
-            is_extended = len(x_vars) == (self.num_components * 4 + 2)
-            if is_extended:
-                y0 = x_vars[-2]
-                theta0 = x_vars[-1]
-                params = x_vars[:-2].reshape(self.num_components, 4)
-                num_vars = 4
-                dWdy0_total = np.zeros(self.num_elements)
-                dWdt0_total = np.zeros(self.num_elements)
-            else:
-                y0 = 0.0
-                theta0 = 0.0
-                params = x_vars.reshape(self.num_components, 3)
-                num_vars = 3
+        elif self.mode in ['ALM', '2D_ALM']:
+            is_continuous = len(x_vars) == (2 * self.comp_per_layer * self.num_layers + self.num_layers + self.comp_per_layer)
+            if is_continuous:
+                np_val = self.comp_per_layer
+                nY = self.num_layers
                 
-            for layer in range(self.num_layers):
-                y_fixed = (layer + 0.5) * self.layer_height
-                for i in range(self.comp_per_layer):
-                    idx = layer * self.comp_per_layer + i
-                    p = params[idx]
-                    Xc, width, Mc = p[0], p[1], p[2]
-                    hc = p[3] if is_extended else self.layer_height
+                h = x_vars[2*np_val*nY : 2*np_val*nY + nY]
+                y_nodes = np.zeros(nY + 1)
+                y_nodes[1:] = np.cumsum(h)
+                Yk = np.tile(y_nodes[:-1], (np_val, 1)).T
+                
+                p_dict = {'method': self.method, 'r': self.r_gp, 'deltamin': 1e-6, 'q': 10.0, 'E0': 1.0, 'Emin': 1e-6, 'gammac': 3.0, 'penalty': 3.0, 'saturation': False}
+                
+                W_gp, dWdX_gp, dWdL_gp, dWdh_gp = compute_continuous_ALM_characteristic_np(x_vars, self.Y_eval_flat, x_vars, p_dict, np_val, nY, Yk, self.num_elements)
+                
+                m = x_vars[2*np_val*nY + nY : ]
+                char_grads_continuous = []
+                
+                for i in range(np_val):
+                    W_el = np.sum(W_gp[i, :].reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
                     
-                    Xc_g = Xc * np.cos(theta0) - y_fixed * np.sin(theta0)
-                    Yc_g = y0 + Xc * np.sin(theta0) + y_fixed * np.cos(theta0)
+                    # dW_dX_gp shape is (90, N_points). Actually dWdX_gp is size (nY*np_val, N_points).
+                    # We need to reshape it and integrate it.
+                    dWdX_el = np.sum(dWdX_gp.reshape(dWdX_gp.shape[0], self.num_elements, -1) * self.gpc_wts, axis=2) / self.gpc_wts_sum
+                    dWdL_el = np.sum(dWdL_gp.reshape(dWdL_gp.shape[0], self.num_elements, -1) * self.gpc_wts, axis=2) / self.gpc_wts_sum
+                    dWdh_el = np.sum(dWdh_gp.reshape(dWdh_gp.shape[0], self.num_elements, -1) * self.gpc_wts, axis=2) / self.gpc_wts_sum
                     
-                    W_gp, dWdX_gp, dWdY_gp, dWdL_gp, dWdh_gp, dWdT_gp = compute_local_characteristic_2d_with_grad_np(
-                        self.X_eval_flat, self.Y_eval_flat, Xc_g, Yc_g, width, hc, theta0, self.r_gp, method=self.method
-                    )
-                    
-                    # Chain rule for gradients wrt original variables
-                    an_Xc_gp = dWdX_gp * np.cos(theta0) + dWdY_gp * np.sin(theta0)
-                    
-                    W_el = np.sum(W_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
-                    dWdX_el = np.sum(an_Xc_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
-                    dWdL_el = np.sum(dWdL_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
-                    
-                    V_el = W_el * (Mc**power)
+                    V_el = W_el * (m[i]**power)
                     char_functions.append(V_el)
                     
-                    m_p = Mc**power
-                    m_p_minus_1 = power * (Mc**(power - 1.0)) if power > 0 else 0.0
+                    m_p = m[i]**power
+                    m_p_minus_1 = power * (m[i]**(power - 1.0)) if power > 0 else 0.0
                     
-                    if is_extended:
-                        dWdh_el = np.sum(dWdh_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                    # Store gradients for component i
+                    char_grads_continuous.append({
+                        'dX': dWdX_el * m_p,
+                        'dL': dWdL_el * m_p,
+                        'dh': dWdh_el * m_p,
+                        'dM': W_el * m_p_minus_1
+                    })
+                
+            else:
+                is_extended = len(x_vars) == (self.num_components * 4 + 2)
+                if is_extended:
+                    y0 = x_vars[-2]
+                    theta0 = x_vars[-1]
+                    params = x_vars[:-2].reshape(self.num_components, 4)
+                    num_vars = 4
+                    dWdy0_total = np.zeros(self.num_elements)
+                    dWdt0_total = np.zeros(self.num_elements)
+                else:
+                    y0 = 0.0
+                    theta0 = 0.0
+                    params = x_vars.reshape(self.num_components, 3)
+                    num_vars = 3
+                    
+                for layer in range(self.num_layers):
+                    y_fixed = (layer + 0.5) * self.layer_height
+                    for i in range(self.comp_per_layer):
+                        idx = layer * self.comp_per_layer + i
+                        p = params[idx]
+                        Xc, width, Mc = p[0], p[1], p[2]
+                        hc = p[3] if is_extended else self.layer_height
                         
-                        an_y0_gp = dWdY_gp
-                        an_t0_gp = dWdX_gp * (-Xc * np.sin(theta0) - y_fixed * np.cos(theta0)) + \
-                                   dWdY_gp * (Xc * np.cos(theta0) - y_fixed * np.sin(theta0)) + dWdT_gp
+                        Xc_g = Xc * np.cos(theta0) - y_fixed * np.sin(theta0)
+                        Yc_g = y0 + Xc * np.sin(theta0) + y_fixed * np.cos(theta0)
                         
-                        dWdy0_el = np.sum(an_y0_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
-                        dWdt0_el = np.sum(an_t0_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                        W_gp, dWdX_gp, dWdY_gp, dWdL_gp, dWdh_gp, dWdT_gp = compute_local_characteristic_2d_with_grad_np(
+                            self.X_eval_flat, self.Y_eval_flat, Xc_g, Yc_g, width, hc, theta0, self.r_gp, method=self.method
+                        )
                         
-                        char_grads.append([
-                            dWdX_el * m_p, dWdL_el * m_p, W_el * m_p_minus_1, dWdh_el * m_p,
-                            dWdy0_el * m_p, dWdt0_el * m_p
-                        ])
-                    else:
-                        char_grads.append([
-                            dWdX_el * m_p, dWdL_el * m_p, W_el * m_p_minus_1
-                        ])
+                        # Chain rule for gradients wrt original variables
+                        an_Xc_gp = dWdX_gp * np.cos(theta0) + dWdY_gp * np.sin(theta0)
+                        
+                        W_el = np.sum(W_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                        dWdX_el = np.sum(an_Xc_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                        dWdL_el = np.sum(dWdL_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                        
+                        V_el = W_el * (Mc**power)
+                        char_functions.append(V_el)
+                        
+                        m_p = Mc**power
+                        m_p_minus_1 = power * (Mc**(power - 1.0)) if power > 0 else 0.0
+                        
+                        if is_extended:
+                            dWdh_el = np.sum(dWdh_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                            
+                            an_y0_gp = dWdY_gp
+                            an_t0_gp = dWdX_gp * (-Xc * np.sin(theta0) - y_fixed * np.cos(theta0)) + \
+                                       dWdY_gp * (Xc * np.cos(theta0) - y_fixed * np.sin(theta0)) + dWdT_gp
+                            
+                            dWdy0_el = np.sum(an_y0_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                            dWdt0_el = np.sum(an_t0_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                            
+                            char_grads.append([
+                                dWdX_el * m_p, dWdL_el * m_p, W_el * m_p_minus_1, dWdh_el * m_p,
+                                dWdy0_el * m_p, dWdt0_el * m_p
+                            ])
+                        else:
+                            char_grads.append([
+                                dWdX_el * m_p, dWdL_el * m_p, W_el * m_p_minus_1
+                            ])
         else:
             # Fallback to finite difference or implement other modes
             return self._map_logic(x_vars, power), None
@@ -277,6 +343,26 @@ class GGPVectorizedGeometryDiscipline(Discipline):
         # ds/dxs = (exp(pa*xs/a) * 1 / (exp(pa*xs/a)+1)^2) / (a * (exp(-pa) + 1/(exp(pa*xs/a)+1))) / (1-s0)
         ds_dxs = (inner_exp / (inner_exp + 1.0)**2) / (a * (np.exp(-pa) + 1.0/(inner_exp + 1.0))) / (1.0 - self.s0)
         
+        # Check if continuous logic was triggered
+        is_continuous = self.mode in ['ALM', '2D_ALM'] and len(x_vars) == (2 * self.comp_per_layer * self.num_layers + self.num_layers + self.comp_per_layer)
+        if is_continuous:
+            # We must assemble total_jac for x, L, h, m
+            total_jac = np.zeros((self.num_elements, len(x_vars)))
+            np_val = self.comp_per_layer
+            nY = self.num_layers
+            
+            for i in range(np_val):
+                factor = ds_dxs * dKS_dV[i]
+                # dX
+                total_jac[:, 0 : np_val*nY] += factor[:, np.newaxis] * char_grads_continuous[i]['dX'].T
+                # dL
+                total_jac[:, np_val*nY : 2*np_val*nY] += factor[:, np.newaxis] * char_grads_continuous[i]['dL'].T
+                # dh
+                total_jac[:, 2*np_val*nY : 2*np_val*nY + nY] += factor[:, np.newaxis] * char_grads_continuous[i]['dh'].T
+                # dM (only the i-th component is affected)
+                total_jac[:, 2*np_val*nY + nY + i] += factor * char_grads_continuous[i]['dM']
+            return rho, total_jac
+
         # Total Jacobian: drho/dp_ij = (ds/dxs) * (dKS/dV_i) * (dVi/dp_ij)
         if self.mode == '2D_ALM' and len(x_vars) == (self.num_components * 4 + 2):
             total_jac = np.zeros((self.num_elements, self.num_components * num_vars + 2))
@@ -292,6 +378,7 @@ class GGPVectorizedGeometryDiscipline(Discipline):
             for i in range(self.num_components):
                 for j in range(num_vars):
                     total_jac[:, i*num_vars + j] = ds_dxs * dKS_dV[i] * char_grads[i][j]
+
                     
         return rho, total_jac
 
@@ -421,6 +508,12 @@ class GGPPhysicsFastDiscipline(Discipline):
         self.input_grammar.update_from_names(["rho_E", "rho_V"])
         self.output_grammar.update_from_names(["compliance", "volume"])
         self.last_u = None
+        
+        # Deactivate gradient history storage
+        if hasattr(self, 'cache'):
+            self.cache = None
+        if hasattr(self, 'cache_type'):
+            self.cache_type = Discipline.CacheType.NONE
 
     def _run(self, input_data=None):
         import time
@@ -432,7 +525,8 @@ class GGPPhysicsFastDiscipline(Discipline):
         # Penalize Young's Modulus
         Emin = float(self.solver.Emin)
         E0 = float(self.solver.E0)
-        E_vals = Emin + rho_E * (E0 - Emin)
+        p_b = float(self.solver.p)
+        E_vals = Emin + (rho_E ** p_b) * (E0 - Emin)
         
         # Assemble Global Stiffness Matrix K
         from scipy.sparse import coo_matrix
@@ -474,11 +568,11 @@ class GGPPhysicsFastDiscipline(Discipline):
         self.local_data["volume"] = np.array([(volume - self.volfrac) / self.volfrac * 100.0])
         
         # --- Gradients ---
-        dE_drho = (E0 - Emin)
+        dE_drho = p_b * (rho_E ** (p_b - 1.0)) * (E0 - Emin)
         grad_C = np.zeros(self.num_elements)
         for i in range(self.num_elements):
             u_e = u_vec[self.cell_dofs[i]]
-            grad_C[i] = -dE_drho * np.dot(u_e, np.dot(self.ke_ref, u_e))
+            grad_C[i] = -dE_drho[i] * np.dot(u_e, np.dot(self.ke_ref, u_e))
         
         self.dj_drhoE = grad_C / (compliance + 1.0)
         self.dv_drhoV = np.ones(self.num_elements) * (100.0 / (self.volfrac * self.num_elements))

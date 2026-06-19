@@ -64,6 +64,23 @@ To combine multiple overlapping components into a single global density field :m
 
 Because the KS function can exceed 1.0 (causing issues for physics solvers), we apply a **smooth saturation function** to strictly bound the final density :math:`\rho \in [0, 1]`.
 
+3. Continuous Additive Layer Manufacturing (ALM) Mapping
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+To rigorously enforce Additive Manufacturing overhang constraints natively through the geometry parameterization, the framework employs a continuous layer mapping formulation (matching the original ALM paper).
+
+Instead of deploying floating primitives, the ALM formulation constructs a cohesive part made of :math:`N_y` stacked horizontal layers (or trapezoidal segments).
+The design variables represent continuous nodal coordinates exactly at the layer interfaces:
+
+- **Horizontal Coordinates** :math:`X_k \in \mathbb{R}^{N_y \times N_p}`
+- **Layer Widths** :math:`L_k \in \mathbb{R}^{N_y \times N_p}`
+- **Layer Heights** :math:`h \in \mathbb{R}^{N_y}`
+- **Component Densities** :math:`m \in \mathbb{R}^{N_p}`
+
+The total number of optimization parameters is exactly :math:`(2 \times N_y \times N_p) + N_y + N_p`.
+
+The continuous mapping analytically interpolates between the top boundary :math:`(X_{k+1}, L_{k+1}, y_{k+1})` and bottom boundary :math:`(X_k, L_k, y_k)` of each layer :math:`k` to construct continuous trapezoidal blocks. The constraints on these :math:`X_k` coordinates mathematically guarantee maximum overhang angle requirements between consecutive layers without needing heuristic density filters.
+
 Finite Element Solver
 ---------------------
 

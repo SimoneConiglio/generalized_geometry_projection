@@ -38,7 +38,7 @@ def run_alm_cantilever(max_iter=50):
     solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec, p=3.0)
     mapper = GeometryFactory.create_mapper("2D_ALM", mesh=mesh, num_layers=num_layers, 
                                           components_per_layer=comp_per_layer, layer_height=layer_height)
-    x_init = mapper.get_initial_design(L, H, extended=True)
+    x_init = mapper.get_initial_design(L, H, extended=True, initial_mc=1.0, initial_volfrac=volfrac)
     
     lb_comp = [0.0, 1.0, 0.0, 0.0] * mapper.num_components
     ub_comp = [L, L, 1.0, layer_height] * mapper.num_components
@@ -52,9 +52,9 @@ def run_alm_cantilever(max_iter=50):
 
     # --- Hybrid Modular Architecture ---
     geom_disc = GGPVectorizedGeometryDiscipline(
-        mesh, mapper.num_components, mode='ALM', 
+        mesh, mapper.num_components, mode='ALM',
         num_layers=num_layers, comp_per_layer=comp_per_layer, layer_height=layer_height,
-        xt=0.30, pp=10.0, r_gp=0.5
+        pp=10.0, r_gp=0.5, lb=lb, ub=ub
     )
     phys_disc = GGPPhysicsAdjointDiscipline(solver, mesh, mesh_area=L*H, volfrac=volfrac)
     

@@ -14,8 +14,8 @@ def test_alm_initial_design():
     mesh = df.UnitSquareMesh(2, 2)
     mapper = GGP2DALMMapper(mesh, num_layers=10, components_per_layer=1, layer_height=0.1)
     x_init = mapper.get_initial_design(10.0, 1.0)
-    # 10 layers * 1 comp/layer * 3 variables = 30
-    assert len(x_init) == 30
+    # 10 layers * 1 comp/layer * 2 (X, L) + 10 heights + 1 mass = 31
+    assert len(x_init) == 31
 
 def test_overhang_constraints_shape():
     A, b = create_alm_overhang_constraints(num_layers=10, comp_per_layer=1, layer_height=1.0, alpha_deg=45.0)
