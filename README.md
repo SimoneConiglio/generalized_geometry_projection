@@ -53,23 +53,25 @@ The framework relies heavily on FEniCS, which is best installed via Conda.
    pytest tests/
    ```
 
-## 🧠 Running Examples
+## 🧠 Running Optimizations via CLI
 
-Three classical topology optimization examples are provided in the `examples/` directory.
+A unified Command-Line Interface (`ggp.py`) is provided in the project root to quickly run topology optimizations with varying algorithms, formulations, and test cases.
 
 ```bash
-# Run the Short Cantilever benchmark
-python examples/ex01_short_cantilever.py
+# Run the Short Cantilever benchmark using the Free formulation
+python ggp.py optimize --use-case Short_Cantilever --formulation Free --max-iter 50
 
-# Run the MBB Beam benchmark
-python examples/ex02_mbb_beam.py
+# Run the MBB Beam benchmark using the Free formulation
+python ggp.py optimize --use-case MBB --formulation Free --max-iter 50
 
-# Run the L-Shape Bracket benchmark
-python examples/ex03_l_shape_bracket.py
+# Run the L-Shape Bracket benchmark using the Free formulation
+python ggp.py optimize --use-case L-shape --formulation Free --max-iter 50
 
-# Run the ALM Cantilever with Overhang Constraints
-python examples/ex04_alm_cantilever.py
+# Run the ALM Cantilever with Overhang Constraints (Continuous Alternating AL Formulation)
+python ggp.py optimize --use-case Short_Cantilever --formulation ALM_Alternating --max-iter 30 --max-inner 10
 ```
+
+For more details on CLI options, see the [CLI User Guide](https://simoneconiglio.github.io/generalized_geometry_projection/cli_guide.html).
 
 ## 🏗️ Architecture
 
