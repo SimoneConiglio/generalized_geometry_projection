@@ -30,16 +30,12 @@ This command runs an end-to-end topology optimization scenario.
 
 * ``--formulation`` : Choose the generalized geometry projection method.
   
-  * *Choices:* ``Free``, ``ALM``, ``ALM_Alternating``, ``2D_Free``, ``3D_Free``
+  * *Choices:* ``Free``, ``ALM``, ``2D_Free``, ``3D_Free``
   * *Default:* ``Free``
 
 * ``--max-iter`` : Maximum number of optimization iterations.
   
   * *Default:* ``50``
-
-* ``--max-inner`` : Maximum number of inner iterations (for Alternating ALM).
-  
-  * *Default:* ``10``
 
 Examples
 ========
@@ -50,8 +46,8 @@ Run a standard Free formulation optimization on an MBB beam:
 
    python ggp.py optimize --use-case MBB --formulation Free --max-iter 100
 
-Run an ALM continuous formulation optimization using the Alternating Augmented Lagrangian algorithm:
+Run an ALM continuous formulation optimization:
 
 .. code-block:: bash
 
-   python ggp.py optimize --use-case Short_Cantilever --formulation ALM_Alternating --max-iter 30 --max-inner 10
+   python ggp.py optimize --use-case Short_Cantilever --formulation ALM --max-iter 30

@@ -114,18 +114,13 @@
 </li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--formulation</span></code> : Choose the generalized geometry projection method.</p>
 <ul>
-<li><p><em>Choices:</em> <code class="docutils literal notranslate"><span class="pre">Free</span></code>, <code class="docutils literal notranslate"><span class="pre">ALM</span></code>, <code class="docutils literal notranslate"><span class="pre">ALM_Alternating</span></code>, <code class="docutils literal notranslate"><span class="pre">2D_Free</span></code>, <code class="docutils literal notranslate"><span class="pre">3D_Free</span></code></p></li>
+<li><p><em>Choices:</em> <code class="docutils literal notranslate"><span class="pre">Free</span></code>, <code class="docutils literal notranslate"><span class="pre">ALM</span></code>, <code class="docutils literal notranslate"><span class="pre">2D_Free</span></code>, <code class="docutils literal notranslate"><span class="pre">3D_Free</span></code></p></li>
 <li><p><em>Default:</em> <code class="docutils literal notranslate"><span class="pre">Free</span></code></p></li>
 </ul>
 </li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--max-iter</span></code> : Maximum number of optimization iterations.</p>
 <ul>
 <li><p><em>Default:</em> <code class="docutils literal notranslate"><span class="pre">50</span></code></p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--max-inner</span></code> : Maximum number of inner iterations (for Alternating ALM).</p>
-<ul>
-<li><p><em>Default:</em> <code class="docutils literal notranslate"><span class="pre">10</span></code></p></li>
 </ul>
 </li>
 </ul>
@@ -137,8 +132,8 @@
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>ggp.py<span class="w"> </span>optimize<span class="w"> </span>--use-case<span class="w"> </span>MBB<span class="w"> </span>--formulation<span class="w"> </span>Free<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">100</span>
 </pre></div>
 </div>
-<p>Run an ALM continuous formulation optimization using the Alternating Augmented Lagrangian algorithm:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>ggp.py<span class="w"> </span>optimize<span class="w"> </span>--use-case<span class="w"> </span>Short_Cantilever<span class="w"> </span>--formulation<span class="w"> </span>ALM_Alternating<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">30</span><span class="w"> </span>--max-inner<span class="w"> </span><span class="m">10</span>
+<p>Run an ALM continuous formulation optimization:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>ggp.py<span class="w"> </span>optimize<span class="w"> </span>--use-case<span class="w"> </span>Short_Cantilever<span class="w"> </span>--formulation<span class="w"> </span>ALM<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">30</span>
 </pre></div>
 </div>
 </section>
