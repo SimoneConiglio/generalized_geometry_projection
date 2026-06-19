@@ -544,8 +544,37 @@ window.runMermaid = runMermaid;</script>
 <p>The <strong>Generalized Geometry Projection (GGP)</strong> method parametrizes a design domain using explicit geometric primitives (e.g., rectangles, ellipses) rather than a dense grid of pixel densities. This framework implements the 2D Free formulation based on the original work by Coniglio et al.</p>
 <section id="primitive-mapping">
 <h3>1. Primitive Mapping<a class="headerlink" href="#primitive-mapping" title="Link to this heading"></a></h3>
-<p>Each component <span class="math notranslate nohighlight">\(i\)</span> is defined by a set of continuous variables <span class="math notranslate nohighlight">\(x_i = [X_c, Y_c, L, H, \theta]\)</span>.
-The signed distance field <span class="math notranslate nohighlight">\(\psi_i(x, y)\)</span> of a primitive is smoothed to ensure differentiability. The local density <span class="math notranslate nohighlight">\(\rho_i(x, y)\)</span> is obtained via a <strong>Regularized Heaviside function</strong>, ensuring that the density smoothly transitions from 1 (inside the component) to 0 (outside) over a narrow band <span class="math notranslate nohighlight">\(\epsilon_{mna}\)</span>.</p>
+<p>Each component <span class="math notranslate nohighlight">\(i\)</span> is defined by a set of continuous variables <span class="math notranslate nohighlight">\(x_i = [X_c, Y_c, L, H, \theta]\)</span>, representing its center coordinates, length, thickness, and orientation angle.</p>
+<p>To determine the density contribution of a primitive at any spatial point <span class="math notranslate nohighlight">\((x, y)\)</span>, the method computes the projection in four steps:</p>
+<p><strong>Step 1: Local Coordinates</strong>
+The coordinates are translated and rotated to the component’s local reference frame:</p>
+<div class="math notranslate nohighlight">
+\[\Delta x = x - X_c, \quad \Delta y = y - Y_c\]</div>
+<div class="math notranslate nohighlight">
+\[x_{loc} = \Delta x \cos\theta + \Delta y \sin\theta\]</div>
+<div class="math notranslate nohighlight">
+\[y_{loc} = -\Delta x \sin\theta + \Delta y \cos\theta\]</div>
+<p><strong>Step 2: Skeleton Distance</strong>
+The distance <span class="math notranslate nohighlight">\(\psi_i(x,y)\)</span> from the point to the component’s central skeleton (a line segment of length <span class="math notranslate nohighlight">\(L\)</span>) is calculated:</p>
+<div class="math notranslate nohighlight">
+\[d_x = \max(0, |x_{loc}| - L/2)\]</div>
+<div class="math notranslate nohighlight">
+\[\psi_i(x, y) = \sqrt{d_x^2 + y_{loc}^2}\]</div>
+<p><strong>Step 3: Signed Distance</strong>
+The signed distance variable <span class="math notranslate nohighlight">\(\zeta\)</span> evaluates whether the point is inside or outside the component’s boundary (thickness <span class="math notranslate nohighlight">\(H\)</span>):</p>
+<div class="math notranslate nohighlight">
+\[\zeta = \psi_i(x, y) - H/2\]</div>
+<p>(<span class="math notranslate nohighlight">\(\zeta &lt; 0\)</span> inside, <span class="math notranslate nohighlight">\(\zeta &gt; 0\)</span> outside).</p>
+<p><strong>Step 4: Regularized Mapping</strong>
+To ensure strict differentiability for gradient-based optimization, the local density <span class="math notranslate nohighlight">\(\rho_i(x,y)\)</span> is mapped from <span class="math notranslate nohighlight">\(\zeta\)</span> using a smoothed area-fraction function over a narrow transition band <span class="math notranslate nohighlight">\(r_{gp}\)</span>:</p>
+<div class="math notranslate nohighlight">
+\[\begin{split}\rho_i(x, y) =
+\begin{cases}
+1 &amp; \text{if } \zeta &lt; -r_{gp} \\
+\delta_{min} + (1 - \delta_{min}) \frac{1}{\pi} \left( \arccos(z) - z \sqrt{1 - z^2} \right) &amp; \text{if } -r_{gp} \le \zeta \le r_{gp} \\
+\delta_{min} &amp; \text{if } \zeta &gt; r_{gp}
+\end{cases}\end{split}\]</div>
+<p>where <span class="math notranslate nohighlight">\(z = \zeta / r_{gp}\)</span> is the normalized distance inside the transition band, and <span class="math notranslate nohighlight">\(\delta_{min}\)</span> is a tiny void density (e.g., <span class="math notranslate nohighlight">\(10^{-6}\)</span>) to prevent global stiffness matrix singularities.</p>
 </section>
 <section id="saturated-kreisselmeier-steinhauser-ks-aggregation">
 <h3>2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation<a class="headerlink" href="#saturated-kreisselmeier-steinhauser-ks-aggregation" title="Link to this heading"></a></h3>
