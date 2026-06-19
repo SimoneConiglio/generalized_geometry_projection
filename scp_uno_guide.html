@@ -1,0 +1,168 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sequential Convex Programming (SCP) Framework &mdash; ggp 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=f281be69"></script>
+      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+      <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
+      <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Examples" href="examples.html" />
+    <link rel="prev" title="Additive Manufacturing Constraints" href="alm_guide.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            ggp
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_guide.html">Developer Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="alm_guide.html">Additive Manufacturing Constraints</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Sequential Convex Programming (SCP) Framework</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#overview">Overview</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#algorithms">Algorithms</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#monotone-backtracking-line-search">Monotone Backtracking Line-Search</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#inner-solvers">Inner Solvers</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#settings-configuration">Settings Configuration</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits &amp; Dependencies</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">ggp</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Sequential Convex Programming (SCP) Framework</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/scp_uno_guide.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="sequential-convex-programming-scp-framework">
+<h1>Sequential Convex Programming (SCP) Framework<a class="headerlink" href="#sequential-convex-programming-scp-framework" title="Link to this heading"></a></h1>
+<p>The <code class="docutils literal notranslate"><span class="pre">scp_uno</span></code> package implements a robust Sequential Convex Programming framework integrated with the GEMSEO environment. It is tailored for highly non-linear and non-convex problems such as Topology Optimization.</p>
+<section id="overview">
+<h2>Overview<a class="headerlink" href="#overview" title="Link to this heading"></a></h2>
+<p>The core idea of SCP is to replace a difficult, non-convex optimization problem with a sequence of simpler, convex approximations (subproblems). Each subproblem is solved, the design variables are updated, and a new approximation is constructed until convergence is reached.</p>
+</section>
+<section id="algorithms">
+<h2>Algorithms<a class="headerlink" href="#algorithms" title="Link to this heading"></a></h2>
+<p>The framework provides three major algorithms:</p>
+<ol class="arabic simple">
+<li><p><strong>Method of Moving Asymptotes (MMA)</strong>:
+The gold standard for topology optimization. It builds a strictly convex approximation by introducing reciprocal variables with dynamically updated asymptotes. This naturally injects curvature, safely preventing reciprocal singularities and steering the optimizer efficiently away from constraint boundaries.</p></li>
+<li><p><strong>Convex Linearization (CONLIN)</strong>:
+A simpler predecessor to MMA. It uses linear approximations for terms with positive derivatives and reciprocal approximations for negative derivatives. To ensure stability and prevent singularities near zero, strict move-limit boxes and lower bounds are actively enforced on the subproblems.</p></li>
+<li><p><strong>Sequential Linear Programming (SLP)</strong>:
+The simplest approximation scheme, completely linearizing the objective and constraints at each iterate. It does not capture curvature and can only reliably descend when paired with strict move-limit bounds. By default, our SLP implementation uses GEMSEO’s exact HiGHS <code class="docutils literal notranslate"><span class="pre">DUAL_SIMPLEX</span></code> LP solver, bypassing Jacobian calls in the inner loop.</p></li>
+</ol>
+</section>
+<section id="monotone-backtracking-line-search">
+<h2>Monotone Backtracking Line-Search<a class="headerlink" href="#monotone-backtracking-line-search" title="Link to this heading"></a></h2>
+<p>All approximation algorithms in the framework can optionally enable a <strong>Monotone Backtracking Line-Search</strong> mechanism (<code class="docutils literal notranslate"><span class="pre">use_line_search=True</span></code>).</p>
+<p>When enabled, the framework:
+1. Evaluates an <span class="math notranslate nohighlight">\(L_1\)</span> penalty merit function: <span class="math notranslate nohighlight">\(\phi(x) = f(x) + \mu \sum_i \max(0, c_i(x))\)</span>
+2. Checks if the subproblem’s proposed step provides an Armijo sufficient decrease in <span class="math notranslate nohighlight">\(\phi(x)\)</span>.
+3. If not, it backtracks along the proposed step direction until the merit function decreases.</p>
+<p>This serves as a powerful stabilizing safeguard, completely eliminating wild objective spikes and constraint violations when the local convex (or linear) approximations are too optimistic.</p>
+</section>
+<section id="inner-solvers">
+<h2>Inner Solvers<a class="headerlink" href="#inner-solvers" title="Link to this heading"></a></h2>
+<p>The convex (or linear) subproblems can be solved by various internal engines:
+- <strong>Scipy SLSQP</strong>: Reliable SQP engine ideal for MMA and CONLIN subproblems.
+- <strong>HiGHS (Dual Simplex)</strong>: High-performance exact LP solver utilized natively by SLP.
+- <strong>Uno</strong>: High-performance C++ engine for nonlinearly constrained optimization (via the <code class="docutils literal notranslate"><span class="pre">unopy</span></code> wrapper).</p>
+</section>
+<section id="settings-configuration">
+<h2>Settings Configuration<a class="headerlink" href="#settings-configuration" title="Link to this heading"></a></h2>
+<p>All algorithms share a unified <code class="docutils literal notranslate"><span class="pre">SCPSettings</span></code> Pydantic model. Key parameters include:
+- <code class="docutils literal notranslate"><span class="pre">max_iter</span></code>: Maximum number of outer iterations.
+- <code class="docutils literal notranslate"><span class="pre">max_optimization_step</span></code>: Strict move limits enforcing maximum design variable change per iteration.
+- <code class="docutils literal notranslate"><span class="pre">use_line_search</span></code>: Toggle for the monotone backtracking line-search.
+- <code class="docutils literal notranslate"><span class="pre">line_search_penalty</span></code>: The <span class="math notranslate nohighlight">\(\mu\)</span> multiplier weighing constraint violations against objective changes.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="alm_guide.html" class="btn btn-neutral float-left" title="Additive Manufacturing Constraints" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="examples.html" class="btn btn-neutral float-right" title="Examples" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Simone Coniglio.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>

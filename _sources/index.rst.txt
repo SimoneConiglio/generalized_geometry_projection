@@ -18,5 +18,6 @@ documentation for details.
    installation
    developer_guide
    alm_guide
+   scp_uno_guide
    examples
    credits
