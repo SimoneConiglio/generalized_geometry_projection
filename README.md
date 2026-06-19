@@ -67,8 +67,8 @@ python ggp.py optimize --use-case MBB --formulation Free --max-iter 50
 # Run the L-Shape Bracket benchmark using the Free formulation
 python ggp.py optimize --use-case L-shape --formulation Free --max-iter 50
 
-# Run the ALM Cantilever with Overhang Constraints (Continuous Alternating AL Formulation)
-python ggp.py optimize --use-case Short_Cantilever --formulation ALM_Alternating --max-iter 30 --max-inner 10
+# Run the ALM Cantilever with Overhang Constraints
+python ggp.py optimize --use-case Short_Cantilever --formulation ALM --max-iter 30
 ```
 
 For more details on CLI options, see the [CLI User Guide](https://simoneconiglio.github.io/generalized_geometry_projection/cli_guide.html).
