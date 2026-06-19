@@ -47,33 +47,50 @@ class CONLIN(SequentialConvexProgramming):
         con_k: list[ndarray],
         grad_con_k: list[ndarray]
     ) -> OptimizationProblem:
-        """Create the CONLIN approximate subproblem."""
-        
+        """Create the CONLIN approximate subproblem with move limits."""
+
         n = len(x_k)
         lb_orig = original_problem.design_space.get_lower_bounds()
         ub_orig = original_problem.design_space.get_upper_bounds()
+        s = ub_orig - lb_orig
+
+        # Move-limited design space (same pattern as MMA)
+        move = self._settings.max_optimization_step
+        lb_move = np.maximum(lb_orig, x_k - move * s)
+        ub_move = np.minimum(ub_orig, x_k + move * s)
+        # Ensure x_k_safe stays positive so reciprocal terms don't blow up
+        lb_move = np.maximum(lb_move, 1e-8)
+
+        from gemseo.algos.design_space import DesignSpace
+        sub_ds = DesignSpace()
+        for var in original_problem.design_space.variable_names:
+            size = original_problem.design_space.variable_sizes[var]
+            sub_ds.add_variable(var, size, lower_bound=lb_move, upper_bound=ub_move, value=x_k)
 
         def build_conlin_approx(val_k, grad_k, name):
             x_k_safe = np.maximum(x_k, 1e-6)
             p = np.where(grad_k > 0, grad_k, 0.0)
-            q = np.where(grad_k < 0, -grad_k * (x_k_safe**2), 0.0)
+            q = np.where(grad_k < 0, -grad_k * (x_k_safe ** 2), 0.0)
             c_term = val_k - np.sum(p * x_k) - np.sum(q / x_k_safe)
 
             def func(x):
                 return c_term + np.sum(p * x) + np.sum(q / np.maximum(x, 1e-8))
-            
+
             def jac(x):
-                return (p - q / np.maximum(x, 1e-8)**2).reshape(1, -1)
+                return (p - q / np.maximum(x, 1e-8) ** 2).reshape(1, -1)
 
             return MDOFunction(func, name, jac=jac)
 
-        sub_problem = OptimizationProblem(original_problem.design_space)
+        sub_problem = OptimizationProblem(sub_ds)
         sub_problem.objective = build_conlin_approx(f_k[0], grad_f_k.flatten(), "conlin_obj")
-        
+
         full_grad_con = np.concatenate(grad_con_k, axis=0) if grad_con_k else np.empty((0, n))
         full_con_k = np.concatenate(con_k) if con_k else np.empty(0)
-        
+
         for i in range(len(full_con_k)):
-            sub_problem.add_constraint(build_conlin_approx(full_con_k[i], full_grad_con[i], f"conlin_con_{i}"), constraint_type="ineq")
+            sub_problem.add_constraint(
+                build_conlin_approx(full_con_k[i], full_grad_con[i], f"conlin_con_{i}"),
+                constraint_type="ineq",
+            )
 
         return sub_problem
