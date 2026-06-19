@@ -11,8 +11,48 @@ The **Generalized Geometry Projection (GGP)** method parametrizes a design domai
 1. Primitive Mapping
 ^^^^^^^^^^^^^^^^^^^^
 
-Each component :math:`i` is defined by a set of continuous variables :math:`x_i = [X_c, Y_c, L, H, \theta]`.
-The signed distance field :math:`\psi_i(x, y)` of a primitive is smoothed to ensure differentiability. The local density :math:`\rho_i(x, y)` is obtained via a **Regularized Heaviside function**, ensuring that the density smoothly transitions from 1 (inside the component) to 0 (outside) over a narrow band :math:`\epsilon_{mna}`.
+Each component :math:`i` is defined by a set of continuous variables :math:`x_i = [X_c, Y_c, L, H, \theta]`, representing its center coordinates, length, thickness, and orientation angle. 
+
+To determine the density contribution of a primitive at any spatial point :math:`(x, y)`, the method computes the projection in four steps:
+
+**Step 1: Local Coordinates**
+The coordinates are translated and rotated to the component's local reference frame:
+
+.. math::
+    \Delta x = x - X_c, \quad \Delta y = y - Y_c
+.. math::
+    x_{loc} = \Delta x \cos\theta + \Delta y \sin\theta
+.. math::
+    y_{loc} = -\Delta x \sin\theta + \Delta y \cos\theta
+
+**Step 2: Skeleton Distance**
+The distance :math:`\psi_i(x,y)` from the point to the component's central skeleton (a line segment of length :math:`L`) is calculated:
+
+.. math::
+    d_x = \max(0, |x_{loc}| - L/2)
+.. math::
+    \psi_i(x, y) = \sqrt{d_x^2 + y_{loc}^2}
+
+**Step 3: Signed Distance**
+The signed distance variable :math:`\zeta` evaluates whether the point is inside or outside the component's boundary (thickness :math:`H`):
+
+.. math::
+    \zeta = \psi_i(x, y) - H/2
+
+(:math:`\zeta < 0` inside, :math:`\zeta > 0` outside).
+
+**Step 4: Regularized Mapping**
+To ensure strict differentiability for gradient-based optimization, the local density :math:`\rho_i(x,y)` is mapped from :math:`\zeta` using a smoothed area-fraction function over a narrow transition band :math:`r_{gp}`:
+
+.. math::
+    \rho_i(x, y) = 
+    \begin{cases} 
+    1 & \text{if } \zeta < -r_{gp} \\
+    \delta_{min} + (1 - \delta_{min}) \frac{1}{\pi} \left( \arccos(z) - z \sqrt{1 - z^2} \right) & \text{if } -r_{gp} \le \zeta \le r_{gp} \\
+    \delta_{min} & \text{if } \zeta > r_{gp} 
+    \end{cases}
+
+where :math:`z = \zeta / r_{gp}` is the normalized distance inside the transition band, and :math:`\delta_{min}` is a tiny void density (e.g., :math:`10^{-6}`) to prevent global stiffness matrix singularities.
 
 2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
