@@ -59,6 +59,7 @@
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="developer_guide.html">Developer Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="3d_optimization.html">3D Topology Optimization Framework</a></li>
 <li class="toctree-l1"><a class="reference internal" href="alm_guide.html">Additive Manufacturing Constraints</a></li>
 <li class="toctree-l1"><a class="reference internal" href="scp_uno_guide.html">Sequential Convex Programming (SCP) Framework</a></li>
 <li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
@@ -114,7 +115,7 @@
 </li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--formulation</span></code> : Choose the generalized geometry projection method.</p>
 <ul>
-<li><p><em>Choices:</em> <code class="docutils literal notranslate"><span class="pre">Free</span></code>, <code class="docutils literal notranslate"><span class="pre">ALM</span></code>, <code class="docutils literal notranslate"><span class="pre">2D_Free</span></code>, <code class="docutils literal notranslate"><span class="pre">3D_Free</span></code></p></li>
+<li><p><em>Choices:</em> <code class="docutils literal notranslate"><span class="pre">Free</span></code>, <code class="docutils literal notranslate"><span class="pre">ALM</span></code>, <code class="docutils literal notranslate"><span class="pre">3D_Free</span></code>, <code class="docutils literal notranslate"><span class="pre">3D_ALM</span></code></p></li>
 <li><p><em>Default:</em> <code class="docutils literal notranslate"><span class="pre">Free</span></code></p></li>
 </ul>
 </li>
@@ -134,12 +135,17 @@
 <li><p><em>Usage:</em> Often recommended when using <code class="docutils literal notranslate"><span class="pre">SLP</span></code>.</p></li>
 </ul>
 </li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--length</span></code> &amp; <code class="docutils literal notranslate"><span class="pre">--height</span></code> : Domain length (L) and height (H).</p>
+<li><p><code class="docutils literal notranslate"><span class="pre">--iterative</span></code> : Toggle the use of high-performance iterative solvers (PETSc GAMG) instead of memory-heavy direct solvers.</p>
+<ul>
+<li><p><em>Usage:</em> Highly recommended and effectively required for <code class="docutils literal notranslate"><span class="pre">3D_Free</span></code> or <code class="docutils literal notranslate"><span class="pre">3D_ALM</span></code> formulations due to scale.</p></li>
+</ul>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--length</span></code> &amp; <code class="docutils literal notranslate"><span class="pre">--height</span></code> : Domain length (L) and height (H). For 3D, depth (D) equals height (H).</p>
 <ul>
 <li><p><em>Default:</em> Depends on the <code class="docutils literal notranslate"><span class="pre">--use-case</span></code>.</p></li>
 </ul>
 </li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--nelx</span></code> &amp; <code class="docutils literal notranslate"><span class="pre">--nely</span></code> : Number of elements in X and Y directions.</p>
+<li><p><code class="docutils literal notranslate"><span class="pre">--nelx</span></code> &amp; <code class="docutils literal notranslate"><span class="pre">--nely</span></code> : Number of elements in X and Y directions. For 3D, <code class="docutils literal notranslate"><span class="pre">nelz</span></code> equals <code class="docutils literal notranslate"><span class="pre">nely</span></code>.</p>
 <ul>
 <li><p><em>Default:</em> Depends on the <code class="docutils literal notranslate"><span class="pre">--use-case</span></code>.</p></li>
 </ul>
@@ -160,6 +166,10 @@
 </div>
 <p>Run an ALM continuous formulation optimization with a custom mesh and volume fraction:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>ggp.py<span class="w"> </span>optimize<span class="w"> </span>--use-case<span class="w"> </span>Short_Cantilever<span class="w"> </span>--formulation<span class="w"> </span>ALM<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">30</span><span class="w"> </span>--nelx<span class="w"> </span><span class="m">120</span><span class="w"> </span>--nely<span class="w"> </span><span class="m">60</span><span class="w"> </span>--volfrac<span class="w"> </span><span class="m">0</span>.5
+</pre></div>
+</div>
+<p>Run a 3D topology optimization using scalable PETSc iterative solvers (with automated ParaView XDMF outputs):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>run<span class="w"> </span>-n<span class="w"> </span>samo_agents<span class="w"> </span>python<span class="w"> </span>ggp.py<span class="w"> </span>optimize<span class="w"> </span>--use-case<span class="w"> </span>Short_Cantilever<span class="w"> </span>--formulation<span class="w"> </span>3D_Free<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">30</span><span class="w"> </span>--iterative
 </pre></div>
 </div>
 </section>

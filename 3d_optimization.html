@@ -1,0 +1,178 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>3D Topology Optimization Framework &mdash; ggp 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=f281be69"></script>
+      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Additive Manufacturing Constraints" href="alm_guide.html" />
+    <link rel="prev" title="Developer Guide" href="developer_guide.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            ggp
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli_guide.html">Command-Line Interface (CLI)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_guide.html">Developer Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">3D Topology Optimization Framework</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#d-formulations">3D Formulations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#high-performance-solving-fenics-petsc">High-Performance Solving (FEniCS + PETSc)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#xdmf-visualization-paraview">XDMF Visualization &amp; ParaView</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#cli-usage">CLI Usage</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="alm_guide.html">Additive Manufacturing Constraints</a></li>
+<li class="toctree-l1"><a class="reference internal" href="scp_uno_guide.html">Sequential Convex Programming (SCP) Framework</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits &amp; Dependencies</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">ggp</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">3D Topology Optimization Framework</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/3d_optimization.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="d-topology-optimization-framework">
+<h1>3D Topology Optimization Framework<a class="headerlink" href="#d-topology-optimization-framework" title="Link to this heading"></a></h1>
+<p>The Generalized Geometry Projection (GGP) framework provides comprehensive support for <strong>3D Topology Optimization</strong>. Expanding beyond planar models, the 3D pipeline enables the synthesis of highly complex structural geometries under various loading conditions, fully integrated with high-performance physical solvers and state-of-the-art visualization pipelines.</p>
+<section id="d-formulations">
+<h2>3D Formulations<a class="headerlink" href="#d-formulations" title="Link to this heading"></a></h2>
+<p>The 3D framework introduces volumetric formulations designed to map continuous geometric entities into a 3D finite element mesh:</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">3D_Free</span></code>: This mode projects independent volumetric components (e.g., 3D round-ended capsules/cylinders) seamlessly into a 3D hexahedral grid. Each component is defined by 8 design variables:</p>
+<ol class="arabic simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">Xc</span></code>: Center X-coordinate</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Yc</span></code>: Center Y-coordinate</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Zc</span></code>: Center Z-coordinate</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">L</span></code>: Capsule Length</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">W</span></code>: Capsule Width/Thickness</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Theta</span></code>: Rotation Angle 1</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">Phi</span></code>: Rotation Angle 2</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">M</span></code>: Component Density/Presence</p></li>
+</ol>
+</li>
+</ul>
+<p>These continuous parameters are mapped analytically onto the 3D domain using a regularized Saturated KS function, ensuring fully differentiable constraints and volume evaluations.</p>
+</section>
+<section id="high-performance-solving-fenics-petsc">
+<h2>High-Performance Solving (FEniCS + PETSc)<a class="headerlink" href="#high-performance-solving-fenics-petsc" title="Link to this heading"></a></h2>
+<p>Scaling topology optimization from 2D to 3D exponentially increases the degrees of freedom (e.g., a standard 60x30x30 mesh contains 54,000 hexahedral elements and over 150,000 DOFs). To handle this, the 3D physics pipeline is deeply integrated with <strong>FEniCS</strong> and <strong>PETSc4py</strong>.</p>
+<p>Instead of utilizing direct LU solvers which suffer from massive memory overhead in 3D, the physics discipline automatically switches to scalable iterative solvers:</p>
+<ul class="simple">
+<li><p><strong>GAMG Preconditioner</strong>: The solver uses PETSc’s Algebraic Multigrid (GAMG) preconditioner to dramatically accelerate convergence.</p></li>
+<li><p><strong>CG Krylov Solver</strong>: The system evaluates linear elasticity deformations via the Conjugate Gradient (CG) method.</p></li>
+<li><p><strong>Multithreading</strong>: The JIT-compiled C++ expressions assemble the massive 3D stiffness kernels rapidly using multi-threading.</p></li>
+</ul>
+</section>
+<section id="xdmf-visualization-paraview">
+<h2>XDMF Visualization &amp; ParaView<a class="headerlink" href="#xdmf-visualization-paraview" title="Link to this heading"></a></h2>
+<p>In 3D, relying on generic Python plotting libraries (such as <code class="docutils literal notranslate"><span class="pre">matplotlib</span></code>) for rendering intersecting polygons becomes computationally intractable and visually cluttered.</p>
+<p>To solve this, the framework implements a native <strong>XDMF Exporter</strong>. During the optimization cycles, the GGP iterative loop seamlessly writes the instantaneous volumetric density field (<code class="docutils literal notranslate"><span class="pre">rho_V</span></code>) to standard <cite>.xdmf</cite> and <cite>.h5</cite> files.</p>
+<p><strong>Viewing in ParaView:</strong>
+1. Open the generated <code class="docutils literal notranslate"><span class="pre">density.xdmf</span></code> file within <strong>ParaView</strong>.
+2. ParaView automatically loads the data as a time-series dataset, allowing you to “Play” the optimization animation from iteration 0 to the end.
+3. Apply a <strong>Threshold</strong> filter to the <code class="docutils literal notranslate"><span class="pre">topology</span></code> scalar field (e.g., extracting regions where density &gt; 0.5) to view the solid material distribution.
+4. This method accurately reveals the precise 3D capsules mapped by the Saturated KS function natively within the finite element space.</p>
+</section>
+<section id="cli-usage">
+<h2>CLI Usage<a class="headerlink" href="#cli-usage" title="Link to this heading"></a></h2>
+<p>You can launch a 3D topology optimization task utilizing the iterative solvers directly from the CLI.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>run<span class="w"> </span>-n<span class="w"> </span>samo_agents<span class="w"> </span>python<span class="w"> </span>ggp.py<span class="w"> </span>optimize<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--use-case<span class="w"> </span>Short_Cantilever<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--formulation<span class="w"> </span>3D_Free<span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--max-iter<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
+<span class="w">  </span>--iterative
+</pre></div>
+</div>
+<p>This automatically establishes the 3D bounding box dimensions, launches the GAMG iterative solver, and produces the XDMF sequences for subsequent ParaView rendering.</p>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="developer_guide.html" class="btn btn-neutral float-left" title="Developer Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="alm_guide.html" class="btn btn-neutral float-right" title="Additive Manufacturing Constraints" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Simone Coniglio.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
