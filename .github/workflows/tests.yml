@@ -33,6 +33,7 @@ jobs:
       env:
         PYTHONPATH: .
       run: |
+        set -e
         pip install "setuptools<70"
         pytest --cov=ggp --cov-report=json tests/
         PERCENT=$(jq '.totals.percent_covered' coverage.json)
