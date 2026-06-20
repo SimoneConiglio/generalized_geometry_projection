@@ -4,7 +4,12 @@ from dolfin_adjoint import *
 import numpy as np
 from ggp.geometry.factory import GeometryFactory
 from ggp.physics.factory import PhysicsFactory
-from ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsAdjointDiscipline, GGPPhysicsFastDiscipline
+from ggp.gemseo_wrappers.modular_disciplines import (
+    GGPVectorizedGeometryDiscipline,
+    GGPPhysicsFastDiscipline,
+    GGPPhysicsAdjointDiscipline
+)
+from ggp.physics.elasticity import LinearElasticitySolver
 import gemseo
 from gemseo import create_scenario
 from gemseo.mda.mda_chain import MDAChain
@@ -79,6 +84,35 @@ def test_physics_fast_discipline():
     assert "rho_E" in phys_disc.jac["compliance"]
     assert phys_disc.jac["compliance"]["rho_E"].shape == (1, num_elements)
 
+def test_physics_fast_discipline_iterative():
+    mesh = UnitSquareMesh(5, 5)
+    V_u = VectorFunctionSpace(mesh, "CG", 1)
+    
+    def left_boundary(x, on_boundary): return on_boundary and near(x[0], 0.0)
+    bc = [DirichletBC(V_u, Constant((0.0, 0.0)), left_boundary)]
+    
+    boundaries = MeshFunction("size_t", mesh, mesh.topology().dim() - 1)
+    boundaries.set_all(0)
+    class RightBoundary(SubDomain):
+        def inside(self, x, on_boundary): return near(x[0], 1.0)
+    RightBoundary().mark(boundaries, 1)
+    ds_load = Measure("ds", domain=mesh, subdomain_data=boundaries)
+    L_rhs_vec = Constant((0.0, -1.0))
+    
+    solver = LinearElasticitySolver(V_u, bc, ds_load, L_rhs_vec)
+    mesh_area = 1.0
+    volfrac = 0.4
+    
+    phys_disc = GGPPhysicsFastDiscipline(solver, mesh, mesh_area, volfrac, iterative=True)
+    num_elements = mesh.num_cells()
+    rho = np.ones(num_elements) * 0.5
+    
+    phys_disc.execute({"rho_E": rho, "rho_V": rho})
+    assert "compliance" in phys_disc.local_data
+    
+    phys_disc._compute_jacobian()
+    assert "compliance" in phys_disc.jac
+
 def test_vectorized_geometry_scaling():
     """Verify scaling of GGPVectorizedGeometryDiscipline."""
     mesh = UnitSquareMesh(5, 5)
@@ -133,3 +167,18 @@ def test_3d_free_geometry_mode():
     
     geom_3d._compute_jacobian()
     assert geom_3d.jac["rho_E"]["x_vars"].shape == (mesh_3d.num_cells(), 16)
+
+def test_continuous_alm_geometry_mode():
+    mesh_2d = UnitSquareMesh(4, 4)
+    num_layers = 2
+    comp_per_layer = 1
+    num_components = num_layers * comp_per_layer
+    geom_2d = GGPVectorizedGeometryDiscipline(mesh_2d, num_components, mode='ALM', 
+                                              num_layers=num_layers, comp_per_layer=comp_per_layer)
+    # Continuous vars: [Xc, L, h, Mc] = 2*2 + 2 + 1 = 7? Wait, 2*comp_per_layer*num_layers + num_layers + comp_per_layer = 2*1*2 + 2 + 1 = 7
+    # For nY=2, np=1: Xc (2), L (2), h (2), Mc (1) -> total 7.
+    x_vars = np.array([0.5, 0.5, 0.2, 0.2, 0.5, 0.5, 1.0])
+    geom_2d.execute({"x_vars": x_vars})
+    assert "rho_E" in geom_2d.local_data
+    geom_2d._compute_jacobian()
+    assert geom_2d.jac["rho_E"]["x_vars"].shape == (mesh_2d.num_cells(), 7)
