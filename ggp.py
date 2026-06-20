@@ -25,6 +25,7 @@ def main():
     opt_parser.add_argument("--nelx", type=int, default=None, help="Number of elements in X direction")
     opt_parser.add_argument("--nely", type=int, default=None, help="Number of elements in Y direction")
     opt_parser.add_argument("--volfrac", type=float, default=0.4, help="Target volume fraction constraint")
+    opt_parser.add_argument("--iterative", action="store_true", help="Use petsc4py iterative PCG solver instead of direct solver")
     
     args = parser.parse_args()
     
@@ -41,7 +42,8 @@ def main():
             H_opt=args.height,
             nelx_opt=args.nelx,
             nely_opt=args.nely,
-            volfrac_opt=args.volfrac
+            volfrac_opt=args.volfrac,
+            iterative=args.iterative
         )
     else:
         parser.print_help()

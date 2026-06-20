@@ -30,7 +30,7 @@ This command runs an end-to-end topology optimization scenario.
 
 * ``--formulation`` : Choose the generalized geometry projection method.
   
-  * *Choices:* ``Free``, ``ALM``, ``2D_Free``, ``3D_Free``
+  * *Choices:* ``Free``, ``ALM``, ``3D_Free``, ``3D_ALM``
   * *Default:* ``Free``
 
 * ``--max-iter`` : Maximum number of optimization iterations.
@@ -46,11 +46,15 @@ This command runs an end-to-end topology optimization scenario.
   
   * *Usage:* Often recommended when using ``SLP``.
 
-* ``--length`` & ``--height`` : Domain length (L) and height (H).
+* ``--iterative`` : Toggle the use of high-performance iterative solvers (PETSc GAMG) instead of memory-heavy direct solvers.
+  
+  * *Usage:* Highly recommended and effectively required for ``3D_Free`` or ``3D_ALM`` formulations due to scale.
+
+* ``--length`` & ``--height`` : Domain length (L) and height (H). For 3D, depth (D) equals height (H).
   
   * *Default:* Depends on the ``--use-case``.
 
-* ``--nelx`` & ``--nely`` : Number of elements in X and Y directions.
+* ``--nelx`` & ``--nely`` : Number of elements in X and Y directions. For 3D, ``nelz`` equals ``nely``.
   
   * *Default:* Depends on the ``--use-case``.
 
@@ -72,3 +76,9 @@ Run an ALM continuous formulation optimization with a custom mesh and volume fra
 .. code-block:: bash
 
    python ggp.py optimize --use-case Short_Cantilever --formulation ALM --max-iter 30 --nelx 120 --nely 60 --volfrac 0.5
+
+Run a 3D topology optimization using scalable PETSc iterative solvers (with automated ParaView XDMF outputs):
+
+.. code-block:: bash
+
+   conda run -n samo_agents python ggp.py optimize --use-case Short_Cantilever --formulation 3D_Free --max-iter 30 --iterative

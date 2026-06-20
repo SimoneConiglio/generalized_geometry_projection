@@ -49,30 +49,38 @@ class GGPVectorizedGeometryDiscipline(Discipline):
         self.Z_mesh = midpoints[:, 2] if self.dim == 3 else None
         self.num_elements = len(self.X_mesh)
         
-        # Pre-calculate Sampling Window Gauss Points (2D only for now)
+        # Pre-calculate Sampling Window Gauss Points
+        pts, wts = np.polynomial.legendre.leggauss(Ngp)
+        pts = pts * r_gp # Map [-1, 1] to [-R, R]
+        wts = wts * r_gp
         if self.dim == 2:
-            pts, wts = np.polynomial.legendre.leggauss(Ngp)
-            pts = pts * r_gp # Map [-1, 1] to [-R, R]
-            wts = wts * r_gp
             gpcx, gpcy = np.meshgrid(pts, pts)
             self.gpc_x_rel = gpcx.flatten()
             self.gpc_y_rel = gpcy.flatten()
             self.gpc_wts = (wts[:, np.newaxis] * wts[np.newaxis, :]).flatten()
-            self.gpc_wts_sum = np.sum(self.gpc_wts)
-            
-            # Expanded coordinates for evaluation: (num_elements, Ngp^2)
-            self.X_eval = self.X_mesh[:, np.newaxis] + self.gpc_x_rel[np.newaxis, :]
-            self.Y_eval = self.Y_mesh[:, np.newaxis] + self.gpc_y_rel[np.newaxis, :]
-            # Flatten for vectorized mapping: (num_elements * Ngp^2,)
-            self.X_eval_flat = self.X_eval.flatten()
-            self.Y_eval_flat = self.Y_eval.flatten()
         else:
-            # 3D: Simplified to centroid for now or can be expanded
-            self.X_eval_flat = self.X_mesh
-            self.Y_eval_flat = self.Y_mesh
-            self.Z_eval_flat = self.Z_mesh
-            self.gpc_wts = np.array([1.0])
-            self.gpc_wts_sum = 1.0
+            gpcx, gpcy, gpcz = np.meshgrid(pts, pts, pts)
+            self.gpc_x_rel = gpcx.flatten()
+            self.gpc_y_rel = gpcy.flatten()
+            self.gpc_z_rel = gpcz.flatten()
+            
+            # W_xyz = w_x * w_y * w_z
+            w1 = (wts[:, np.newaxis] * wts[np.newaxis, :]).flatten()
+            self.gpc_wts = (w1[:, np.newaxis] * wts[np.newaxis, :]).flatten()
+            
+        self.gpc_wts_sum = np.sum(self.gpc_wts)
+        
+        # Expanded coordinates for evaluation: (num_elements, Ngp^d)
+        self.X_eval = self.X_mesh[:, np.newaxis] + self.gpc_x_rel[np.newaxis, :]
+        self.Y_eval = self.Y_mesh[:, np.newaxis] + self.gpc_y_rel[np.newaxis, :]
+        self.X_eval_flat = self.X_eval.flatten()
+        self.Y_eval_flat = self.Y_eval.flatten()
+        
+        if self.dim == 3:
+            self.Z_eval = self.Z_mesh[:, np.newaxis] + self.gpc_z_rel[np.newaxis, :]
+            self.Z_eval_flat = self.Z_eval.flatten()
+        else:
+            self.Z_eval_flat = None
 
         # Domain bounds (optional for initial design scaling)
         self.L_domain = kwargs.get('L_domain', self.X_mesh.max() - self.X_mesh.min())
@@ -101,7 +109,7 @@ class GGPVectorizedGeometryDiscipline(Discipline):
     def _map_logic(self, x_vars, power):
         char_functions = []
         
-        if self.mode == 'Free':
+        if self.mode in ['Free', '3D_Free']:
             if self.dim == 2:
                 params = x_vars.reshape(self.num_components, 6)
                 for i in range(self.num_components):
@@ -225,7 +233,7 @@ class GGPVectorizedGeometryDiscipline(Discipline):
                     dWdh_el * m_p, dWdT_el * m_p, W_el * m_p_minus_1
                 ])
             num_vars = 6
-        elif self.mode == 'Free' and self.dim == 3:
+        elif self.mode in ['Free', '3D_Free'] and self.dim == 3:
             params = x_vars.reshape(self.num_components, 8)
             for i in range(self.num_components):
                 p = params[i]
@@ -408,44 +416,83 @@ class GGPVectorizedGeometryDiscipline(Discipline):
         # ds/dxs = (exp(pa*xs/a) * 1 / (exp(pa*xs/a)+1)^2) / (a * (exp(-pa) + 1/(exp(pa*xs/a)+1))) / (1-s0)
         ds_dxs = (inner_exp / (inner_exp + 1.0)**2) / (a * (np.exp(-pa) + 1.0/(inner_exp + 1.0))) / (1.0 - self.s0)
         
+        import scipy.sparse as sps
+        
         # Check if continuous logic was triggered
         is_continuous = self.mode in ['ALM', '2D_ALM'] and len(x_vars) == (2 * self.comp_per_layer * self.num_layers + self.num_layers + self.comp_per_layer)
         if is_continuous:
-            # We must assemble total_jac for x, L, h, m
             total_jac = np.zeros((self.num_elements, len(x_vars)))
             np_val = self.comp_per_layer
             nY = self.num_layers
             
             for i in range(np_val):
                 factor = ds_dxs * dKS_dV[i]
-                # dX
                 total_jac[:, 0 : np_val*nY] += factor[:, np.newaxis] * char_grads_continuous[i]['dX'].T
-                # dL
                 total_jac[:, np_val*nY : 2*np_val*nY] += factor[:, np.newaxis] * char_grads_continuous[i]['dL'].T
-                # dh
                 total_jac[:, 2*np_val*nY : 2*np_val*nY + nY] += factor[:, np.newaxis] * char_grads_continuous[i]['dh'].T
-                # dM (only the i-th component is affected)
                 total_jac[:, 2*np_val*nY + nY + i] += factor * char_grads_continuous[i]['dM']
-            return rho, total_jac
+            return rho, sps.csr_matrix(total_jac)
 
-        # Total Jacobian: drho/dp_ij = (ds/dxs) * (dKS/dV_i) * (dVi/dp_ij)
+        # Build sparse total Jacobian using COO format for efficiency
+        rows = []
+        cols = []
+        data = []
+        
         if self.mode == '2D_ALM' and len(x_vars) == (self.num_components * 4 + 2):
-            total_jac = np.zeros((self.num_elements, self.num_components * num_vars + 2))
+            num_cols = self.num_components * num_vars + 2
+            
             for i in range(self.num_components):
+                base_factor = ds_dxs * dKS_dV[i]
                 for j in range(num_vars):
-                    total_jac[:, i*num_vars + j] = ds_dxs * dKS_dV[i] * char_grads[i][j]
+                    grad_array = base_factor * char_grads[i][j]
+                    mask = np.abs(grad_array) > 1e-12
+                    nz_indices = np.where(mask)[0]
+                    rows.append(nz_indices)
+                    cols.append(np.full_like(nz_indices, i*num_vars + j))
+                    data.append(grad_array[mask])
                 
                 # Accumulate global variables gradient contributions
-                total_jac[:, -2] += ds_dxs * dKS_dV[i] * char_grads[i][4] # y0
-                total_jac[:, -1] += ds_dxs * dKS_dV[i] * char_grads[i][5] # theta0
-        else:
-            total_jac = np.zeros((self.num_elements, self.num_components * num_vars))
-            for i in range(self.num_components):
-                for j in range(num_vars):
-                    total_jac[:, i*num_vars + j] = ds_dxs * dKS_dV[i] * char_grads[i][j]
-
+                y0_grad = base_factor * char_grads[i][4]
+                t0_grad = base_factor * char_grads[i][5]
+                
+                mask_y0 = np.abs(y0_grad) > 1e-12
+                if np.any(mask_y0):
+                    nz_indices_y0 = np.where(mask_y0)[0]
+                    rows.append(nz_indices_y0)
+                    cols.append(np.full_like(nz_indices_y0, num_cols - 2))
+                    data.append(y0_grad[mask_y0])
                     
-        return rho, total_jac
+                mask_t0 = np.abs(t0_grad) > 1e-12
+                if np.any(mask_t0):
+                    nz_indices_t0 = np.where(mask_t0)[0]
+                    rows.append(nz_indices_t0)
+                    cols.append(np.full_like(nz_indices_t0, num_cols - 1))
+                    data.append(t0_grad[mask_t0])
+                    
+            if rows:
+                total_jac = sps.coo_matrix((np.concatenate(data), (np.concatenate(rows), np.concatenate(cols))), shape=(self.num_elements, num_cols))
+            else:
+                total_jac = sps.coo_matrix((self.num_elements, num_cols))
+                
+        else:
+            num_cols = self.num_components * num_vars
+            for i in range(self.num_components):
+                base_factor = ds_dxs * dKS_dV[i]
+                for j in range(num_vars):
+                    grad_array = base_factor * char_grads[i][j]
+                    mask = np.abs(grad_array) > 1e-12
+                    if np.any(mask):
+                        nz_indices = np.where(mask)[0]
+                        rows.append(nz_indices)
+                        cols.append(np.full_like(nz_indices, i*num_vars + j))
+                        data.append(grad_array[mask])
+                        
+            if rows:
+                total_jac = sps.coo_matrix((np.concatenate(data), (np.concatenate(rows), np.concatenate(cols))), shape=(self.num_elements, num_cols))
+            else:
+                total_jac = sps.coo_matrix((self.num_elements, num_cols))
+                    
+        return rho, total_jac.tocsr()
 
     def _run(self, input_data=None):
         import time
@@ -457,13 +504,16 @@ class GGPVectorizedGeometryDiscipline(Discipline):
             x_vars_unscaled = self.lb + x_vars * (self.ub - self.lb)
             rho_E, jac_E_unscaled = self._map_logic_with_grad(x_vars_unscaled, self.gammac)
             rho_V, jac_V_unscaled = self._map_logic_with_grad(x_vars_unscaled, self.gammav)
-            
+            import scipy.sparse as sps
             # Scale Jacobians wrt the scaled variables [0, 1]
             # Jacobian wrt x_scaled is: d_rho / d_x_scaled = (d_rho / d_x_unscaled) * (ub - lb)
-            # Since self.ub and self.lb are 1D arrays of size 108, we can do element-wise multiplication
-            # across the columns of the Jacobian matrix of shape (1800, 108)
-            jac_E = jac_E_unscaled * (self.ub - self.lb)
-            jac_V = jac_V_unscaled * (self.ub - self.lb)
+            scale_diag = sps.diags(self.ub - self.lb)
+            if sps.issparse(jac_E_unscaled):
+                jac_E = jac_E_unscaled.dot(scale_diag)
+                jac_V = jac_V_unscaled.dot(scale_diag)
+            else:
+                jac_E = jac_E_unscaled * (self.ub - self.lb)
+                jac_V = jac_V_unscaled * (self.ub - self.lb)
         else:
             rho_E, jac_E = self._map_logic_with_grad(x_vars, self.gammac)
             rho_V, jac_V = self._map_logic_with_grad(x_vars, self.gammav)
@@ -540,7 +590,7 @@ class GGPPhysicsFastDiscipline(Discipline):
     Pre-computes element matrices and assembles the global matrix manually.
     Supports general adjoint sensitivities.
     """
-    def __init__(self, solver, mesh, mesh_area, volfrac, name="GGP_Physics_Fast"):
+    def __init__(self, solver, mesh, mesh_area, volfrac, name="GGP_Physics_Fast", iterative=False):
         super().__init__(name=name)
         self.solver = solver
         self.mesh = mesh
@@ -548,6 +598,7 @@ class GGPPhysicsFastDiscipline(Discipline):
         self.volfrac = volfrac
         self.num_elements = mesh.num_cells()
         self.V_u = solver.V_u
+        self.iterative = iterative
         
         # Pre-compute element stiffness and DOF maps
         self.ke_ref = solver.get_unit_element_stiffness()
@@ -619,8 +670,35 @@ class GGPPhysicsFastDiscipline(Discipline):
                 K_global.data[dof_start + diag_idx[0]] = 1.0
         
         # Solve K U = F
-        from scipy.sparse.linalg import spsolve
-        u_vec = spsolve(K_global, self.f_vec)
+        if self.iterative:
+            from petsc4py import PETSc
+            
+            # Convert CSR to PETSc Mat sharing memory
+            size = self.V_u.dim()
+            A = PETSc.Mat().createAIJ(size=(size, size), csr=(K_global.indptr, K_global.indices, K_global.data))
+            
+            # Create PETSc Vec for RHS and solution
+            b = PETSc.Vec().createWithArray(self.f_vec)
+            x = PETSc.Vec().createWithArray(np.zeros_like(self.f_vec))
+            
+            # Setup KSP solver
+            ksp = PETSc.KSP().create()
+            ksp.setOperators(A)
+            ksp.setType(PETSc.KSP.Type.CG)  # Conjugate Gradients for symmetric positive definite matrix
+            
+            # Setup AMG Preconditioner
+            pc = ksp.getPC()
+            pc.setType(PETSc.PC.Type.GAMG)  # Algebraic Multigrid preconditioner
+            
+            # Optional: configure tolerance
+            ksp.setTolerances(rtol=1e-8)
+            ksp.solve(b, x)
+            
+            u_vec = x.getArray().copy()
+        else:
+            from scipy.sparse.linalg import spsolve
+            u_vec = spsolve(K_global, self.f_vec)
+            
         self.last_u = u_vec
         
         # Compliance C = F^T U

@@ -12,7 +12,7 @@ import os
 import sys
 import argparse
 
-sys.path.append(os.path.join(os.path.dirname(os.path.abspath(__file__)), "GGP-Matlab"))
+sys.path.append(os.path.join(os.path.dirname(os.path.dirname(os.path.dirname(os.path.dirname(os.path.abspath(__file__))))), "GGP-Matlab"))
 from mmasub import mmasub
 
 def norato_bar(xi, eta, L, h):
@@ -43,8 +43,8 @@ class GGPHybridPhysicsDiscipline(GGPPhysicsFastDiscipline):
     """
     Subclass of GGPPhysicsFastDiscipline adding support for passive/empty elements and post-processing plots.
     """
-    def __init__(self, solver, mesh, mesh_area, volfrac, emptyelts=None, L=60.0, H=30.0, bc_type="Short_Cantilever", max_iter=50):
-        super().__init__(solver, mesh, mesh_area, volfrac)
+    def __init__(self, solver, mesh, mesh_area, volfrac, emptyelts=None, L=60.0, H=30.0, bc_type="Short_Cantilever", max_iter=50, iterative=False):
+        super().__init__(solver, mesh, mesh_area, volfrac, iterative=iterative)
         self.emptyelts = emptyelts if emptyelts is not None else []
         self.L = L
         self.H = H
@@ -118,8 +118,25 @@ class GGPHybridPhysicsDiscipline(GGPPhysicsFastDiscipline):
                 K_global.data[dof_start + diag_idx[0]] = 1.0
                 
         # Solve
-        from scipy.sparse.linalg import spsolve
-        u_vec = spsolve(K_global, self.f_vec)
+        if self.iterative:
+            from petsc4py import PETSc
+            size = self.V_u.dim()
+            A = PETSc.Mat().createAIJ(size=(size, size), csr=(K_global.indptr, K_global.indices, K_global.data))
+            b = PETSc.Vec().createWithArray(self.f_vec)
+            x = PETSc.Vec().createWithArray(np.zeros_like(self.f_vec))
+            
+            ksp = PETSc.KSP().create()
+            ksp.setOperators(A)
+            ksp.setType(PETSc.KSP.Type.CG)
+            pc = ksp.getPC()
+            pc.setType(PETSc.PC.Type.GAMG)
+            ksp.setTolerances(rtol=1e-8)
+            ksp.solve(b, x)
+            u_vec = x.getArray().copy()
+        else:
+            from scipy.sparse.linalg import spsolve
+            u_vec = spsolve(K_global, self.f_vec)
+            
         self.last_u = u_vec
         
         compliance = np.dot(self.f_vec, u_vec)
@@ -178,96 +195,27 @@ class GGPHybridPhysicsDiscipline(GGPPhysicsFastDiscipline):
                 plt.savefig(f"{self.Path}{self.image_prefix}convergence.png")
                 plt.close()
                 
-                # 2. Plot Densities
-                plt.figure(1)
-                plt.clf()
-                nelx = int(self.L) if self.bc_type == "L-shape" else 60
-                nely = int(self.H) if self.bc_type == "L-shape" else 30
-                dx = self.L / nelx
-                dy = self.H / nely
-                cols = np.round((self.geom_disc.X_mesh - dx/2.0) / dx).astype(int)
-                rows = np.round((self.geom_disc.Y_mesh - dy/2.0) / dy).astype(int)
-                xPhys = np.zeros((nely, nelx))
-                xPhys[rows, cols] = rho_V
-                
-                plt.imshow(1.0 - xPhys, cmap='gray', origin='lower', extent=[0.0, self.L, 0.0, self.H])
-                plt.colorbar()
-                plt.axis('equal')
-                plt.axis('off')
-                plt.title(f"Density at iteration {outit}")
-                plt.savefig(f"{self.Path}density_{outit-1:03d}.png")
-                plt.close()
-                
-                # 3. Component Plot
-                plt.figure(2)
-                plt.clf()
-                Xc = x_vars[0::6]
-                Yc = x_vars[1::6]
-                Lc = x_vars[2::6]
-                hc = x_vars[3::6]
-                Tc = x_vars[4::6]
-                Mc = x_vars[5::6]
-                
-                num_comps = len(Xc)
-                cc_angle_mat = np.tile(self.cc_angle, (num_comps, 1))
-                ss_angle_mat = np.tile(self.ss_angle, (num_comps, 1))
-                C0 = np.tile(np.cos(Tc).reshape(-1, 1), (1, len(self.tt)))
-                S0 = np.tile(np.sin(Tc).reshape(-1, 1), (1, len(self.tt)))
-                xxx = np.tile(Xc.reshape(-1, 1), (1, len(self.tt))) + cc_angle_mat
-                yyy = np.tile(Yc.reshape(-1, 1), (1, len(self.tt))) + ss_angle_mat
-                xi = C0 * (xxx - Xc.reshape(-1, 1)) + S0 * (yyy - Yc.reshape(-1, 1))
-                Eta = -S0 * (xxx - Xc.reshape(-1, 1)) + C0 * (yyy - Yc.reshape(-1, 1))
-                Lc_mat = np.tile(Lc.reshape(-1, 1), (1, len(self.tt)))
-                hc_mat = np.tile(hc.reshape(-1, 1), (1, len(self.tt)))
-                dd = norato_bar(xi, Eta, Lc_mat, hc_mat)
-                
-                xn = Xc.reshape(-1, 1) + dd * cc_angle_mat
-                yn = Yc.reshape(-1, 1) + dd * ss_angle_mat
-                
-                tolshow = 0.1
-                Shown_compo = np.where(Mc > tolshow)[0]
-                
-                plt.xlim(0.0, self.L)
-                plt.ylim(0.0, self.H)
-                
-                from matplotlib.patches import Polygon as MPolygon
-                if self.bc_type == 'L-shape':
-                    clip_poly = MPolygon([
-                        (0.0, 0.0),
-                        (self.L, 0.0),
-                        (self.L, self.H / 2.0),
-                        (self.L / 2.0, self.H / 2.0),
-                        (self.L / 2.0, self.H),
-                        (0.0, self.H)
-                    ], transform=plt.gca().transData)
-                    plt.fill([self.L/2.0, self.L, self.L, self.L/2.0],
-                             [self.H/2.0, self.H/2.0, self.H, self.H], 'w', zorder=10)
-                else:
-                    clip_poly = MPolygon([
-                        (0.0, 0.0),
-                        (self.L, 0.0),
-                        (self.L, self.H),
-                        (0.0, self.H)
-                    ], transform=plt.gca().transData)
-                    
-                plt.gca().add_patch(clip_poly)
-                clip_poly.set_visible(False)
-                
-                cmap_jet = plt.get_cmap('jet')
-                for idx in Shown_compo:
-                    color = cmap_jet(Mc[idx])
-                    polys = plt.fill(xn[idx, :], yn[idx, :], facecolor=color, alpha=0.5)
-                    for poly in polys:
-                        poly.set_clip_path(clip_poly)
+                # ParaView XDMF Export
+                if hasattr(self, 'solver') and hasattr(self.solver, 'rho_e'):
+                    try:
+                        import dolfin
+                        if not hasattr(self, 'xdmf_file'):
+                            self.xdmf_file = dolfin.XDMFFile(f"{self.Path}{self.image_prefix}density.xdmf")
+                            self.xdmf_file.parameters["flush_output"] = True
+                            self.xdmf_file.parameters["functions_share_mesh"] = True
                         
-                plt.axis('equal')
-                plt.axis('off')
-                plt.savefig(f"{self.Path}component_{outit-1:03d}.png")
-                plt.close()
+                        # Assign numpy array rho_V to FEniCS Function rho_e
+                        self.solver.rho_e.vector()[:] = rho_V
+                        self.solver.rho_e.rename("Density", "topology")
+                        self.xdmf_file.write(self.solver.rho_e, float(outit))
+                    except Exception as e:
+                        print(f"Warning: Failed to export XDMF for ParaView: {e}")
+                
 
-def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm="MMA", use_line_search=False, L_opt=None, H_opt=None, nelx_opt=None, nely_opt=None, volfrac_opt=0.4):
+
+def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm="MMA", use_line_search=False, L_opt=None, H_opt=None, nelx_opt=None, nely_opt=None, volfrac_opt=0.4, iterative=True):
     print(f"\n=================================================================")
-    print(f"   Running Main GGP (GEMSEO + FEniCS + petsc4py) | BC: {bc_type} | Mode: {mode} | Algo: {algorithm} | Line Search: {use_line_search}")
+    print(f"   Running Main GGP (GEMSEO + FEniCS + petsc4py) | BC: {bc_type} | Mode: {mode} | Algo: {algorithm} | Line Search: {use_line_search} | Iterative: {iterative}")
     print(f"=================================================================\n")
     
     # Mesh definition
@@ -283,8 +231,13 @@ def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm
         nely = nely_opt if nely_opt is not None else 30
         
     volfrac = volfrac_opt
-    
-    mesh = df.RectangleMesh.create([df.Point(0, 0), df.Point(L, H)], [nelx, nely], df.CellType.Type.quadrilateral)
+    if mode.startswith("3D"):
+        # For 3D, we assume thickness D is equal to H for this simple runner unless specified otherwise
+        nelz = nely
+        mesh = df.BoxMesh.create([df.Point(0, 0, 0), df.Point(L, H, H)], [nelx, nely, nelz], df.CellType.Type.hexahedron)
+    else:
+        mesh = df.RectangleMesh.create([df.Point(0, 0), df.Point(L, H)], [nelx, nely], df.CellType.Type.quadrilateral)
+        
     V_u = df.VectorFunctionSpace(mesh, "CG", 1)
     V_dg = df.FunctionSpace(mesh, "DG", 0)
     
@@ -296,10 +249,16 @@ def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm
     dof_coords = V_u.tabulate_dof_coordinates()
     y_dofs = V_u.sub(1).dofmap().dofs()
     
+    dim = 3 if mode.startswith("3D") else 2
+    zero_vec = Constant((0.0, 0.0, 0.0)) if dim == 3 else Constant((0.0, 0.0))
+    
     if bc_type == "Short_Cantilever":
         def left_boundary(x, on_boundary): return on_boundary and df.near(x[0], 0.0)
-        bc = [DirichletBC(V_u, Constant((0.0, 0.0)), left_boundary)]
-        dists = np.linalg.norm(dof_coords - np.array([L, H/2.0]), axis=1)
+        bc = [DirichletBC(V_u, zero_vec, left_boundary)]
+        if dim == 3:
+            dists = np.linalg.norm(dof_coords - np.array([L, H/2.0, H/2.0]), axis=1)
+        else:
+            dists = np.linalg.norm(dof_coords - np.array([L, H/2.0]), axis=1)
         tip_y_dof = np.intersect1d(np.where(dists < 1e-3)[0], y_dofs)[0]
         f_vec[tip_y_dof] = -1.0
     elif bc_type == "MBB":
@@ -309,13 +268,19 @@ def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm
             DirichletBC(V_u.sub(0), Constant(0.0), left_sym),
             DirichletBC(V_u.sub(1), Constant(0.0), right_supp)
         ]
-        dists = np.linalg.norm(dof_coords - np.array([0.0, H]), axis=1)
+        if dim == 3:
+            dists = np.linalg.norm(dof_coords - np.array([0.0, H, H/2.0]), axis=1)
+        else:
+            dists = np.linalg.norm(dof_coords - np.array([0.0, H]), axis=1)
         tip_y_dof = np.intersect1d(np.where(dists < 1e-3)[0], y_dofs)[0]
         f_vec[tip_y_dof] = -1.0
     elif bc_type == "L-shape":
         def top_boundary(x, on_boundary): return on_boundary and df.near(x[1], H)
-        bc = [DirichletBC(V_u, Constant((0.0, 0.0)), top_boundary)]
-        dists = np.linalg.norm(dof_coords - np.array([L, H/2.0]), axis=1)
+        bc = [DirichletBC(V_u, zero_vec, top_boundary)]
+        if dim == 3:
+            dists = np.linalg.norm(dof_coords - np.array([L, H/2.0, H/2.0]), axis=1)
+        else:
+            dists = np.linalg.norm(dof_coords - np.array([L, H/2.0]), axis=1)
         tip_y_dof = np.intersect1d(np.where(dists < 1e-3)[0], y_dofs)[0]
         f_vec[tip_y_dof] = -1.0
         
@@ -333,7 +298,8 @@ def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm
     ds_load = df.Measure("ds", domain=mesh)
     
     # Physics Solver creation
-    solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=Constant((0.0, 0.0)), p=3.0, plane_stress=True)
+    plane_stress = False if dim == 3 else True
+    solver = PhysicsFactory.create_solver("Elasticity", V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=zero_vec, p=3.0, plane_stress=plane_stress)
     
     # Exact GGP-MATLAB Initialization to replicate baseline coordinates
     if mode == "Free":
@@ -406,9 +372,40 @@ def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm
         ub[2::3] = 1.0
         
         kwargs = {'num_layers': num_layers, 'comp_per_layer': comp_per_layer, 'layer_height': layer_height}
+    elif mode == "3D_Free":
+        num_components = 8 # simple 2x2x2 grid
+        from ggp.geometry.ggp_3d_free import GGP3DMapper
+        mapper = GGP3DMapper(mesh, num_components)
+        x_init = mapper.get_initial_design(L, H, H) # Assuming D=H
+        
+        # 8 variables: [X, Y, Z, L, h, Theta, Phi, Mc]
+        lb = np.zeros_like(x_init)
+        ub = np.zeros_like(x_init)
+        
+        lb[0::8] = -1.0
+        ub[0::8] = L + 1.0
+        lb[1::8] = -1.0
+        ub[1::8] = H + 1.0
+        lb[2::8] = -1.0
+        ub[2::8] = H + 1.0 # D
+        
+        lb[3::8] = 0.0
+        ub[3::8] = np.sqrt(L**2 + H**2 + H**2)
+        lb[4::8] = 1.0 # minh
+        ub[4::8] = np.sqrt(L**2 + H**2 + H**2)
+        
+        lb[5::8] = -2.0 * np.pi
+        ub[5::8] = 2.0 * np.pi
+        lb[6::8] = -2.0 * np.pi
+        ub[6::8] = 2.0 * np.pi
+        
+        lb[7::8] = 0.0
+        ub[7::8] = 1.0
+        
+        kwargs = {}
     
     
-    phys_disc = GGPHybridPhysicsDiscipline(solver, mesh, mesh_area=L*H, volfrac=volfrac, emptyelts=emptyelts, L=L, H=H, bc_type=bc_type, max_iter=max_iter)
+    phys_disc = GGPHybridPhysicsDiscipline(solver, mesh, mesh_area=L*H, volfrac=volfrac, emptyelts=emptyelts, L=L, H=H, bc_type=bc_type, max_iter=max_iter, iterative=iterative)
     
     phys_disc.f_vec = f_vec
     phys_disc.f_vec[phys_disc.fixed_dofs] = 0.0
@@ -476,18 +473,25 @@ def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm
         algo_options = {
             "algo_name": algorithm,
             "max_iter": max_iter,
-            "use_line_search": use_line_search,
             "max_optimization_step": 0.05,
             "max_asymptote_distance":0.05,
             "initial_asymptotes_distance": 0.05,
             "min_asymptote_distance":0.001,
+        }
+        
+        if algorithm != "MMA":
+            algo_options["use_line_search"] = use_line_search
+            algo_options["min_optimization_step"] = 0.001
+            algo_options["scaling"] = 0.0
+            
+        algo_options.update({
             "use_penalty_formulation": True,
             "ftol_rel": 1e-12,
             "xtol_rel": 1e-12,
             "ftol_abs": 1e-12,
             "xtol_abs": 1e-12,
             "max_inner_iterations": 500,
-        }
+        })
         scenario.execute(**algo_options)
         
         current_x = scenario.design_space.get_current_value().copy()

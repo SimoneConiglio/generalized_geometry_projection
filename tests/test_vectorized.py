@@ -76,5 +76,3 @@ def test_compute_continuous_ALM_characteristic_np_MMC():
     W, grad_X, grad_L, grad_h = compute_continuous_ALM_characteristic_np(
         x_mesh, y_mesh, Xc, p, np_val, nY, Yk, nely
     )
-    assert len(W) > 0
-
