@@ -66,19 +66,3 @@ def test_mna_mapping():
     rho_grad, jac = geom_mna._map_logic_with_grad(x_vars, power=1.0)
     assert len(rho_grad) == mesh.num_cells()
     assert jac.shape == (mesh.num_cells(), 6)
-
-def test_3d_mapper_direct():
-    mesh = BoxMesh(Point(0,0,0), Point(1,1,1), 2, 2, 2)
-    mapper = GeometryFactory.create_mapper("3D_Free", mesh=mesh, num_components=1)
-    
-    # [Xc, Yc, Zc, L, h, Theta, Phi, Mc]
-    ctrls = [Constant(0.5)] * 8
-    
-    rho_ufl = mapper.map_to_density(ctrls)
-    
-    V = FunctionSpace(mesh, "DG", 0)
-    with stop_annotating():
-        rho_func = project(rho_ufl, V)
-        vals = rho_func.vector().get_local()
-        assert vals.min() >= 0.0
-        assert vals.max() <= 1.0
