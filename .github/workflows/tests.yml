@@ -34,7 +34,7 @@ jobs:
         environment-file: environment.yml
         auto-activate-base: false
         miniforge-version: latest
-        use-mamba: true
+        conda-solver: libmamba
 
     - name: Run Pytest with Coverage
       env:

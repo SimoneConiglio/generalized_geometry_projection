@@ -19,6 +19,7 @@ def main():
                             help="GGP formulation type")
     opt_parser.add_argument("--max-iter", type=int, default=50, help="Maximum number of outer optimization iterations")
     opt_parser.add_argument("--algorithm", type=str, default="MMA", help="Optimization algorithm (e.g. MMA, SLP, CONLIN)")
+    opt_parser.add_argument("--use-line-search", action="store_true", help="Enable line search for the optimization algorithm")
     opt_parser.add_argument("--length", type=float, default=None, help="Domain length L")
     opt_parser.add_argument("--height", type=float, default=None, help="Domain height H")
     opt_parser.add_argument("--nelx", type=int, default=None, help="Number of elements in X direction")
@@ -35,6 +36,7 @@ def main():
             max_iter=args.max_iter, 
             mode=args.formulation,
             algorithm=args.algorithm,
+            use_line_search=args.use_line_search,
             L_opt=args.length,
             H_opt=args.height,
             nelx_opt=args.nelx,

@@ -265,9 +265,9 @@ class GGPHybridPhysicsDiscipline(GGPPhysicsFastDiscipline):
                 plt.savefig(f"{self.Path}component_{outit-1:03d}.png")
                 plt.close()
 
-def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm="MMA", L_opt=None, H_opt=None, nelx_opt=None, nely_opt=None, volfrac_opt=0.4):
+def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm="MMA", use_line_search=False, L_opt=None, H_opt=None, nelx_opt=None, nely_opt=None, volfrac_opt=0.4):
     print(f"\n=================================================================")
-    print(f"   Running Main GGP (GEMSEO + FEniCS + petsc4py) | BC: {bc_type} | Mode: {mode} | Algo: {algorithm}")
+    print(f"   Running Main GGP (GEMSEO + FEniCS + petsc4py) | BC: {bc_type} | Mode: {mode} | Algo: {algorithm} | Line Search: {use_line_search}")
     print(f"=================================================================\n")
     
     # Mesh definition
@@ -476,6 +476,7 @@ def run_main_ggp(bc_type="Short_Cantilever", max_iter=50, mode="Free", algorithm
         algo_options = {
             "algo_name": algorithm,
             "max_iter": max_iter,
+            "use_line_search": use_line_search,
             "max_optimization_step": 0.05,
             "max_asymptote_distance":0.05,
             "initial_asymptotes_distance": 0.05,

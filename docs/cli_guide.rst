@@ -42,6 +42,10 @@ This command runs an end-to-end topology optimization scenario.
   * *Choices (GEMSEO solvers):* ``MMA``, ``SLP``, ``CONLIN``
   * *Default:* ``MMA``
 
+* ``--use-line-search`` : Enable line search for the optimization algorithm.
+  
+  * *Usage:* Often recommended when using ``SLP``.
+
 * ``--length`` & ``--height`` : Domain length (L) and height (H).
   
   * *Default:* Depends on the ``--use-case``.
