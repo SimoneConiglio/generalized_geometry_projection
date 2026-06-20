@@ -119,3 +119,17 @@ def test_alm_geometry_modes():
     
     geom_3d.execute({"x_vars": x_vars_3d})
     assert "rho_E" in geom_3d.local_data
+    
+    geom_3d._compute_jacobian()
+    assert geom_3d.jac["rho_E"]["x_vars"].shape == (mesh_3d.num_cells(), 12)
+
+def test_3d_free_geometry_mode():
+    mesh_3d = BoxMesh(Point(0,0,0), Point(1,1,1), 2, 2, 2)
+    geom_3d = GGPVectorizedGeometryDiscipline(mesh_3d, num_components=2, mode='3D_Free')
+    x_vars_3d = np.array([0.5, 0.5, 0.5, 0.2, 0.2, 0.0, 0.0, 1.0] * 2)
+    
+    geom_3d.execute({"x_vars": x_vars_3d})
+    assert "rho_E" in geom_3d.local_data
+    
+    geom_3d._compute_jacobian()
+    assert geom_3d.jac["rho_E"]["x_vars"].shape == (mesh_3d.num_cells(), 16)

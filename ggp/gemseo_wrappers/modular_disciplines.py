@@ -1,6 +1,10 @@
 import numpy as np
 from gemseo.core.discipline.discipline import Discipline
 from ..utils.vectorized_mapping import compute_local_characteristic_np, smooth_saturation_np, compute_local_characteristic_2d_with_grad_np, compute_continuous_ALM_characteristic_np
+from ..utils.vectorized_mapping_3d import (
+    compute_local_characteristic_3d_free_with_grad_np,
+    compute_local_characteristic_3d_alm_with_grad_np
+)
 import dolfin as df
 from dolfin import *
 from dolfin_adjoint import *
@@ -221,6 +225,35 @@ class GGPVectorizedGeometryDiscipline(Discipline):
                     dWdh_el * m_p, dWdT_el * m_p, W_el * m_p_minus_1
                 ])
             num_vars = 6
+        elif self.mode == 'Free' and self.dim == 3:
+            params = x_vars.reshape(self.num_components, 8)
+            for i in range(self.num_components):
+                p = params[i]
+                W_gp, dWdX_gp, dWdY_gp, dWdZ_gp, dWdL_gp, dWdh_gp, dWdT_gp, dWdP_gp = compute_local_characteristic_3d_free_with_grad_np(
+                    self.X_eval_flat, self.Y_eval_flat, self.Z_eval_flat, p[0], p[1], p[2], p[3], p[4], p[5], p[6], self.r_gp, method=self.method
+                )
+                
+                W_el = np.sum(W_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                dWdX_el = np.sum(dWdX_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                dWdY_el = np.sum(dWdY_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                dWdZ_el = np.sum(dWdZ_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                dWdL_el = np.sum(dWdL_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                dWdh_el = np.sum(dWdh_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                dWdT_el = np.sum(dWdT_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                dWdP_el = np.sum(dWdP_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                
+                V_el = W_el * (p[7]**power)
+                char_functions.append(V_el)
+                
+                m_p = p[7]**power
+                m_p_minus_1 = power * (p[7]**(power - 1.0)) if power > 0 else 0.0
+                
+                # Store gradients for component i: [dX, dY, dZ, dL, dh, dT, dP, dM]
+                char_grads.append([
+                    dWdX_el * m_p, dWdY_el * m_p, dWdZ_el * m_p, dWdL_el * m_p,
+                    dWdh_el * m_p, dWdT_el * m_p, dWdP_el * m_p, W_el * m_p_minus_1
+                ])
+            num_vars = 8
         elif self.mode in ['ALM', '2D_ALM']:
             is_continuous = len(x_vars) == (2 * self.comp_per_layer * self.num_layers + self.num_layers + self.comp_per_layer)
             if is_continuous:
@@ -323,6 +356,38 @@ class GGPVectorizedGeometryDiscipline(Discipline):
                             char_grads.append([
                                 dWdX_el * m_p, dWdL_el * m_p, W_el * m_p_minus_1
                             ])
+        elif self.mode == '3D_ALM':
+            # variables per component: [Xc, Yc, L, W, Theta, Mc]
+            params = x_vars.reshape(self.num_components, 6)
+            h_fixed = self.layer_height
+            for layer in range(self.num_layers):
+                z_fixed = (layer + 0.5) * self.layer_height
+                for i in range(self.comp_per_layer):
+                    idx = layer * self.comp_per_layer + i
+                    p = params[idx]
+                    
+                    W_gp, dWdX_gp, dWdY_gp, dWdZ_gp, dWdL_gp, dWdW_width_gp, dWdh_gp, dWdT_gp = compute_local_characteristic_3d_alm_with_grad_np(
+                        self.X_eval_flat, self.Y_eval_flat, self.Z_eval_flat, p[0], p[1], z_fixed, p[2], p[3], h_fixed, p[4], self.r_gp, method=self.method
+                    )
+                    
+                    W_el = np.sum(W_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                    dWdX_el = np.sum(dWdX_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                    dWdY_el = np.sum(dWdY_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                    dWdL_el = np.sum(dWdL_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                    dWdW_width_el = np.sum(dWdW_width_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                    dWdT_el = np.sum(dWdT_gp.reshape(self.num_elements, -1) * self.gpc_wts, axis=1) / self.gpc_wts_sum
+                    
+                    V_el = W_el * (p[5]**power)
+                    char_functions.append(V_el)
+                    
+                    m_p = p[5]**power
+                    m_p_minus_1 = power * (p[5]**(power - 1.0)) if power > 0 else 0.0
+                    
+                    # Gradients wrt [Xc, Yc, L, W, Theta, Mc]
+                    char_grads.append([
+                        dWdX_el * m_p, dWdY_el * m_p, dWdL_el * m_p, dWdW_width_el * m_p, dWdT_el * m_p, W_el * m_p_minus_1
+                    ])
+            num_vars = 6
         else:
             # Fallback to finite difference or implement other modes
             return self._map_logic(x_vars, power), None
