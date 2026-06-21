@@ -18,6 +18,7 @@ documentation for details.
    installation
    cli_guide
    developer_guide
+   api
    3d_optimization
    alm_guide
    scp_uno_guide
