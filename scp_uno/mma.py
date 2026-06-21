@@ -1,4 +1,4 @@
-# Copyright (c) 2026 Charlie Vanaret
+# Copyright (c) 2026 Simone Coniglio
 # Licensed under the MIT license. See LICENSE file in the project directory for details.
 """Implementation of the Method of Moving Asymptotes (MMA) in the SCP framework."""
 
