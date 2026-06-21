@@ -3,10 +3,18 @@
 """Projection layer — maps design variables to density fields."""
 from .base import ProjectionMapper
 from .registry import register_mapper, get_mapper, list_mappers
+from .free_2d import Free2DMapper
+from .free_3d import Free3DMapper
+from .alm_2d import ALM2DMapper
+from .alm_3d import ALM3DMapper
 
 __all__ = [
     "ProjectionMapper",
     "register_mapper",
     "get_mapper",
     "list_mappers",
+    "Free2DMapper",
+    "Free3DMapper",
+    "ALM2DMapper",
+    "ALM3DMapper",
 ]
