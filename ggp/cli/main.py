@@ -67,6 +67,12 @@ def cli():
 @click.option("--volfrac", type=float, default=None, help="Override volume fraction.")
 @click.option("--iterative", is_flag=True, default=False, help="Use PETSc iterative solver.")
 @click.option("--use-line-search", is_flag=True, default=False, help="Enable line search (SLP/CONLIN).")
+@click.option(
+    "--output-dir", "-o", "output_dir",
+    type=click.Path(path_type=Path),
+    default=None,
+    help="Directory to save the density plot (PNG) after optimization.",
+)
 def optimize(
     config_path: Optional[Path],
     preset_name: Optional[str],
@@ -75,13 +81,15 @@ def optimize(
     volfrac: Optional[float],
     iterative: bool,
     use_line_search: bool,
+    output_dir: Optional[Path],
 ):
     """Run a topology optimisation from a YAML config or built-in preset.
 
     Examples::
 
         ggp optimize --preset short_cantilever
-        ggp optimize --config problem.yaml --max-iter 100
+        ggp optimize --preset short_cantilever --output-dir docs/_static
+        ggp optimize --config problem.yaml --max-iter 150
         ggp optimize --preset mbb --algorithm SLP --use-line-search
     """
     # Resolve source
@@ -126,10 +134,10 @@ def optimize(
     click.echo()
 
     from ggp.optimization.pipeline import GGPPipeline
-    
+
     pipeline = GGPPipeline(spec)
     result = pipeline.run()
-    
+
     click.echo(click.style("\n═══════════════════════════════════════════════", fg="green", bold=True))
     click.echo(click.style("  Optimisation Completed", fg="green", bold=True))
     click.echo(click.style("═══════════════════════════════════════════════", fg="green", bold=True))
@@ -138,6 +146,19 @@ def optimize(
     click.echo(f"  Objective    : {result.objective_value:.6e}")
     click.echo(f"  Time (s)     : {result.execution_time_s:.2f}")
     click.echo()
+
+    if output_dir is not None and result.density_field is not None:
+        import os
+        os.makedirs(output_dir, exist_ok=True)
+        name = preset_name if preset_name else (config_path.stem if config_path else "result")
+        plot_path = output_dir / f"{name}_optimized.png"
+        from ggp.visualization.plot import save_density_plot_2d, save_density_plot_3d
+        if result.dim == 3:
+            save_density_plot_3d(result.density_field, result.eval_coords, plot_path, title=name)
+        else:
+            save_density_plot_2d(result.density_field, result.eval_coords, plot_path, title=name)
+        click.echo(click.style(f"  Density plot : {plot_path}", fg="cyan"))
+        click.echo()
 
 
 # ── info ──────────────────────────────────────────────────────────────────────

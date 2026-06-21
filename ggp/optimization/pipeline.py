@@ -15,29 +15,119 @@ from .results import OptimisationResult
 
 from gemseo import create_scenario, create_design_space
 from gemseo.mda.mda_chain import MDAChain
+from gemseo.core.discipline.discipline import Discipline
+
+
+class _OverhangDiscipline(Discipline):
+    """Linear overhang constraint discipline for ALM 2-D mode.
+
+    Outputs ``overhang = A * x_unscaled - b`` (constraint <= 0).
+    """
+
+    def __init__(self, num_layers, comp_per_layer, layer_height, alpha_deg, lb, ub):
+        super().__init__("OverhangDiscipline")
+        from ggp.utils.alm_utils import create_alm_overhang_constraints
+        self.A, self.b_rhs = create_alm_overhang_constraints(
+            num_layers, comp_per_layer, layer_height, alpha_deg
+        )
+        self.lb = lb
+        self.ub = ub
+        n = lb.shape[0]
+        self.input_grammar.update_from_names(["x_vars"])
+        self.output_grammar.update_from_names(["overhang"])
+        self.default_inputs = {"x_vars": np.full(n, 0.5)}
+        if hasattr(self, "cache"):
+            self.cache = None
+        if hasattr(self, "cache_type"):
+            self.cache_type = Discipline.CacheType.NONE
+
+    def _run(self, input_data=None):
+        if input_data is not None:
+            self.local_data.update(input_data)
+        x = self.local_data["x_vars"].flatten()
+        x_unscaled = self.lb + x * (self.ub - self.lb)
+        self.local_data["overhang"] = self.A @ x_unscaled - self.b_rhs
+
+    def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
+        scale = self.ub - self.lb
+        self.jac = {"overhang": {"x_vars": self.A * scale[np.newaxis, :]}}
 
 
 class GGPPipeline:
     """Orchestrates the entire GGP optimization process."""
-    
+
     def __init__(self, spec: ProblemSpec):
         self.spec = spec
-        
+
+    @staticmethod
+    def _make_init(mode: str, num_vars: int) -> np.ndarray:
+        """Return a normalized [0,1] initial design vector appropriate for *mode*.
+
+        The key insight is that thin initial bars (small h) let MMA explore
+        freely, while thick blobs saturate KS and freeze gradients.
+        """
+        n = num_vars
+        rng = np.random.default_rng(42)  # fixed seed for reproducibility
+
+        if mode in ("Free", "2D_Free"):
+            # 6 vars per component: [Xc, Yc, L, h, Theta, Mc]
+            x = np.empty(n)
+            x[0::6] = rng.uniform(0.1, 0.9, n // 6)   # Xc: spread across domain
+            x[1::6] = rng.uniform(0.1, 0.9, n // 6)   # Yc: spread across domain
+            x[2::6] = 0.25                              # L: medium length
+            x[3::6] = 0.02                              # h: thin bars (h_unscaled ≈ 2-3)
+            x[4::6] = rng.uniform(0.4, 0.6, n // 6)   # Theta: near-zero angle
+            x[5::6] = 0.50                              # Mc: medium density
+            return x
+
+        if mode in ("ALM", "2D_ALM"):
+            # 3 vars per component: [Xc, width, Mc]
+            n_comp = n // 3
+            x = np.empty(n)
+            # Xc: spread uniformly within each layer (inferred from position)
+            comp_positions = np.tile(
+                np.linspace(0.1, 0.9, max(n_comp, 1)), 1
+            )[:n_comp]
+            x[0::3] = comp_positions                    # Xc: uniform in [0.1, 0.9]
+            x[1::3] = 0.15                              # width: thin
+            x[2::3] = 0.50                              # Mc: medium density
+            return x
+
+        if mode == "3D_Free":
+            # 8 vars per component: [Xc, Yc, Zc, L, h, Theta, Phi, Mc]
+            x = np.empty(n)
+            nc = n // 8
+            x[0::8] = rng.uniform(0.1, 0.9, nc)        # Xc
+            x[1::8] = rng.uniform(0.1, 0.9, nc)        # Yc
+            x[2::8] = rng.uniform(0.1, 0.9, nc)        # Zc
+            x[3::8] = 0.25                              # L
+            x[4::8] = 0.02                              # h (thin)
+            x[5::8] = rng.uniform(0.4, 0.6, nc)        # Theta
+            x[6::8] = rng.uniform(0.4, 0.6, nc)        # Phi
+            x[7::8] = 0.50                              # Mc
+            return x
+
+        # Fallback for other modes
+        return rng.uniform(0.4, 0.6, n)
+
     def run(self) -> OptimisationResult:
         start_time = time.time()
-        
+
         # 1. Geometry I/O
         domain_geom = self.spec.geometries[0]
         reader = get_reader(domain_geom.type)
         domain = reader.read(domain_geom)
-        
+
         # 2. FEM Discretisation
         discretiser = FEMDiscretiser()
         analysis = discretiser.discretise(domain, self.spec)
-        
-        mesh_area = domain.metadata.get("mesh_area", 1.0)
-        
-        # 3. Create Disciplines
+
+        Lx = domain.metadata.get("Lx", 1.0)
+        Ly = domain.metadata.get("Ly", 1.0)
+        Lz = domain.metadata.get("Lz", None)
+        mesh_area = Lx * Ly * (Lz if Lz is not None else 1.0)
+
+        # 3. Geometry Discipline
         geom_kwargs = {
             "num_layers": self.spec.formulation.num_layers,
             "comp_per_layer": self.spec.formulation.comp_per_layer,
@@ -45,21 +135,22 @@ class GGPPipeline:
             "ka": 10.0,
             "pp": 10.0,
             "method": self.spec.formulation.method,
+            "r_gp": self.spec.formulation.r_gp,
         }
-        
+
         geom_discipline = GGPGeometryDiscipline(
             mesh=analysis.mesh,
             num_components=self.spec.formulation.num_components,
             mode=self.spec.formulation.mode,
             **{k: v for k, v in geom_kwargs.items() if v is not None}
         )
-        
-        # Extract fixed dofs
-        fixed_dofs = []
+
+        # 4. Physics Discipline
+        fixed_dofs = list(analysis.point_fixed_dofs)
         for bc in analysis.bcs_applied:
             fixed_dofs.extend(bc.get_boundary_values().keys())
         fixed_dofs = sorted(list(set(fixed_dofs)))
-        
+
         phys_discipline = GGPPhysicsDiscipline(
             V_u=analysis.function_spaces["u"],
             ke_ref=analysis.ke_ref,
@@ -72,55 +163,110 @@ class GGPPipeline:
             Emin=1e-6,
             E0=1.0
         )
-        
-        # 4. Design Space
+
+        # 5. Design Space
         design_space = create_design_space()
-        num_vars = geom_discipline.mapper.num_vars_per_component() * self.spec.formulation.num_components
-        
-        if self.spec.formulation.mode in ["ALM", "2D_ALM"] and geom_kwargs.get("num_layers"):
-            num_vars = 3 * geom_kwargs["comp_per_layer"] * geom_kwargs["num_layers"]
-        elif self.spec.formulation.mode == "3D_ALM" and geom_kwargs.get("num_layers"):
-            num_vars = 6 * geom_kwargs["comp_per_layer"] * geom_kwargs["num_layers"]
-            
-        x_init = np.random.rand(num_vars) * 0.1 + 0.45
-        design_space.add_variable("x_vars", size=num_vars, lower_bound=0.0, upper_bound=1.0, value=x_init)
-        
-        # 5. MDA & Scenario
+        mode = self.spec.formulation.mode
+
+        if mode in ["ALM", "2D_ALM"] and self.spec.formulation.num_layers:
+            num_vars = (
+                3
+                * self.spec.formulation.comp_per_layer
+                * self.spec.formulation.num_layers
+            )
+        elif mode == "3D_ALM" and self.spec.formulation.num_layers:
+            num_vars = (
+                6
+                * self.spec.formulation.comp_per_layer
+                * self.spec.formulation.num_layers
+            )
+        else:
+            num_vars = (
+                geom_discipline.mapper.num_vars_per_component()
+                * self.spec.formulation.num_components
+            )
+
+        x_init = self._make_init(mode, num_vars)
+        design_space.add_variable(
+            "x_vars", size=num_vars, lower_bound=0.0, upper_bound=1.0, value=x_init
+        )
+
+        # 6. MDA Chain
         chain = MDAChain([geom_discipline, phys_discipline])
-        if hasattr(chain, 'cache'): chain.cache = None
-        if hasattr(chain, 'cache_type'): chain.cache_type = chain.CacheType.NONE
-        
+        if hasattr(chain, "cache"):
+            chain.cache = None
+        if hasattr(chain, "cache_type"):
+            chain.cache_type = chain.CacheType.NONE
+
+        # 7. Collect additional disciplines (overhang constraint)
+        extra_disciplines: list[Discipline] = []
+        has_overhang = any(c.name == "overhang" for c in self.spec.constraints)
+        if has_overhang and mode in ["ALM", "2D_ALM"] and self.spec.formulation.num_layers:
+            overhang_spec = next(c for c in self.spec.constraints if c.name == "overhang")
+            alpha_deg = overhang_spec.params.get("alpha_deg", 45.0)
+            oh_disc = _OverhangDiscipline(
+                num_layers=self.spec.formulation.num_layers,
+                comp_per_layer=self.spec.formulation.comp_per_layer,
+                layer_height=self.spec.formulation.layer_height,
+                alpha_deg=alpha_deg,
+                lb=geom_discipline.lb,
+                ub=geom_discipline.ub,
+            )
+            extra_disciplines.append(oh_disc)
+
+        # 8. Scenario
+        all_disciplines = [chain] + extra_disciplines
         scenario = create_scenario(
-            [chain], 
-            objective_name="compliance", 
-            design_space=design_space, 
-            maximize_objective=False, 
+            all_disciplines,
+            objective_name="compliance",
+            design_space=design_space,
+            maximize_objective=False,
             formulation_name="MDF"
         )
-        scenario.add_constraint("volume", constraint_type="ineq", positive=False, value=0.0)
-        
+
+        for c in self.spec.constraints:
+            if c.name == "volume":
+                scenario.add_constraint(
+                    "volume", constraint_type="ineq", positive=False, value=0.0
+                )
+            elif c.name == "overhang" and extra_disciplines:
+                scenario.add_constraint(
+                    "overhang", constraint_type="ineq", positive=False, value=0.0
+                )
+
         algo_options = self.spec.solver.options.copy()
         if "max_iter" not in algo_options:
             algo_options["max_iter"] = self.spec.solver.max_iter
         if "algo_name" not in algo_options:
             algo_options["algo_name"] = self.spec.solver.algorithm
-            
+
         scenario.execute(**algo_options)
-        
-        opt_problem = scenario.optimization_result
-        
+
+        opt_result = scenario.optimization_result
+
+        # 9. Capture final density field at the optimal point
+        x_opt = opt_result.x_opt
+        try:
+            geom_discipline.execute({"x_vars": x_opt})
+            density_field = np.asarray(geom_discipline.local_data["rho_E"]).flatten().copy()
+        except Exception:
+            density_field = None
+
+        n_iter = len(scenario.formulation.optimization_problem.database)
+
         result = OptimisationResult(
             problem_name="optimization_run",
             algorithm=self.spec.solver.algorithm,
-            status=opt_problem.status,
-            iterations=len(scenario.optimization_history.get("objective", [])),
-            objective_value=opt_problem.f_opt,
+            status=opt_result.status,
+            iterations=n_iter,
+            objective_value=float(opt_result.f_opt),
             max_constraint_violation=0.0,
-            design_variables=opt_problem.x_opt,
-            history={
-                "objective": scenario.optimization_history.get("objective", []),
-            },
-            execution_time_s=time.time() - start_time
+            design_variables=x_opt,
+            history={},
+            execution_time_s=time.time() - start_time,
+            density_field=density_field,
+            eval_coords=geom_discipline.eval_coords.copy(),
+            dim=domain.dim,
         )
-        
+
         return result

@@ -126,7 +126,8 @@ class TestFEMDiscretiserSymmetryBC:
             formulation=FormulationSpec(),
         )
         analysis, _ = _discretise(spec)
-        assert len(analysis.bcs_applied) >= 1
+        # Corner point BCs are stored in point_fixed_dofs, not bcs_applied
+        assert len(analysis.point_fixed_dofs) >= 1
 
 
 # ── FEMDiscretiser — load regions ─────────────────────────────────────────────

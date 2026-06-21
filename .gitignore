@@ -37,6 +37,7 @@ results*/
 *.pvd
 *.vtu
 *.png
+!docs/_static/*.png
 *.h5
 *.hdf5
 optimization_history*/

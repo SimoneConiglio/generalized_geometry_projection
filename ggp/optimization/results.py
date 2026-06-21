@@ -21,7 +21,10 @@ class OptimisationResult:
     history: Dict[str, List[float]]
     mesh_path: Optional[str] = None
     execution_time_s: Optional[float] = None
-    
+    density_field: Optional[np.ndarray] = None
+    eval_coords: Optional[np.ndarray] = None
+    dim: int = 2
+
     def to_dict(self) -> Dict[str, Any]:
         """Convert the result to a serializable dictionary."""
         return {

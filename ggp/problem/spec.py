@@ -21,17 +21,17 @@ class GeometrySpec:
 
     Supported *type* values (extensible via the reader registry):
 
-    =========== ====================================================
-    type        Description
-    =========== ====================================================
-    ``box``     Parametric axis-aligned box (2-D or 3-D)
-    ``fenics_rectangle``  FEniCS built-in quadrilateral rectangle
-    ``fenics_box``        FEniCS built-in hexahedral box
-    ``step``    STEP CAD file (requires ``gmsh`` or ``cadquery``)
-    ``stl``     STL surface mesh (requires ``meshio``)
-    ``brep``    OpenCASCADE BREP file
-    ``points``  Raw point cloud (``numpy`` only)
-    =========== ====================================================
+    ====================== ====================================================
+    type                   Description
+    ====================== ====================================================
+    ``box``                Parametric axis-aligned box (2-D or 3-D)
+    ``fenics_rectangle``   FEniCS built-in quadrilateral rectangle
+    ``fenics_box``         FEniCS built-in hexahedral box
+    ``step``               STEP CAD file (requires ``gmsh`` or ``cadquery``)
+    ``stl``                STL surface mesh (requires ``meshio``)
+    ``brep``               OpenCASCADE BREP file
+    ``points``             Raw point cloud (``numpy`` only)
+    ====================== ====================================================
 
     Parameters
     ----------

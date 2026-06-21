@@ -48,7 +48,7 @@ def get_mapper(mode: str, **kwargs) -> ProjectionMapper:
     ----------
     mode : str
         Formulation mode (must match a previously registered mapper).
-    **kwargs
+    \*\*kwargs
         Forwarded to the mapper constructor.
 
     Raises

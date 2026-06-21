@@ -1,6 +1,6 @@
 # ALM Short Cantilever Benchmark
 # Cantilever with Additive Layer Manufacturing (ALM) constraints.
-# Uses layer-by-layer component parameterisation with overhang angle restrictions.
+# Uses layer-by-layer component parameterisation with 45° overhang angle restrictions.
 
 geometries:
   - type: fenics_rectangle
@@ -25,6 +25,7 @@ formulation:
   num_components: 50
   num_layers: 10
   comp_per_layer: 5
+  layer_height: 3.0
   r_gp: 0.5
 
 objective:
@@ -42,6 +43,11 @@ constraints:
 
 solver:
   algorithm: MMA
-  max_iter: 30
+  max_iter: 150
+  options:
+    max_optimization_step: 0.05
+    initial_asymptotes_distance: 0.05
+    max_asymptote_distance: 0.5
+    min_asymptote_distance: 0.001
 
 volfrac: 0.4
