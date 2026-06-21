@@ -2,83 +2,127 @@
 Command-Line Interface (CLI)
 ================================
 
-GGP provides a unified Command-Line Interface to quickly run topology optimizations with varying algorithms, formulations, and test cases.
-
-Running the CLI
-===============
-
-From the project root, you can invoke the CLI script ``ggp.py``:
+After installing the package (``pip install -e .``), the ``ggp`` command is available in your Conda environment.
 
 .. code-block:: bash
 
-   python ggp.py optimize [OPTIONS]
+   ggp --help
+   ggp --version
 
 Command Overview
 ================
 
+The CLI provides two top-level commands: ``optimize`` and ``info``.
+
+``info`` Command
+----------------
+
+Displays what is available in the current installation.
+
+.. code-block:: bash
+
+   ggp info                  # show everything
+   ggp info --presets        # list built-in problem presets
+   ggp info --mappers        # list registered projection mappers
+   ggp info --backends       # list available linear-algebra backends
+
 ``optimize`` Command
 --------------------
 
-This command runs an end-to-end topology optimization scenario. 
+Runs an end-to-end topology optimisation from a built-in preset or a custom YAML file.
 
-**Options:**
+.. code-block:: bash
 
-* ``--use-case`` : Choose the structural boundary conditions.
-  
-  * *Choices:* ``Short_Cantilever``, ``MBB``, ``L-shape``
-  * *Default:* ``Short_Cantilever``
+   ggp optimize --preset <name>   [OPTIONS]
+   ggp optimize --config <file>   [OPTIONS]
 
-* ``--formulation`` : Choose the generalized geometry projection method.
-  
-  * *Choices:* ``Free``, ``ALM``, ``3D_Free``, ``3D_ALM``
-  * *Default:* ``Free``
+You must provide exactly one of ``--preset`` or ``--config``.
 
-* ``--max-iter`` : Maximum number of optimization iterations.
-  
-  * *Default:* ``50``
+**Source options:**
 
-* ``--algorithm`` : Optimization algorithm.
-  
-  * *Choices (GEMSEO solvers):* ``MMA``, ``SLP``, ``CONLIN``
-  * *Default:* ``MMA``
+* ``--preset <name>`` — use a built-in preset YAML (see ``ggp info --presets``).
+  Built-in presets: ``short_cantilever``, ``mbb``, ``l_shape``, ``alm_cantilever``.
+* ``--config <path>`` — path to a custom YAML problem definition file.
 
-* ``--use-line-search`` : Enable line search for the optimization algorithm.
-  
-  * *Usage:* Often recommended when using ``SLP``.
+**Override options** (applied on top of the preset or config file):
 
-* ``--iterative`` : Toggle the use of high-performance iterative solvers (PETSc GAMG) instead of memory-heavy direct solvers.
-  
-  * *Usage:* Highly recommended and effectively required for ``3D_Free`` or ``3D_ALM`` formulations due to scale.
-
-* ``--length`` & ``--height`` : Domain length (L) and height (H). For 3D, depth (D) equals height (H).
-  
-  * *Default:* Depends on the ``--use-case``.
-
-* ``--nelx`` & ``--nely`` : Number of elements in X and Y directions. For 3D, ``nelz`` equals ``nely``.
-  
-  * *Default:* Depends on the ``--use-case``.
-
-* ``--volfrac`` : Target volume fraction constraint.
-  
-  * *Default:* ``0.4``
+* ``--max-iter <int>`` — maximum number of outer optimisation iterations.
+* ``--algorithm <str>`` — optimisation algorithm: ``MMA``, ``SLP``, or ``CONLIN``.
+* ``--volfrac <float>`` — target volume fraction constraint.
+* ``--iterative`` — flag: use PETSc iterative solver (CG + GAMG) instead of direct LU.
+  Recommended for 3-D or very large 2-D meshes.
+* ``--use-line-search`` — flag: enable monotone backtracking line search.
+  Recommended with ``SLP`` or ``CONLIN``.
 
 Examples
 ========
 
-Run a standard Free formulation optimization on an MBB beam with SLP algorithm:
+Run the short cantilever benchmark with default settings:
 
 .. code-block:: bash
 
-   python ggp.py optimize --use-case MBB --formulation Free --algorithm SLP --max-iter 100
+   ggp optimize --preset short_cantilever
 
-Run an ALM continuous formulation optimization with a custom mesh and volume fraction:
-
-.. code-block:: bash
-
-   python ggp.py optimize --use-case Short_Cantilever --formulation ALM --max-iter 30 --nelx 120 --nely 60 --volfrac 0.5
-
-Run a 3D topology optimization using scalable PETSc iterative solvers (with automated ParaView XDMF outputs):
+Run the MBB beam with SLP and line search:
 
 .. code-block:: bash
 
-   conda run -n samo_agents python ggp.py optimize --use-case Short_Cantilever --formulation 3D_Free --max-iter 30 --iterative
+   ggp optimize --preset mbb --algorithm SLP --use-line-search
+
+Run the ALM cantilever with 30 iterations:
+
+.. code-block:: bash
+
+   ggp optimize --preset alm_cantilever --max-iter 30
+
+Override the volume fraction on any preset:
+
+.. code-block:: bash
+
+   ggp optimize --preset l_shape --volfrac 0.3 --algorithm CONLIN
+
+Run from a custom YAML file with the iterative solver:
+
+.. code-block:: bash
+
+   ggp optimize --config my_3d_problem.yaml --iterative --max-iter 50
+
+YAML Problem Definition Format
+===============================
+
+Custom YAML files follow the ``ProblemSpec`` schema. The minimal structure is:
+
+.. code-block:: yaml
+
+   geometries:
+     - type: fenics_rectangle
+       role: design
+       params:
+         Lx: 60.0
+         Ly: 30.0
+         nx: 60
+         ny: 30
+
+   boundary_conditions:
+     - region: left
+       type: fixed
+
+   loads:
+     - region: mid_right
+       type: point
+       value: [0.0, -1.0]
+
+   formulation:
+     mode: Free          # Free | 2D_Free | ALM | 2D_ALM | 3D_Free | 3D_ALM
+     num_components: 18
+
+   solver:
+     algorithm: MMA      # MMA | SLP | CONLIN
+     max_iter: 50
+
+   volfrac: 0.4
+
+For a 3-D problem, use ``type: fenics_box`` with params ``Lx``, ``Ly``, ``Lz``, ``nx``, ``ny``, ``nz``,
+set ``formulation.mode`` to ``3D_Free`` or ``3D_ALM``, and pass ``--iterative`` on the CLI.
+
+The built-in presets in ``ggp/cli/presets/`` serve as ready-to-copy starting points.

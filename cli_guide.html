@@ -50,12 +50,13 @@
 <ul class="current">
 <li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Command-Line Interface (CLI)</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#running-the-cli">Running the CLI</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#command-overview">Command Overview</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#info-command"><code class="docutils literal notranslate"><span class="pre">info</span></code> Command</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#optimize-command"><code class="docutils literal notranslate"><span class="pre">optimize</span></code> Command</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#examples">Examples</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#yaml-problem-definition-format">YAML Problem Definition Format</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="developer_guide.html">Developer Guide</a></li>
@@ -93,86 +94,108 @@
              
   <section id="command-line-interface-cli">
 <h1>Command-Line Interface (CLI)<a class="headerlink" href="#command-line-interface-cli" title="Link to this heading"></a></h1>
-<p>GGP provides a unified Command-Line Interface to quickly run topology optimizations with varying algorithms, formulations, and test cases.</p>
-<section id="running-the-cli">
-<h2>Running the CLI<a class="headerlink" href="#running-the-cli" title="Link to this heading"></a></h2>
-<p>From the project root, you can invoke the CLI script <code class="docutils literal notranslate"><span class="pre">ggp.py</span></code>:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>ggp.py<span class="w"> </span>optimize<span class="w"> </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+<p>After installing the package (<code class="docutils literal notranslate"><span class="pre">pip</span> <span class="pre">install</span> <span class="pre">-e</span> <span class="pre">.</span></code>), the <code class="docutils literal notranslate"><span class="pre">ggp</span></code> command is available in your Conda environment.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>--help
+ggp<span class="w"> </span>--version
+</pre></div>
+</div>
+<section id="command-overview">
+<h2>Command Overview<a class="headerlink" href="#command-overview" title="Link to this heading"></a></h2>
+<p>The CLI provides two top-level commands: <code class="docutils literal notranslate"><span class="pre">optimize</span></code> and <code class="docutils literal notranslate"><span class="pre">info</span></code>.</p>
+<section id="info-command">
+<h3><code class="docutils literal notranslate"><span class="pre">info</span></code> Command<a class="headerlink" href="#info-command" title="Link to this heading"></a></h3>
+<p>Displays what is available in the current installation.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>info<span class="w">                  </span><span class="c1"># show everything</span>
+ggp<span class="w"> </span>info<span class="w"> </span>--presets<span class="w">        </span><span class="c1"># list built-in problem presets</span>
+ggp<span class="w"> </span>info<span class="w"> </span>--mappers<span class="w">        </span><span class="c1"># list registered projection mappers</span>
+ggp<span class="w"> </span>info<span class="w"> </span>--backends<span class="w">       </span><span class="c1"># list available linear-algebra backends</span>
 </pre></div>
 </div>
 </section>
-<section id="command-overview">
-<h2>Command Overview<a class="headerlink" href="#command-overview" title="Link to this heading"></a></h2>
 <section id="optimize-command">
 <h3><code class="docutils literal notranslate"><span class="pre">optimize</span></code> Command<a class="headerlink" href="#optimize-command" title="Link to this heading"></a></h3>
-<p>This command runs an end-to-end topology optimization scenario.</p>
-<p><strong>Options:</strong></p>
+<p>Runs an end-to-end topology optimisation from a built-in preset or a custom YAML file.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>&lt;name&gt;<span class="w">   </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+ggp<span class="w"> </span>optimize<span class="w"> </span>--config<span class="w"> </span>&lt;file&gt;<span class="w">   </span><span class="o">[</span>OPTIONS<span class="o">]</span>
+</pre></div>
+</div>
+<p>You must provide exactly one of <code class="docutils literal notranslate"><span class="pre">--preset</span></code> or <code class="docutils literal notranslate"><span class="pre">--config</span></code>.</p>
+<p><strong>Source options:</strong></p>
 <ul class="simple">
-<li><p><code class="docutils literal notranslate"><span class="pre">--use-case</span></code> : Choose the structural boundary conditions.</p>
-<ul>
-<li><p><em>Choices:</em> <code class="docutils literal notranslate"><span class="pre">Short_Cantilever</span></code>, <code class="docutils literal notranslate"><span class="pre">MBB</span></code>, <code class="docutils literal notranslate"><span class="pre">L-shape</span></code></p></li>
-<li><p><em>Default:</em> <code class="docutils literal notranslate"><span class="pre">Short_Cantilever</span></code></p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--preset</span> <span class="pre">&lt;name&gt;</span></code> — use a built-in preset YAML (see <code class="docutils literal notranslate"><span class="pre">ggp</span> <span class="pre">info</span> <span class="pre">--presets</span></code>).
+Built-in presets: <code class="docutils literal notranslate"><span class="pre">short_cantilever</span></code>, <code class="docutils literal notranslate"><span class="pre">mbb</span></code>, <code class="docutils literal notranslate"><span class="pre">l_shape</span></code>, <code class="docutils literal notranslate"><span class="pre">alm_cantilever</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--config</span> <span class="pre">&lt;path&gt;</span></code> — path to a custom YAML problem definition file.</p></li>
 </ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--formulation</span></code> : Choose the generalized geometry projection method.</p>
-<ul>
-<li><p><em>Choices:</em> <code class="docutils literal notranslate"><span class="pre">Free</span></code>, <code class="docutils literal notranslate"><span class="pre">ALM</span></code>, <code class="docutils literal notranslate"><span class="pre">3D_Free</span></code>, <code class="docutils literal notranslate"><span class="pre">3D_ALM</span></code></p></li>
-<li><p><em>Default:</em> <code class="docutils literal notranslate"><span class="pre">Free</span></code></p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--max-iter</span></code> : Maximum number of optimization iterations.</p>
-<ul>
-<li><p><em>Default:</em> <code class="docutils literal notranslate"><span class="pre">50</span></code></p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--algorithm</span></code> : Optimization algorithm.</p>
-<ul>
-<li><p><em>Choices (GEMSEO solvers):</em> <code class="docutils literal notranslate"><span class="pre">MMA</span></code>, <code class="docutils literal notranslate"><span class="pre">SLP</span></code>, <code class="docutils literal notranslate"><span class="pre">CONLIN</span></code></p></li>
-<li><p><em>Default:</em> <code class="docutils literal notranslate"><span class="pre">MMA</span></code></p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--use-line-search</span></code> : Enable line search for the optimization algorithm.</p>
-<ul>
-<li><p><em>Usage:</em> Often recommended when using <code class="docutils literal notranslate"><span class="pre">SLP</span></code>.</p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--iterative</span></code> : Toggle the use of high-performance iterative solvers (PETSc GAMG) instead of memory-heavy direct solvers.</p>
-<ul>
-<li><p><em>Usage:</em> Highly recommended and effectively required for <code class="docutils literal notranslate"><span class="pre">3D_Free</span></code> or <code class="docutils literal notranslate"><span class="pre">3D_ALM</span></code> formulations due to scale.</p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--length</span></code> &amp; <code class="docutils literal notranslate"><span class="pre">--height</span></code> : Domain length (L) and height (H). For 3D, depth (D) equals height (H).</p>
-<ul>
-<li><p><em>Default:</em> Depends on the <code class="docutils literal notranslate"><span class="pre">--use-case</span></code>.</p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--nelx</span></code> &amp; <code class="docutils literal notranslate"><span class="pre">--nely</span></code> : Number of elements in X and Y directions. For 3D, <code class="docutils literal notranslate"><span class="pre">nelz</span></code> equals <code class="docutils literal notranslate"><span class="pre">nely</span></code>.</p>
-<ul>
-<li><p><em>Default:</em> Depends on the <code class="docutils literal notranslate"><span class="pre">--use-case</span></code>.</p></li>
-</ul>
-</li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--volfrac</span></code> : Target volume fraction constraint.</p>
-<ul>
-<li><p><em>Default:</em> <code class="docutils literal notranslate"><span class="pre">0.4</span></code></p></li>
-</ul>
-</li>
+<p><strong>Override options</strong> (applied on top of the preset or config file):</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">--max-iter</span> <span class="pre">&lt;int&gt;</span></code> — maximum number of outer optimisation iterations.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--algorithm</span> <span class="pre">&lt;str&gt;</span></code> — optimisation algorithm: <code class="docutils literal notranslate"><span class="pre">MMA</span></code>, <code class="docutils literal notranslate"><span class="pre">SLP</span></code>, or <code class="docutils literal notranslate"><span class="pre">CONLIN</span></code>.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--volfrac</span> <span class="pre">&lt;float&gt;</span></code> — target volume fraction constraint.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--iterative</span></code> — flag: use PETSc iterative solver (CG + GAMG) instead of direct LU.
+Recommended for 3-D or very large 2-D meshes.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--use-line-search</span></code> — flag: enable monotone backtracking line search.
+Recommended with <code class="docutils literal notranslate"><span class="pre">SLP</span></code> or <code class="docutils literal notranslate"><span class="pre">CONLIN</span></code>.</p></li>
 </ul>
 </section>
 </section>
 <section id="examples">
 <h2>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h2>
-<p>Run a standard Free formulation optimization on an MBB beam with SLP algorithm:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>ggp.py<span class="w"> </span>optimize<span class="w"> </span>--use-case<span class="w"> </span>MBB<span class="w"> </span>--formulation<span class="w"> </span>Free<span class="w"> </span>--algorithm<span class="w"> </span>SLP<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">100</span>
+<p>Run the short cantilever benchmark with default settings:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>short_cantilever
 </pre></div>
 </div>
-<p>Run an ALM continuous formulation optimization with a custom mesh and volume fraction:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>ggp.py<span class="w"> </span>optimize<span class="w"> </span>--use-case<span class="w"> </span>Short_Cantilever<span class="w"> </span>--formulation<span class="w"> </span>ALM<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">30</span><span class="w"> </span>--nelx<span class="w"> </span><span class="m">120</span><span class="w"> </span>--nely<span class="w"> </span><span class="m">60</span><span class="w"> </span>--volfrac<span class="w"> </span><span class="m">0</span>.5
+<p>Run the MBB beam with SLP and line search:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>mbb<span class="w"> </span>--algorithm<span class="w"> </span>SLP<span class="w"> </span>--use-line-search
 </pre></div>
 </div>
-<p>Run a 3D topology optimization using scalable PETSc iterative solvers (with automated ParaView XDMF outputs):</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>run<span class="w"> </span>-n<span class="w"> </span>samo_agents<span class="w"> </span>python<span class="w"> </span>ggp.py<span class="w"> </span>optimize<span class="w"> </span>--use-case<span class="w"> </span>Short_Cantilever<span class="w"> </span>--formulation<span class="w"> </span>3D_Free<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">30</span><span class="w"> </span>--iterative
+<p>Run the ALM cantilever with 30 iterations:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>alm_cantilever<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">30</span>
 </pre></div>
 </div>
+<p>Override the volume fraction on any preset:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>l_shape<span class="w"> </span>--volfrac<span class="w"> </span><span class="m">0</span>.3<span class="w"> </span>--algorithm<span class="w"> </span>CONLIN
+</pre></div>
+</div>
+<p>Run from a custom YAML file with the iterative solver:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--config<span class="w"> </span>my_3d_problem.yaml<span class="w"> </span>--iterative<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">50</span>
+</pre></div>
+</div>
+</section>
+<section id="yaml-problem-definition-format">
+<h2>YAML Problem Definition Format<a class="headerlink" href="#yaml-problem-definition-format" title="Link to this heading"></a></h2>
+<p>Custom YAML files follow the <code class="docutils literal notranslate"><span class="pre">ProblemSpec</span></code> schema. The minimal structure is:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">geometries</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fenics_rectangle</span>
+<span class="w">    </span><span class="nt">role</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">design</span>
+<span class="w">    </span><span class="nt">params</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">Lx</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60.0</span>
+<span class="w">      </span><span class="nt">Ly</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30.0</span>
+<span class="w">      </span><span class="nt">nx</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60</span>
+<span class="w">      </span><span class="nt">ny</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span>
+
+<span class="nt">boundary_conditions</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">left</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fixed</span>
+
+<span class="nt">loads</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mid_right</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">point</span>
+<span class="w">    </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">0.0</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">-1.0</span><span class="p p-Indicator">]</span>
+
+<span class="nt">formulation</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">Free</span><span class="w">          </span><span class="c1"># Free | 2D_Free | ALM | 2D_ALM | 3D_Free | 3D_ALM</span>
+<span class="w">  </span><span class="nt">num_components</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">18</span>
+
+<span class="nt">solver</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">algorithm</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MMA</span><span class="w">      </span><span class="c1"># MMA | SLP | CONLIN</span>
+<span class="w">  </span><span class="nt">max_iter</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span>
+
+<span class="nt">volfrac</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.4</span>
+</pre></div>
+</div>
+<p>For a 3-D problem, use <code class="docutils literal notranslate"><span class="pre">type:</span> <span class="pre">fenics_box</span></code> with params <code class="docutils literal notranslate"><span class="pre">Lx</span></code>, <code class="docutils literal notranslate"><span class="pre">Ly</span></code>, <code class="docutils literal notranslate"><span class="pre">Lz</span></code>, <code class="docutils literal notranslate"><span class="pre">nx</span></code>, <code class="docutils literal notranslate"><span class="pre">ny</span></code>, <code class="docutils literal notranslate"><span class="pre">nz</span></code>,
+set <code class="docutils literal notranslate"><span class="pre">formulation.mode</span></code> to <code class="docutils literal notranslate"><span class="pre">3D_Free</span></code> or <code class="docutils literal notranslate"><span class="pre">3D_ALM</span></code>, and pass <code class="docutils literal notranslate"><span class="pre">--iterative</span></code> on the CLI.</p>
+<p>The built-in presets in <code class="docutils literal notranslate"><span class="pre">ggp/cli/presets/</span></code> serve as ready-to-copy starting points.</p>
 </section>
 </section>
 

@@ -48,14 +48,43 @@ To solve this, the framework implements a native **XDMF Exporter**. During the o
 CLI Usage
 ---------
 
-You can launch a 3D topology optimization task utilizing the iterative solvers directly from the CLI. 
+3D problems are defined via a custom YAML file with ``type: fenics_box`` geometry and ``formulation.mode: 3D_Free`` (or ``3D_ALM``). Pass ``--iterative`` to activate the CG + GAMG solver, which is effectively required at 3D scales.
 
 .. code-block:: bash
 
-   conda run -n samo_agents python ggp.py optimize \
-     --use-case Short_Cantilever \
-     --formulation 3D_Free \
-     --max-iter 30 \
-     --iterative
+   ggp optimize --config my_3d_problem.yaml --iterative --max-iter 30
 
-This automatically establishes the 3D bounding box dimensions, launches the GAMG iterative solver, and produces the XDMF sequences for subsequent ParaView rendering.
+A minimal YAML for a 3D short cantilever:
+
+.. code-block:: yaml
+
+   geometries:
+     - type: fenics_box
+       role: design
+       params:
+         Lx: 60.0
+         Ly: 30.0
+         Lz: 30.0
+         nx: 20
+         ny: 10
+         nz: 10
+
+   boundary_conditions:
+     - region: left
+       type: fixed
+
+   loads:
+     - region: mid_right
+       type: point
+       value: [0.0, -1.0, 0.0]
+
+   formulation:
+     mode: 3D_Free
+     num_components: 18
+
+   solver:
+     algorithm: MMA
+     max_iter: 30
+     iterative: true
+
+   volfrac: 0.4

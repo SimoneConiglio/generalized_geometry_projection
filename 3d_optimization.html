@@ -133,15 +133,43 @@
 </section>
 <section id="cli-usage">
 <h2>CLI Usage<a class="headerlink" href="#cli-usage" title="Link to this heading"></a></h2>
-<p>You can launch a 3D topology optimization task utilizing the iterative solvers directly from the CLI.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>run<span class="w"> </span>-n<span class="w"> </span>samo_agents<span class="w"> </span>python<span class="w"> </span>ggp.py<span class="w"> </span>optimize<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--use-case<span class="w"> </span>Short_Cantilever<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--formulation<span class="w"> </span>3D_Free<span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--max-iter<span class="w"> </span><span class="m">30</span><span class="w"> </span><span class="se">\</span>
-<span class="w">  </span>--iterative
+<p>3D problems are defined via a custom YAML file with <code class="docutils literal notranslate"><span class="pre">type:</span> <span class="pre">fenics_box</span></code> geometry and <code class="docutils literal notranslate"><span class="pre">formulation.mode:</span> <span class="pre">3D_Free</span></code> (or <code class="docutils literal notranslate"><span class="pre">3D_ALM</span></code>). Pass <code class="docutils literal notranslate"><span class="pre">--iterative</span></code> to activate the CG + GAMG solver, which is effectively required at 3D scales.</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--config<span class="w"> </span>my_3d_problem.yaml<span class="w"> </span>--iterative<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">30</span>
 </pre></div>
 </div>
-<p>This automatically establishes the 3D bounding box dimensions, launches the GAMG iterative solver, and produces the XDMF sequences for subsequent ParaView rendering.</p>
+<p>A minimal YAML for a 3D short cantilever:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">geometries</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fenics_box</span>
+<span class="w">    </span><span class="nt">role</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">design</span>
+<span class="w">    </span><span class="nt">params</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">Lx</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">60.0</span>
+<span class="w">      </span><span class="nt">Ly</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30.0</span>
+<span class="w">      </span><span class="nt">Lz</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30.0</span>
+<span class="w">      </span><span class="nt">nx</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">20</span>
+<span class="w">      </span><span class="nt">ny</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+<span class="w">      </span><span class="nt">nz</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">10</span>
+
+<span class="nt">boundary_conditions</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">left</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">fixed</span>
+
+<span class="nt">loads</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">region</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">mid_right</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">point</span>
+<span class="w">    </span><span class="nt">value</span><span class="p">:</span><span class="w"> </span><span class="p p-Indicator">[</span><span class="nv">0.0</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">-1.0</span><span class="p p-Indicator">,</span><span class="w"> </span><span class="nv">0.0</span><span class="p p-Indicator">]</span>
+
+<span class="nt">formulation</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">mode</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">3D_Free</span>
+<span class="w">  </span><span class="nt">num_components</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">18</span>
+
+<span class="nt">solver</span><span class="p">:</span>
+<span class="w">  </span><span class="nt">algorithm</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MMA</span>
+<span class="w">  </span><span class="nt">max_iter</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">30</span>
+<span class="w">  </span><span class="nt">iterative</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">true</span>
+
+<span class="nt">volfrac</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.4</span>
+</pre></div>
+</div>
 </section>
 </section>
 

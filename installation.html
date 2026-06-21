@@ -24,7 +24,7 @@
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
     <link rel="next" title="Command-Line Interface (CLI)" href="cli_guide.html" />
-    <link rel="prev" title="ggp documentation" href="index.html" /> 
+    <link rel="prev" title="Generalized Geometry Projection (GGP)" href="index.html" /> 
 </head>
 
 <body class="wy-body-for-nav"> 
@@ -54,7 +54,7 @@
 <li class="toctree-l2"><a class="reference internal" href="#step-2-clone-the-repository">Step 2: Clone the Repository</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#step-3-create-the-conda-environment">Step 3: Create the Conda Environment</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#step-4-activate-the-environment">Step 4: Activate the Environment</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#step-5-set-the-python-path">Step 5: Set the Python Path</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#step-5-install-the-package">Step 5: Install the Package</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#step-6-verify-the-installation">Step 6: Verify the Installation</a></li>
 </ul>
 </li>
@@ -136,21 +136,26 @@ bash<span class="w"> </span>Miniconda3-latest-Linux-x86_64.sh
 </pre></div>
 </div>
 </section>
-<section id="step-5-set-the-python-path">
-<h2>Step 5: Set the Python Path<a class="headerlink" href="#step-5-set-the-python-path" title="Link to this heading"></a></h2>
-<p>For Python to recognize the <code class="docutils literal notranslate"><span class="pre">ggp</span></code> package without requiring a global pip install, you must append the current directory to your <code class="docutils literal notranslate"><span class="pre">PYTHONPATH</span></code> before running scripts.</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span><span class="nb">export</span><span class="w"> </span><span class="nv">PYTHONPATH</span><span class="o">=</span><span class="nv">$PYTHONPATH</span>:.
+<section id="step-5-install-the-package">
+<h2>Step 5: Install the Package<a class="headerlink" href="#step-5-install-the-package" title="Link to this heading"></a></h2>
+<p>Install the <code class="docutils literal notranslate"><span class="pre">ggp</span></code> package in editable mode so that the <code class="docutils literal notranslate"><span class="pre">ggp</span></code> CLI is available and Python can import the package without manual <code class="docutils literal notranslate"><span class="pre">PYTHONPATH</span></code> manipulation:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pip<span class="w"> </span>install<span class="w"> </span>-e<span class="w"> </span>.
 </pre></div>
 </div>
-<p><em>Tip: You can add this line to your `~/.bashrc` or run commands by prefixing them, e.g., `PYTHONPATH=$PYTHONPATH:. python examples/01_short_cantilever.py`</em></p>
+<p>This registers the <code class="docutils literal notranslate"><span class="pre">ggp</span></code> entry-point command and the <code class="docutils literal notranslate"><span class="pre">ggp-topo</span></code> package into the active Conda environment.</p>
 </section>
 <section id="step-6-verify-the-installation">
 <h2>Step 6: Verify the Installation<a class="headerlink" href="#step-6-verify-the-installation" title="Link to this heading"></a></h2>
-<p>You can verify that all dependencies and internal modules are working by running the provided <cite>pytest</cite> suite:</p>
+<p>You can verify that all dependencies and internal modules are working by running the provided <code class="docutils literal notranslate"><span class="pre">pytest</span></code> suite:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>pytest<span class="w"> </span>tests/
 </pre></div>
 </div>
-<p>If the tests pass, you are ready to start running the examples or developing your own topology optimization workflows!</p>
+<p>You can also confirm the CLI is working:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>--version
+ggp<span class="w"> </span>info<span class="w"> </span>--presets
+</pre></div>
+</div>
+<p>If the tests pass and the CLI responds, you are ready to run the examples or develop your own topology optimization workflows.</p>
 </section>
 </section>
 
@@ -158,7 +163,7 @@ bash<span class="w"> </span>Miniconda3-latest-Linux-x86_64.sh
            </div>
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
-        <a href="index.html" class="btn btn-neutral float-left" title="ggp documentation" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="index.html" class="btn btn-neutral float-left" title="Generalized Geometry Projection (GGP)" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
         <a href="cli_guide.html" class="btn btn-neutral float-right" title="Command-Line Interface (CLI)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
