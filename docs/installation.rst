@@ -55,24 +55,31 @@ Every time you work on this project, you must activate the environment:
 
    conda activate ggp
 
-Step 5: Set the Python Path
+Step 5: Install the Package
 ---------------------------
 
-For Python to recognize the ``ggp`` package without requiring a global pip install, you must append the current directory to your ``PYTHONPATH`` before running scripts.
+Install the ``ggp`` package in editable mode so that the ``ggp`` CLI is available and Python can import the package without manual ``PYTHONPATH`` manipulation:
 
 .. code-block:: bash
 
-   export PYTHONPATH=$PYTHONPATH:.
+   pip install -e .
 
-*Tip: You can add this line to your `~/.bashrc` or run commands by prefixing them, e.g., `PYTHONPATH=$PYTHONPATH:. python examples/01_short_cantilever.py`*
+This registers the ``ggp`` entry-point command and the ``ggp-topo`` package into the active Conda environment.
 
 Step 6: Verify the Installation
 -------------------------------
 
-You can verify that all dependencies and internal modules are working by running the provided `pytest` suite:
+You can verify that all dependencies and internal modules are working by running the provided ``pytest`` suite:
 
 .. code-block:: bash
 
    pytest tests/
 
-If the tests pass, you are ready to start running the examples or developing your own topology optimization workflows!
+You can also confirm the CLI is working:
+
+.. code-block:: bash
+
+   ggp --version
+   ggp info --presets
+
+If the tests pass and the CLI responds, you are ready to run the examples or develop your own topology optimization workflows.

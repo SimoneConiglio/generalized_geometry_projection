@@ -1,7 +1,7 @@
 # Generalized Geometry Projection (GGP) for Additive Manufacturing
 
 [![Tests](https://github.com/SimoneConiglio/generalized_geometry_projection/actions/workflows/tests.yml/badge.svg)](https://github.com/SimoneConiglio/generalized_geometry_projection/actions/workflows/tests.yml)
-[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FSimoneConiglio%2Fgeneralized_geometry_projection%2Fgh-pages%2Fbadges%2Fcoverage.json&cacheSeconds=3600)](https://simoneconiglio.github.io/generalized_geometry_projection/)
+[![Coverage](https://img.shields.io/endpoint?url=https%3A%2F%2Fraw.githubusercontent.com%2FSimoneConiglio%2Fgeneralized_geometry_projection%2Fmain%2Fcoverage.json&cacheSeconds=3600)](https://simoneconiglio.github.io/generalized_geometry_projection/)
 [![Docs](https://github.com/SimoneConiglio/generalized_geometry_projection/actions/workflows/docs.yml/badge.svg)](https://simoneconiglio.github.io/generalized_geometry_projection/)
 [![Python 3.10](https://img.shields.io/badge/python-3.10-blue.svg)](https://www.python.org/downloads/release/python-3100/)
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
@@ -24,12 +24,13 @@ Comprehensive documentation, including mathematical background and detailed code
 
 ## 🚀 Features
 
-- **Modular MDAO Architecture:** Decoupled `GGPVectorizedGeometryDiscipline` and `GGPPhysicsFastDiscipline` inside a unified GEMSEO `MDAChain`.
-- **Vectorized Geometric Mapping:** Analytic Jacobians for Free (2D/3D) and ALM (2D/3D) mappers computed via highly-optimized vectorized NumPy logic.
-- **High-Speed Stiffness Assembly:** Manual global stiffness matrix assembly using `petsc4py` and SciPy sparse CSR formats, bypassing FEniCS adjoint taping overhead.
-- **Bit-Exact Baseline Reproduction:** Verification against academic GGP MATLAB baselines to double-precision compliance and volume fraction metrics.
-- **Topology Optimization Benchmarks:** Includes standard pre-configured benchmarks (Short Cantilever, MBB Beam, L-Shape Bracket, ALM Cantilever).
-- **Robust Test Coverage:** Thorough unit and regression tests covering 3D domains, iterative solvers, and overhang restrictions with **>93% coverage**.
+- **Config-Driven Optimization:** Every run is fully described by a frozen `ProblemSpec` dataclass, loadable from YAML. Built-in presets cover the standard benchmarks; custom problems only need a YAML file.
+- **Self-Registering Extension Points:** New geometry readers (`@register_reader`) and projection mappers (`@register_mapper`) integrate without touching core loops.
+- **Modular MDAO Architecture:** `GGPGeometryDiscipline` and `GGPPhysicsDiscipline` are decoupled GEMSEO disciplines chained in an `MDAChain` under an MDF scenario.
+- **Vectorized Geometric Mapping:** Pure-NumPy projection mappers for Free (2D/3D) and ALM (2D/3D) provide analytic Jacobians with no FEniCS dependency.
+- **FEniCS Physics Solver:** Linear elasticity with SIMP penalization, supporting a direct MUMPS solver (2D) or scalable iterative CG + GAMG (3D/large meshes).
+- **Topology Optimization Benchmarks:** Built-in presets for Short Cantilever, MBB Beam, L-Shape Bracket, and ALM Cantilever.
+- **Robust Test Coverage:** Unit and regression tests covering 3D domains, iterative solvers, and overhang constraints with **>80% coverage**.
 
 ## 🛠️ Installation
 
@@ -55,28 +56,49 @@ The framework relies heavily on FEniCS, which is best installed via Conda.
 
 ## 🧠 Running Optimizations via CLI
 
-A unified Command-Line Interface (`ggp.py`) is provided in the project root to quickly run topology optimizations with varying algorithms, formulations, and test cases.
+After installation (`pip install -e .`), the `ggp` command is available directly:
 
 ```bash
-# Run the Short Cantilever benchmark using the Free formulation
-python ggp.py optimize --use-case Short_Cantilever --formulation Free --max-iter 50
+# List available presets
+ggp info --presets
 
-# Run the MBB Beam benchmark using the Free formulation with SLP, custom mesh, and line search
-python ggp.py optimize --use-case MBB --formulation Free --algorithm SLP --use-line-search --nelx 120 --nely 40 --volfrac 0.5
+# Run a built-in benchmark preset
+ggp optimize --preset short_cantilever
+ggp optimize --preset mbb --algorithm SLP --use-line-search
+ggp optimize --preset alm_cantilever --max-iter 30
 
-# Run the L-Shape Bracket benchmark using the Free formulation
-python ggp.py optimize --use-case L-shape --formulation Free --max-iter 50
+# Run from a custom YAML problem definition
+ggp optimize --config my_problem.yaml --volfrac 0.5 --iterative
 
-# Run the ALM Cantilever with Overhang Constraints
-python ggp.py optimize --use-case Short_Cantilever --formulation ALM --max-iter 30
+# Override algorithm or iteration count on any preset
+ggp optimize --preset l_shape --algorithm CONLIN --max-iter 100
 ```
 
 For more details on CLI options, see the [CLI User Guide](https://simoneconiglio.github.io/generalized_geometry_projection/cli_guide.html).
 
 ## 🏗️ Architecture
 
-The code is structured into the `ggp/` package:
-- `geometry/`: Implements geometric primitive mapping mappers (Free and ALM, 2D and 3D) using regularized Heaviside functions and saturated Kreisselmeier-Steinhauser (KS) aggregation.
-- `physics/`: Implements PDE-based linear elasticity solvers with plane-stress/3D options and SIMP material interpolation.
-- `gemseo_wrappers/`: Contains decoupled GEMSEO disciplines (`GGPVectorizedGeometryDiscipline`, `GGPPhysicsFastDiscipline`) facilitating modular MDAO scenario execution.
-- `utils/`: Includes ALM overhang constraint calculations, mathematical operators, and step-by-step verification/validation tools.
+The `ggp/` package is organized into seven layers that separate concerns cleanly:
+
+| Layer | Package | Responsibility |
+|---|---|---|
+| Problem spec | `ggp/problem/` | Frozen dataclasses (`ProblemSpec`, `GeometrySpec`, `SolverSpec`, …) and YAML loader |
+| Geometry I/O | `ggp/geometry/io/` | Self-registering reader registry; `@register_reader("type")` to extend |
+| Discretisation | `ggp/discretisation/` | `FEMDiscretiser` → `AnalysisDomain` (FEniCS mesh, BCs, stiffness reference, load vector) |
+| Projection mappers | `ggp/projection/` | Pure-NumPy mappers (`Free2DMapper`, `Free3DMapper`, `ALM2DMapper`, `ALM3DMapper`); `@register_mapper("mode")` to extend |
+| GEMSEO disciplines | `ggp/gemseo_wrappers/` | `GGPGeometryDiscipline` (wraps mapper) + `GGPPhysicsDiscipline` (FEniCS elasticity) |
+| Optimization pipeline | `ggp/optimization/` | `GGPPipeline` wires all layers; `OptimisationResult` captures outputs |
+| CLI | `ggp/cli/` | Click commands (`optimize`, `info`); YAML presets in `ggp/cli/presets/` |
+
+**Data flow:**
+
+```
+YAML / ProblemSpec
+      ↓
+GGPPipeline
+  ├─ GeometryReader  →  DomainRepresentation
+  ├─ FEMDiscretiser  →  AnalysisDomain
+  ├─ GGPGeometryDiscipline  (ProjectionMapper)
+  ├─ GGPPhysicsDiscipline   (LinearElasticitySolver)
+  └─ GEMSEO MDAChain → MDF Scenario → OptimisationResult
+```

@@ -1,15 +1,9 @@
-.. ggp documentation master file, created by
-   sphinx-quickstart on Tue Jun  9 20:56:21 2026.
-   You can adapt this file completely to your liking, but it should at least
-   contain the root `toctree` directive.
+Generalized Geometry Projection (GGP)
+======================================
 
-ggp documentation
-======================
+A modular Python framework for structural Topology Optimization using the **Generalized Geometry Projection (GGP)** method, built on **FEniCS** and **GEMSEO**.
 
-Add your content using ``reStructuredText`` syntax. See the
-`reStructuredText <https://www.sphinx-doc.org/en/master/usage/restructuredtext/index.html>`_
-documentation for details.
-
+The framework supports Free (2D/3D) and Additive Layer Manufacturing (ALM, 2D/3D) projection formulations, gradient-based optimization via MMA / SLP / CONLIN, and config-driven problem definitions loadable from YAML files.
 
 .. toctree::
    :maxdepth: 2
