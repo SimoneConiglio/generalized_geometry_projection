@@ -747,7 +747,7 @@ Each mapper is a pure-NumPy class (no FEniCS dependency) that implements the <co
 <li><p>Calls <code class="docutils literal notranslate"><span class="pre">mapper.forward()</span></code> and <code class="docutils literal notranslate"><span class="pre">mapper.jacobian()</span></code> in <code class="docutils literal notranslate"><span class="pre">_run()</span></code> and <code class="docutils literal notranslate"><span class="pre">_compute_jacobian()</span></code>.</p></li>
 <li><p>Applies KS aggregation and smooth saturation to produce final <code class="docutils literal notranslate"><span class="pre">rho_E</span></code> / <code class="docutils literal notranslate"><span class="pre">rho_V</span></code> fields.</p></li>
 </ol>
-<p><code class="xref py py-class docutils literal notranslate"><span class="pre">GGPPhysicsDiscipline</span></code> wraps the FEniCS elasticity solver and computes the compliance (objective) and volume constraint value.</p>
+<p><a class="reference internal" href="api.html#ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline" title="ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline"><code class="xref py py-class docutils literal notranslate"><span class="pre">GGPPhysicsDiscipline</span></code></a> wraps the FEniCS elasticity solver and computes the compliance (objective) and volume constraint value.</p>
 <p>Both disciplines run inside a GEMSEO <code class="docutils literal notranslate"><span class="pre">MDAChain</span></code> driven by an <code class="docutils literal notranslate"><span class="pre">MDF</span></code> scenario, which handles the gradient chain-rule automatically.</p>
 </section>
 <section id="fem-solver-pre-computed-reference-matrix">

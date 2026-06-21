@@ -168,7 +168,11 @@
 </li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#module-ggp.optimization.results">Optimization Pipeline</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#module-ggp.optimization.pipeline">Optimization Pipeline</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.optimization.pipeline.GGPPipeline"><code class="docutils literal notranslate"><span class="pre">GGPPipeline</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.pipeline.GGPPipeline.run"><code class="docutils literal notranslate"><span class="pre">GGPPipeline.run()</span></code></a></li>
+</ul>
+</li>
 <li class="toctree-l3"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult"><code class="docutils literal notranslate"><span class="pre">OptimisationResult</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.algorithm"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.algorithm</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.design_variables"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.design_variables</span></code></a></li>
@@ -187,6 +191,7 @@
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#module-ggp.gemseo_wrappers.geometry_discipline">GEMSEO Wrappers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#ggp.gemseo_wrappers.geometry_discipline.GGPGeometryDiscipline"><code class="docutils literal notranslate"><span class="pre">GGPGeometryDiscipline</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline"><code class="docutils literal notranslate"><span class="pre">GGPPhysicsDiscipline</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -994,9 +999,22 @@ value has shape <code class="docutils literal notranslate"><span class="pre">(n_
 </dd></dl>
 
 </section>
-<section id="module-ggp.optimization.results">
-<span id="optimization-pipeline"></span><h2>Optimization Pipeline<a class="headerlink" href="#module-ggp.optimization.results" title="Link to this heading"></a></h2>
-<p>Results containers for GGP optimization.</p>
+<section id="module-ggp.optimization.pipeline">
+<span id="optimization-pipeline"></span><h2>Optimization Pipeline<a class="headerlink" href="#module-ggp.optimization.pipeline" title="Link to this heading"></a></h2>
+<p>Optimization pipeline orchestration.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.optimization.pipeline.GGPPipeline">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.optimization.pipeline.</span></span><span class="sig-name descname"><span class="pre">GGPPipeline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec" title="ggp.problem.spec.ProblemSpec"><span class="pre">ProblemSpec</span></a></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/optimization/pipeline.html#GGPPipeline"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.optimization.pipeline.GGPPipeline" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Orchestrates the entire GGP optimization process.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.optimization.pipeline.GGPPipeline.run">
+<span class="sig-name descname"><span class="pre">run</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult" title="ggp.optimization.results.OptimisationResult"><span class="pre">OptimisationResult</span></a></span></span><a class="reference internal" href="_modules/ggp/optimization/pipeline.html#GGPPipeline.run"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.optimization.pipeline.GGPPipeline.run" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+<p id="module-ggp.optimization.results">Results containers for GGP optimization.</p>
 <dl class="py class">
 <dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.optimization.results.</span></span><span class="sig-name descname"><span class="pre">OptimisationResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">problem_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">iterations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">objective_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_constraint_violation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">design_variables</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">history</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mesh_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">execution_time_s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/optimization/results.html#OptimisationResult"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.optimization.results.OptimisationResult" title="Link to this definition"></a></dt>
@@ -1070,6 +1088,15 @@ value has shape <code class="docutils literal notranslate"><span class="pre">(n_
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Discipline</span></code></p>
 <p>GEMSEO discipline for GGP geometry projection.</p>
 <p>Delegates the core maths to a ProjectionMapper.</p>
+</dd></dl>
+
+<p id="module-ggp.gemseo_wrappers.physics_discipline">Refactored physics discipline using pre-assembled vectors.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.gemseo_wrappers.physics_discipline.</span></span><span class="sig-name descname"><span class="pre">GGPPhysicsDiscipline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/gemseo_wrappers/physics_discipline.html#GGPPhysicsDiscipline"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Discipline</span></code></p>
+<p>High-performance Physics Discipline using Fast Assembly (petsc4py/scipy).
+Uses directly assembled load vectors and BCs from the FEMDiscretiser.</p>
 </dd></dl>
 
 </section>
