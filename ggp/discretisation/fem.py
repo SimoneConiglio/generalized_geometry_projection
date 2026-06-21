@@ -23,6 +23,7 @@ class AnalysisDomain:
         self.bcs_applied = []
         self.load_vector = None
         self.empty_elements = []
+        self.ke_ref = None
 
 
 class FEMDiscretiser:
@@ -110,6 +111,23 @@ class FEMDiscretiser:
                 centers_y = eval_coords[:, 1]
                 
                 mask = (centers_x > origin[0]) & (centers_y > origin[1])
-                analysis.empty_elements = np.where(mask)[0].tolist()
+        # Compute Unit Element Stiffness (ke_ref)
+        plane_stress = True
+        mu = 1.0 / 2.6
+        if plane_stress and domain.dim == 2:
+            lmbda = 0.3 / (1.0 - 0.3**2)
+        else:
+            lmbda = 0.3 / (1.3 * (1.0 - 2.0*0.3))
+            
+        def eps_f(u): return 0.5 * (ufl.nabla_grad(u) + ufl.nabla_grad(u).T)
+        def sig_f(u): return lmbda * ufl.tr(eps_f(u)) * ufl.Identity(domain.dim) + 2.0 * mu * eps_f(u)
+        
+        u_trial = df.TrialFunction(V_u)
+        v_test = df.TestFunction(V_u)
+        a = ufl.inner(sig_f(u_trial), eps_f(v_test)) * df.dx
+        
+        # Assemble for the first cell assuming structured grid
+        cell = next(df.cells(mesh))
+        analysis.ke_ref = df.assemble_local(a, cell)
                 
         return analysis

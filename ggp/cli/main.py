@@ -125,46 +125,19 @@ def optimize(
     click.echo(f"  Line search : {spec.solver.use_line_search}")
     click.echo()
 
-    # Delegate to the legacy runner for now (Phase 2 will replace this)
-    _run_legacy(spec)
-
-
-def _run_legacy(spec):
-    """Bridge: convert ProblemSpec → legacy runner call.
-
-    This function will be removed once the full pipeline is wired up.
-    """
-    from ggp.cli.runners.free_runner import run_main_ggp
-
-    # Extract geometry params
-    geom = spec.geometries[0]
-    L = geom.params.get("Lx")
-    H = geom.params.get("Ly")
-    nelx = geom.params.get("nx")
-    nely = geom.params.get("ny")
-
-    # Determine bc_type from boundary conditions (heuristic for legacy bridge)
-    bc_regions = {bc.region for bc in spec.boundary_conditions}
-    if "top" in bc_regions:
-        bc_type = "L-shape"
-    elif "left" in bc_regions and len(bc_regions) == 1:
-        bc_type = "Short_Cantilever"
-    else:
-        bc_type = "MBB"
-
-    run_main_ggp(
-        bc_type=bc_type,
-        max_iter=spec.solver.max_iter,
-        mode=spec.formulation.mode,
-        algorithm=spec.solver.algorithm,
-        use_line_search=spec.solver.use_line_search,
-        L_opt=L,
-        H_opt=H,
-        nelx_opt=nelx,
-        nely_opt=nely,
-        volfrac_opt=spec.volfrac,
-        iterative=spec.solver.iterative,
-    )
+    from ggp.optimization.pipeline import GGPPipeline
+    
+    pipeline = GGPPipeline(spec)
+    result = pipeline.run()
+    
+    click.echo(click.style("\n═══════════════════════════════════════════════", fg="green", bold=True))
+    click.echo(click.style("  Optimisation Completed", fg="green", bold=True))
+    click.echo(click.style("═══════════════════════════════════════════════", fg="green", bold=True))
+    click.echo(f"  Status       : {result.status}")
+    click.echo(f"  Iterations   : {result.iterations}")
+    click.echo(f"  Objective    : {result.objective_value:.6e}")
+    click.echo(f"  Time (s)     : {result.execution_time_s:.2f}")
+    click.echo()
 
 
 # ── info ──────────────────────────────────────────────────────────────────────
