@@ -80,9 +80,12 @@ def test_3d_alm_analytical_gradients():
     z = np.linspace(-1, 1, 10)
     X, Y, Z = np.meshgrid(x, y, z)
     X_flat, Y_flat, Z_flat = X.flatten(), Y.flatten(), Z.flatten()
-    
+
     params = [0.1, -0.2, 0.3, 1.2, 0.8, 0.5, np.pi/4] # Xc, Yc, Zc, L, W, h, T
-    r_gp = 0.2
+    # r_gp=0.18 keeps all grid points strictly inside or outside the transition band,
+    # avoiding the exact-boundary floating-point artefact that arises with r_gp=0.2
+    # (where dz_b=0.45 = h/2+r_gp exactly for z_loc=0.7).
+    r_gp = 0.18
     
     W_an, dX, dY, dZ, dL, dW, dh, dT = compute_local_characteristic_3d_alm_with_grad_np(
         X_flat, Y_flat, Z_flat, *params, r_gp

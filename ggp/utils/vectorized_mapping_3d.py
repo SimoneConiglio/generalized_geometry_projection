@@ -166,50 +166,69 @@ def compute_local_characteristic_3d_alm_with_grad_np(X_mesh, Y_mesh, Z_mesh, Xc,
     dx = X_mesh - Xc
     dy = Y_mesh - Yc
     dz = Z_mesh - Zc
-    
+
     cos_t = np.cos(T)
     sin_t = np.sin(T)
-    
+
     x_loc = dx * cos_t + dy * sin_t
     y_loc = -dx * sin_t + dy * cos_t
     z_loc = dz
-    
-    dx_b = x_loc - L/2.0
-    dy_b = y_loc - W_width/2.0
-    dz_b = z_loc - h/2.0
-    
-    hx = np.maximum(dx_b, 0.0)
-    hy = np.maximum(dy_b, 0.0)
-    hz = np.maximum(dz_b, 0.0)
-    
-    upsi = np.sqrt(hx**2 + hy**2 + hz**2 + eps_safe)
-    inv_upsi = 1.0 / upsi
-    
-    dhx_dXc = -cos_t * (dx_b > 0)
-    dhy_dXc = sin_t * (dy_b > 0)
-    dX = (hx * dhx_dXc + hy * dhy_dXc) * inv_upsi
-    
-    dhx_dYc = -sin_t * (dx_b > 0)
-    dhy_dYc = -cos_t * (dy_b > 0)
-    dY = (hx * dhx_dYc + hy * dhy_dYc) * inv_upsi
-    
-    dZ = (hz * -1.0 * (dz_b > 0)) * inv_upsi
-    dL = (hx * -0.5 * (dx_b > 0)) * inv_upsi
-    dW_w = (hy * -0.5 * (dy_b > 0)) * inv_upsi
-    dh = (hz * -0.5 * (dz_b > 0)) * inv_upsi
-    
-    dhx_dT = y_loc * (dx_b > 0)
-    dhy_dT = -x_loc * (dy_b > 0)
-    dT = (hx * dhx_dT + hy * dhy_dT) * inv_upsi
-    
+
+    # Symmetric box distance — must match compute_local_characteristic_np (3D ALM branch)
+    abs_x = np.abs(x_loc)
+    abs_y = np.abs(y_loc)
+    abs_z = np.abs(z_loc)
+
+    dx_b = np.maximum(abs_x - L / 2.0, 0.0)
+    dy_b = np.maximum(abs_y - W_width / 2.0, 0.0)
+    dz_b = np.maximum(abs_z - h / 2.0, 0.0)
+
+    upsi_sq = dx_b**2 + dy_b**2 + dz_b**2
+    # Use exact sqrt for zetavar (no eps_safe bias so the transition mask is exact).
+    # Use eps_safe only in the reciprocal to avoid division by zero at the box centre.
+    upsi = np.sqrt(upsi_sq)
+    inv_upsi = 1.0 / np.sqrt(upsi_sq + eps_safe)
+
+    # Boolean masks: which half-extents are exceeded
+    mx = abs_x > L / 2.0
+    my = abs_y > W_width / 2.0
+    mz = abs_z > h / 2.0
+
+    sgn_x = np.sign(x_loc)
+    sgn_y = np.sign(y_loc)
+    sgn_z = np.sign(z_loc)
+
+    # d(upsi)/d(Xc): chain x_loc = dx*cos_t + dy*sin_t, d(x_loc)/d(Xc) = -cos_t
+    #                and  y_loc = -dx*sin_t + dy*cos_t, d(y_loc)/d(Xc) = sin_t
+    dupsi_dXc = (dx_b * mx * sgn_x * (-cos_t) + dy_b * my * sgn_y * sin_t) * inv_upsi
+    dupsi_dYc = (dx_b * mx * sgn_x * (-sin_t) + dy_b * my * sgn_y * (-cos_t)) * inv_upsi
+    dupsi_dZc = (dz_b * mz * sgn_z * (-1.0)) * inv_upsi
+    dupsi_dL = (dx_b * mx * (-0.5)) * inv_upsi
+    dupsi_dW = (dy_b * my * (-0.5)) * inv_upsi
+    dupsi_dh = (dz_b * mz * (-0.5)) * inv_upsi
+    # d(x_loc)/d(T) = y_loc; d(y_loc)/d(T) = -x_loc
+    dupsi_dT = (dx_b * mx * sgn_x * y_loc + dy_b * my * sgn_y * (-x_loc)) * inv_upsi
+
     if method == 'GP':
         deltamin = 1e-6
-        # Note: in 3D ALM we often define zetavar using a specific projection.
-        # But based on the un-gradient version in vectorized_mapping:
-        zetavar = upsi - 1e-8 # Or usually we use upsi - h/2, but h is already in upsi for 3D ALM?
-        # Let's check compute_local_characteristic_np for 3D ALM!
-        # wait, in 3D ALM, upsi IS the distance to the brick! 
-        # So zetavar = upsi - r_gp ? No, let's look at vectorized_mapping.py!
-        pass
-    
-    return upsi, dX, dY, dZ, dL, dW_w, dh, dT
+        # Must mirror the GP smoothing in compute_local_characteristic_np
+        zetavar = upsi - h / 2.0
+        z_clipped = np.clip(zetavar / r_gp, -1.0 + eps_safe, 1.0 - eps_safe)
+
+        W_raw = 1.0 / np.pi * (np.arccos(z_clipped) - z_clipped * np.sqrt(1.0 - z_clipped**2))
+        W = np.where(zetavar < -r_gp, 1.0,
+                     np.where(zetavar > r_gp, deltamin,
+                              deltamin + (1.0 - deltamin) * W_raw))
+
+        # dW/d(zetavar) in the transition band
+        dW_dz = -2.0 / np.pi * np.sqrt(np.maximum(0.0, 1.0 - z_clipped**2))
+        mask_tr = (zetavar >= -r_gp) & (zetavar <= r_gp)
+        dW_dupsi = np.where(mask_tr, (1.0 - deltamin) * dW_dz / r_gp, 0.0)
+
+        # Chain rule: dW/d(param) = dW/d(zetavar) * d(zetavar)/d(param)
+        # zetavar = upsi - h/2, so d(zetavar)/dh = d(upsi)/dh - 0.5
+        return W, dW_dupsi * dupsi_dXc, dW_dupsi * dupsi_dYc, dW_dupsi * dupsi_dZc, \
+               dW_dupsi * dupsi_dL, dW_dupsi * dupsi_dW, dW_dupsi * (dupsi_dh - 0.5), \
+               dW_dupsi * dupsi_dT
+    else:
+        raise NotImplementedError("Only GP method supported for 3D ALM analytical gradients.")
