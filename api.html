@@ -1,0 +1,1109 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>API Reference &mdash; ggp 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=f281be69"></script>
+      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="3D Topology Optimization Framework" href="3d_optimization.html" />
+    <link rel="prev" title="Developer Guide" href="developer_guide.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            ggp
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli_guide.html">Command-Line Interface (CLI)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_guide.html">Developer Guide</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">API Reference</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#module-ggp.problem.spec">Problem Specification</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.problem.spec.BoundaryCondition"><code class="docutils literal notranslate"><span class="pre">BoundaryCondition</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.BoundaryCondition.components"><code class="docutils literal notranslate"><span class="pre">BoundaryCondition.components</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.BoundaryCondition.region"><code class="docutils literal notranslate"><span class="pre">BoundaryCondition.region</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.BoundaryCondition.type"><code class="docutils literal notranslate"><span class="pre">BoundaryCondition.type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.BoundaryCondition.value"><code class="docutils literal notranslate"><span class="pre">BoundaryCondition.value</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.problem.spec.ConstraintSpec"><code class="docutils literal notranslate"><span class="pre">ConstraintSpec</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ConstraintSpec.bound"><code class="docutils literal notranslate"><span class="pre">ConstraintSpec.bound</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ConstraintSpec.name"><code class="docutils literal notranslate"><span class="pre">ConstraintSpec.name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ConstraintSpec.params"><code class="docutils literal notranslate"><span class="pre">ConstraintSpec.params</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ConstraintSpec.type"><code class="docutils literal notranslate"><span class="pre">ConstraintSpec.type</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.problem.spec.FormulationSpec"><code class="docutils literal notranslate"><span class="pre">FormulationSpec</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.FormulationSpec.Ngp"><code class="docutils literal notranslate"><span class="pre">FormulationSpec.Ngp</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.FormulationSpec.comp_per_layer"><code class="docutils literal notranslate"><span class="pre">FormulationSpec.comp_per_layer</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.FormulationSpec.layer_height"><code class="docutils literal notranslate"><span class="pre">FormulationSpec.layer_height</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.FormulationSpec.method"><code class="docutils literal notranslate"><span class="pre">FormulationSpec.method</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.FormulationSpec.mode"><code class="docutils literal notranslate"><span class="pre">FormulationSpec.mode</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.FormulationSpec.num_components"><code class="docutils literal notranslate"><span class="pre">FormulationSpec.num_components</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.FormulationSpec.num_layers"><code class="docutils literal notranslate"><span class="pre">FormulationSpec.num_layers</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.FormulationSpec.r_gp"><code class="docutils literal notranslate"><span class="pre">FormulationSpec.r_gp</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.problem.spec.GeometrySpec"><code class="docutils literal notranslate"><span class="pre">GeometrySpec</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.GeometrySpec.params"><code class="docutils literal notranslate"><span class="pre">GeometrySpec.params</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.GeometrySpec.path"><code class="docutils literal notranslate"><span class="pre">GeometrySpec.path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.GeometrySpec.role"><code class="docutils literal notranslate"><span class="pre">GeometrySpec.role</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.GeometrySpec.type"><code class="docutils literal notranslate"><span class="pre">GeometrySpec.type</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.problem.spec.Load"><code class="docutils literal notranslate"><span class="pre">Load</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.Load.region"><code class="docutils literal notranslate"><span class="pre">Load.region</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.Load.type"><code class="docutils literal notranslate"><span class="pre">Load.type</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.Load.value"><code class="docutils literal notranslate"><span class="pre">Load.value</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.problem.spec.MaterialSpec"><code class="docutils literal notranslate"><span class="pre">MaterialSpec</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.MaterialSpec.E"><code class="docutils literal notranslate"><span class="pre">MaterialSpec.E</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.MaterialSpec.nu"><code class="docutils literal notranslate"><span class="pre">MaterialSpec.nu</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.problem.spec.ObjectiveSpec"><code class="docutils literal notranslate"><span class="pre">ObjectiveSpec</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ObjectiveSpec.name"><code class="docutils literal notranslate"><span class="pre">ObjectiveSpec.name</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec"><code class="docutils literal notranslate"><span class="pre">ProblemSpec</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec.boundary_conditions"><code class="docutils literal notranslate"><span class="pre">ProblemSpec.boundary_conditions</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec.constraints"><code class="docutils literal notranslate"><span class="pre">ProblemSpec.constraints</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec.formulation"><code class="docutils literal notranslate"><span class="pre">ProblemSpec.formulation</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec.geometries"><code class="docutils literal notranslate"><span class="pre">ProblemSpec.geometries</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec.loads"><code class="docutils literal notranslate"><span class="pre">ProblemSpec.loads</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec.material"><code class="docutils literal notranslate"><span class="pre">ProblemSpec.material</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec.objective"><code class="docutils literal notranslate"><span class="pre">ProblemSpec.objective</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec.solver"><code class="docutils literal notranslate"><span class="pre">ProblemSpec.solver</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec.volfrac"><code class="docutils literal notranslate"><span class="pre">ProblemSpec.volfrac</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.problem.spec.SolverSpec"><code class="docutils literal notranslate"><span class="pre">SolverSpec</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.SolverSpec.algorithm"><code class="docutils literal notranslate"><span class="pre">SolverSpec.algorithm</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.SolverSpec.iterative"><code class="docutils literal notranslate"><span class="pre">SolverSpec.iterative</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.SolverSpec.max_iter"><code class="docutils literal notranslate"><span class="pre">SolverSpec.max_iter</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.SolverSpec.options"><code class="docutils literal notranslate"><span class="pre">SolverSpec.options</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.SolverSpec.use_line_search"><code class="docutils literal notranslate"><span class="pre">SolverSpec.use_line_search</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-ggp.geometry.io.registry">Geometry I/O &amp; Parsers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#usage">Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.geometry.io.registry.get_reader"><code class="docutils literal notranslate"><span class="pre">get_reader()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.geometry.io.registry.list_readers"><code class="docutils literal notranslate"><span class="pre">list_readers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.geometry.io.registry.register_reader"><code class="docutils literal notranslate"><span class="pre">register_reader()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.geometry.io.fenics_reader.FenicsBoxReader"><code class="docutils literal notranslate"><span class="pre">FenicsBoxReader</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.geometry.io.fenics_reader.FenicsBoxReader.read"><code class="docutils literal notranslate"><span class="pre">FenicsBoxReader.read()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.geometry.io.fenics_reader.FenicsBoxReader.supports"><code class="docutils literal notranslate"><span class="pre">FenicsBoxReader.supports()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.geometry.io.fenics_reader.FenicsRectangleReader"><code class="docutils literal notranslate"><span class="pre">FenicsRectangleReader</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.geometry.io.fenics_reader.FenicsRectangleReader.read"><code class="docutils literal notranslate"><span class="pre">FenicsRectangleReader.read()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.geometry.io.fenics_reader.FenicsRectangleReader.supports"><code class="docutils literal notranslate"><span class="pre">FenicsRectangleReader.supports()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-ggp.discretisation.fem">Discretisation</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.discretisation.fem.AnalysisDomain"><code class="docutils literal notranslate"><span class="pre">AnalysisDomain</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.discretisation.fem.FEMDiscretiser"><code class="docutils literal notranslate"><span class="pre">FEMDiscretiser</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.discretisation.fem.FEMDiscretiser.discretise"><code class="docutils literal notranslate"><span class="pre">FEMDiscretiser.discretise()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-ggp.projection.registry">Projection Mappers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#id13">Usage</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.projection.registry.get_mapper"><code class="docutils literal notranslate"><span class="pre">get_mapper()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.projection.registry.list_mappers"><code class="docutils literal notranslate"><span class="pre">list_mappers()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.projection.registry.register_mapper"><code class="docutils literal notranslate"><span class="pre">register_mapper()</span></code></a></li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.projection.free_2d.Free2DMapper"><code class="docutils literal notranslate"><span class="pre">Free2DMapper</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.projection.free_2d.Free2DMapper.default_bounds"><code class="docutils literal notranslate"><span class="pre">Free2DMapper.default_bounds()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.projection.free_2d.Free2DMapper.forward"><code class="docutils literal notranslate"><span class="pre">Free2DMapper.forward()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.projection.free_2d.Free2DMapper.jacobian"><code class="docutils literal notranslate"><span class="pre">Free2DMapper.jacobian()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.projection.free_2d.Free2DMapper.num_vars_per_component"><code class="docutils literal notranslate"><span class="pre">Free2DMapper.num_vars_per_component()</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.projection.alm_2d.ALM2DMapper"><code class="docutils literal notranslate"><span class="pre">ALM2DMapper</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.projection.alm_2d.ALM2DMapper.default_bounds"><code class="docutils literal notranslate"><span class="pre">ALM2DMapper.default_bounds()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.projection.alm_2d.ALM2DMapper.forward"><code class="docutils literal notranslate"><span class="pre">ALM2DMapper.forward()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.projection.alm_2d.ALM2DMapper.jacobian"><code class="docutils literal notranslate"><span class="pre">ALM2DMapper.jacobian()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.projection.alm_2d.ALM2DMapper.num_vars_per_component"><code class="docutils literal notranslate"><span class="pre">ALM2DMapper.num_vars_per_component()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-ggp.optimization.results">Optimization Pipeline</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult"><code class="docutils literal notranslate"><span class="pre">OptimisationResult</span></code></a><ul>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.algorithm"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.algorithm</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.design_variables"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.design_variables</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.execution_time_s"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.execution_time_s</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.history"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.history</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.iterations"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.iterations</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.max_constraint_violation"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.max_constraint_violation</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.mesh_path"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.mesh_path</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.objective_value"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.objective_value</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.problem_name"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.problem_name</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.status"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.status</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.optimization.results.OptimisationResult.to_dict"><code class="docutils literal notranslate"><span class="pre">OptimisationResult.to_dict()</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-ggp.gemseo_wrappers.geometry_discipline">GEMSEO Wrappers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.gemseo_wrappers.geometry_discipline.GGPGeometryDiscipline"><code class="docutils literal notranslate"><span class="pre">GGPGeometryDiscipline</span></code></a></li>
+</ul>
+</li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="3d_optimization.html">3D Topology Optimization Framework</a></li>
+<li class="toctree-l1"><a class="reference internal" href="alm_guide.html">Additive Manufacturing Constraints</a></li>
+<li class="toctree-l1"><a class="reference internal" href="scp_uno_guide.html">Sequential Convex Programming (SCP) Framework</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits &amp; Dependencies</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">ggp</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">API Reference</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/api.rst.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="api-reference">
+<h1>API Reference<a class="headerlink" href="#api-reference" title="Link to this heading"></a></h1>
+<p>This section provides the API documentation for the core modules in the <cite>ggp</cite> framework.</p>
+<div class="toctree-wrapper compound">
+</div>
+<section id="module-ggp.problem.spec">
+<span id="problem-specification"></span><h2>Problem Specification<a class="headerlink" href="#module-ggp.problem.spec" title="Link to this heading"></a></h2>
+<p>Serialisable dataclass specifications for GGP optimisation problems.</p>
+<p>Every optimisation run is fully described by a single <a class="reference internal" href="#ggp.problem.spec.ProblemSpec" title="ggp.problem.spec.ProblemSpec"><code class="xref py py-class docutils literal notranslate"><span class="pre">ProblemSpec</span></code></a>
+instance.  This object can be constructed programmatically, loaded from a
+YAML file, or built from CLI arguments.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.problem.spec.BoundaryCondition">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.problem.spec.</span></span><span class="sig-name descname"><span class="pre">BoundaryCondition</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">region</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'fixed'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'symmetry'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'prescribed'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'fixed'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">components</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/problem/spec.html#BoundaryCondition"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.problem.spec.BoundaryCondition" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A Dirichlet boundary condition applied to a named region.</p>
+<section id="parameters">
+<h3>Parameters<a class="headerlink" href="#parameters" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>region<span class="classifier">str</span></dt><dd><p>Boundary identifier (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;left&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;top&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;fixed_face&quot;</span></code>).
+Mapped to concrete selection logic by the discretiser.</p>
+</dd>
+<dt>type<span class="classifier">{“fixed”, “symmetry”, “prescribed”}</span></dt><dd><p>Kind of constraint.</p>
+</dd>
+<dt>components<span class="classifier">list of int, optional</span></dt><dd><p>DOF components to constrain (0 = x, 1 = y, 2 = z).
+<code class="docutils literal notranslate"><span class="pre">None</span></code> means all components.</p>
+</dd>
+<dt>value<span class="classifier">list of float, optional</span></dt><dd><p>Prescribed displacement for <code class="docutils literal notranslate"><span class="pre">type=&quot;prescribed&quot;</span></code>.</p>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.BoundaryCondition.components">
+<span class="sig-name descname"><span class="pre">components</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">int</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#ggp.problem.spec.BoundaryCondition.components" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.BoundaryCondition.region">
+<span class="sig-name descname"><span class="pre">region</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#ggp.problem.spec.BoundaryCondition.region" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.BoundaryCondition.type">
+<span class="sig-name descname"><span class="pre">type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'fixed'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'symmetry'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'prescribed'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'fixed'</span></em><a class="headerlink" href="#ggp.problem.spec.BoundaryCondition.type" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.BoundaryCondition.value">
+<span class="sig-name descname"><span class="pre">value</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#ggp.problem.spec.BoundaryCondition.value" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.problem.spec.ConstraintSpec">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.problem.spec.</span></span><span class="sig-name descname"><span class="pre">ConstraintSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name:</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type:</span> <span class="pre">~typing.Literal['ineq'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'eq']</span> <span class="pre">=</span> <span class="pre">'ineq'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">bound:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params:</span> <span class="pre">~typing.Dict[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/problem/spec.html#ConstraintSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.problem.spec.ConstraintSpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>An optimisation constraint.</p>
+<section id="id1">
+<h3>Parameters<a class="headerlink" href="#id1" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>name<span class="classifier">str</span></dt><dd><p>Constraint identifier (<code class="docutils literal notranslate"><span class="pre">&quot;volume&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;overhang&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;stress&quot;</span></code>, …).</p>
+</dd>
+<dt>type<span class="classifier">{“ineq”, “eq”}</span></dt><dd><p>Inequality or equality.</p>
+</dd>
+<dt>bound<span class="classifier">float</span></dt><dd><p>Right-hand-side value (constraint ≤ bound for ineq).</p>
+</dd>
+<dt>params<span class="classifier">dict</span></dt><dd><p>Extra parameters (e.g. <code class="docutils literal notranslate"><span class="pre">{&quot;alpha_deg&quot;:</span> <span class="pre">45}</span></code> for overhang).</p>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ConstraintSpec.bound">
+<span class="sig-name descname"><span class="pre">bound</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.0</span></em><a class="headerlink" href="#ggp.problem.spec.ConstraintSpec.bound" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ConstraintSpec.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#ggp.problem.spec.ConstraintSpec.name" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ConstraintSpec.params">
+<span class="sig-name descname"><span class="pre">params</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#ggp.problem.spec.ConstraintSpec.params" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ConstraintSpec.type">
+<span class="sig-name descname"><span class="pre">type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'ineq'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'eq'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'ineq'</span></em><a class="headerlink" href="#ggp.problem.spec.ConstraintSpec.type" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.problem.spec.FormulationSpec">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.problem.spec.</span></span><span class="sig-name descname"><span class="pre">FormulationSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Free'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'ALM'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'3D_Free'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'3D_ALM'</span></span><span class="p"><span class="pre">]</span></span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'Free'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_components</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">18</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">comp_per_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_height</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_gp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ngp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'GP'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/problem/spec.html#FormulationSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.problem.spec.FormulationSpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>GGP projection formulation specification.</p>
+<section id="id2">
+<h3>Parameters<a class="headerlink" href="#id2" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>mode<span class="classifier">{“Free”, “ALM”, “3D_Free”, “3D_ALM”}</span></dt><dd><p>Projection mode.</p>
+</dd>
+<dt>num_components<span class="classifier">int</span></dt><dd><p>Total number of geometric primitives.</p>
+</dd>
+<dt>num_layers<span class="classifier">int, optional</span></dt><dd><p>Number of manufacturing layers (ALM modes only).</p>
+</dd>
+<dt>comp_per_layer<span class="classifier">int, optional</span></dt><dd><p>Components per layer (ALM modes only).</p>
+</dd>
+<dt>layer_height<span class="classifier">float, optional</span></dt><dd><p>Height of each layer (ALM modes only).</p>
+</dd>
+<dt>r_gp<span class="classifier">float</span></dt><dd><p>Sampling-window radius for Gauss-point integration.</p>
+</dd>
+<dt>Ngp<span class="classifier">int</span></dt><dd><p>Number of Gauss points per dimension.</p>
+</dd>
+<dt>method<span class="classifier">{“GP”, “WGP”}</span></dt><dd><p>Geometry projection method variant.</p>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.FormulationSpec.Ngp">
+<span class="sig-name descname"><span class="pre">Ngp</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">2</span></em><a class="headerlink" href="#ggp.problem.spec.FormulationSpec.Ngp" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.FormulationSpec.comp_per_layer">
+<span class="sig-name descname"><span class="pre">comp_per_layer</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#ggp.problem.spec.FormulationSpec.comp_per_layer" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.FormulationSpec.layer_height">
+<span class="sig-name descname"><span class="pre">layer_height</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#ggp.problem.spec.FormulationSpec.layer_height" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.FormulationSpec.method">
+<span class="sig-name descname"><span class="pre">method</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'GP'</span></em><a class="headerlink" href="#ggp.problem.spec.FormulationSpec.method" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.FormulationSpec.mode">
+<span class="sig-name descname"><span class="pre">mode</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'Free'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'ALM'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'3D_Free'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'3D_ALM'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'Free'</span></em><a class="headerlink" href="#ggp.problem.spec.FormulationSpec.mode" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.FormulationSpec.num_components">
+<span class="sig-name descname"><span class="pre">num_components</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">18</span></em><a class="headerlink" href="#ggp.problem.spec.FormulationSpec.num_components" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.FormulationSpec.num_layers">
+<span class="sig-name descname"><span class="pre">num_layers</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#ggp.problem.spec.FormulationSpec.num_layers" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.FormulationSpec.r_gp">
+<span class="sig-name descname"><span class="pre">r_gp</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.5</span></em><a class="headerlink" href="#ggp.problem.spec.FormulationSpec.r_gp" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.problem.spec.GeometrySpec">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.problem.spec.</span></span><span class="sig-name descname"><span class="pre">GeometrySpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">type:</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">role:</span> <span class="pre">~typing.Literal['design'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'non_design']</span> <span class="pre">=</span> <span class="pre">'design'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">path:</span> <span class="pre">~pathlib.Path</span> <span class="pre">|</span> <span class="pre">None</span> <span class="pre">=</span> <span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">params:</span> <span class="pre">~typing.Dict[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/problem/spec.html#GeometrySpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.problem.spec.GeometrySpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A geometry region (design-space or non-design-space).</p>
+<p>Supported <em>type</em> values (extensible via the reader registry):</p>
+<section id="id3">
+<h3>Parameters<a class="headerlink" href="#id3" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>type<span class="classifier">str</span></dt><dd><p>Geometry source type.</p>
+</dd>
+<dt>role<span class="classifier">{“design”, “non_design”}</span></dt><dd><p>Whether this region participates in the design optimisation.</p>
+</dd>
+<dt>path<span class="classifier">Path, optional</span></dt><dd><p>File path for file-based formats (STEP, STL, …).</p>
+</dd>
+<dt>params<span class="classifier">dict</span></dt><dd><p>Format-specific parameters (e.g. <code class="docutils literal notranslate"><span class="pre">{&quot;Lx&quot;:</span> <span class="pre">60,</span> <span class="pre">&quot;Ly&quot;:</span> <span class="pre">30,</span> <span class="pre">&quot;nx&quot;:</span> <span class="pre">60,</span> <span class="pre">&quot;ny&quot;:</span> <span class="pre">30}</span></code>).</p>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.GeometrySpec.params">
+<span class="sig-name descname"><span class="pre">params</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#ggp.problem.spec.GeometrySpec.params" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.GeometrySpec.path">
+<span class="sig-name descname"><span class="pre">path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Path</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#ggp.problem.spec.GeometrySpec.path" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.GeometrySpec.role">
+<span class="sig-name descname"><span class="pre">role</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'design'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'non_design'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'design'</span></em><a class="headerlink" href="#ggp.problem.spec.GeometrySpec.role" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.GeometrySpec.type">
+<span class="sig-name descname"><span class="pre">type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#ggp.problem.spec.GeometrySpec.type" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.problem.spec.Load">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.problem.spec.</span></span><span class="sig-name descname"><span class="pre">Load</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">region:</span> <span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">type:</span> <span class="pre">~typing.Literal['point'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'pressure'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'traction'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'body']</span> <span class="pre">=</span> <span class="pre">'point'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">value:</span> <span class="pre">~typing.List[float]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/problem/spec.html#Load"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.problem.spec.Load" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>A mechanical load applied to a named region.</p>
+<section id="id4">
+<h3>Parameters<a class="headerlink" href="#id4" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>region<span class="classifier">str</span></dt><dd><p>Region identifier (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;mid_right&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;top_face&quot;</span></code>).</p>
+</dd>
+<dt>type<span class="classifier">{“point”, “pressure”, “traction”, “body”}</span></dt><dd><p>Load application mode.</p>
+</dd>
+<dt>value<span class="classifier">list of float</span></dt><dd><p>Force/pressure vector.</p>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.Load.region">
+<span class="sig-name descname"><span class="pre">region</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#ggp.problem.spec.Load.region" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.Load.type">
+<span class="sig-name descname"><span class="pre">type</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'point'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'pressure'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'traction'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'body'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'point'</span></em><a class="headerlink" href="#ggp.problem.spec.Load.type" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.Load.value">
+<span class="sig-name descname"><span class="pre">value</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#ggp.problem.spec.Load.value" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.problem.spec.MaterialSpec">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.problem.spec.</span></span><span class="sig-name descname"><span class="pre">MaterialSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">E</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">nu</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.3</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/problem/spec.html#MaterialSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.problem.spec.MaterialSpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Isotropic material properties.</p>
+<section id="id5">
+<h3>Parameters<a class="headerlink" href="#id5" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>E<span class="classifier">float</span></dt><dd><p>Young’s modulus.</p>
+</dd>
+<dt>nu<span class="classifier">float</span></dt><dd><p>Poisson’s ratio.</p>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.MaterialSpec.E">
+<span class="sig-name descname"><span class="pre">E</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">1.0</span></em><a class="headerlink" href="#ggp.problem.spec.MaterialSpec.E" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.MaterialSpec.nu">
+<span class="sig-name descname"><span class="pre">nu</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.3</span></em><a class="headerlink" href="#ggp.problem.spec.MaterialSpec.nu" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.problem.spec.ObjectiveSpec">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.problem.spec.</span></span><span class="sig-name descname"><span class="pre">ObjectiveSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'compliance'</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/problem/spec.html#ObjectiveSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.problem.spec.ObjectiveSpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Objective function to minimise.</p>
+<section id="id6">
+<h3>Parameters<a class="headerlink" href="#id6" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>name<span class="classifier">str</span></dt><dd><p>Objective identifier (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;compliance&quot;</span></code>).</p>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ObjectiveSpec.name">
+<span class="sig-name descname"><span class="pre">name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'compliance'</span></em><a class="headerlink" href="#ggp.problem.spec.ObjectiveSpec.name" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.problem.spec.ProblemSpec">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.problem.spec.</span></span><span class="sig-name descname"><span class="pre">ProblemSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="pre">geometries:</span> <span class="pre">~typing.List[~ggp.problem.spec.GeometrySpec],</span> <span class="pre">boundary_conditions:</span> <span class="pre">~typing.List[~ggp.problem.spec.BoundaryCondition],</span> <span class="pre">loads:</span> <span class="pre">~typing.List[~ggp.problem.spec.Load],</span> <span class="pre">formulation:</span> <span class="pre">~ggp.problem.spec.FormulationSpec,</span> <span class="pre">objective:</span> <span class="pre">~ggp.problem.spec.ObjectiveSpec</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;,</span> <span class="pre">constraints:</span> <span class="pre">~typing.List[~ggp.problem.spec.ConstraintSpec]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;,</span> <span class="pre">solver:</span> <span class="pre">~ggp.problem.spec.SolverSpec</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;,</span> <span class="pre">volfrac:</span> <span class="pre">float</span> <span class="pre">=</span> <span class="pre">0.4,</span> <span class="pre">material:</span> <span class="pre">~ggp.problem.spec.MaterialSpec</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/problem/spec.html#ProblemSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.problem.spec.ProblemSpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Complete, self-contained optimisation problem definition.</p>
+<p>This is the <strong>single source of truth</strong> for any GGP run.  The CLI,
+Python API, and YAML loader all produce a <code class="docutils literal notranslate"><span class="pre">ProblemSpec</span></code>.</p>
+<section id="id7">
+<h3>Parameters<a class="headerlink" href="#id7" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>geometries<span class="classifier">list of GeometrySpec</span></dt><dd><p>Domain geometry regions (design + non-design).</p>
+</dd>
+<dt>boundary_conditions<span class="classifier">list of BoundaryCondition</span></dt><dd><p>Dirichlet boundary conditions.</p>
+</dd>
+<dt>loads<span class="classifier">list of Load</span></dt><dd><p>Applied loads.</p>
+</dd>
+<dt>formulation<span class="classifier">FormulationSpec</span></dt><dd><p>GGP formulation / projection configuration.</p>
+</dd>
+<dt>objective<span class="classifier">ObjectiveSpec</span></dt><dd><p>Objective function.</p>
+</dd>
+<dt>constraints<span class="classifier">list of ConstraintSpec</span></dt><dd><p>Optimisation constraints.</p>
+</dd>
+<dt>solver<span class="classifier">SolverSpec</span></dt><dd><p>Algorithm and solver configuration.</p>
+</dd>
+<dt>volfrac<span class="classifier">float</span></dt><dd><p>Target volume fraction.</p>
+</dd>
+<dt>material<span class="classifier">MaterialSpec</span></dt><dd><p>Material properties.</p>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ProblemSpec.boundary_conditions">
+<span class="sig-name descname"><span class="pre">boundary_conditions</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#ggp.problem.spec.BoundaryCondition" title="ggp.problem.spec.BoundaryCondition"><span class="pre">BoundaryCondition</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#ggp.problem.spec.ProblemSpec.boundary_conditions" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ProblemSpec.constraints">
+<span class="sig-name descname"><span class="pre">constraints</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#ggp.problem.spec.ConstraintSpec" title="ggp.problem.spec.ConstraintSpec"><span class="pre">ConstraintSpec</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#ggp.problem.spec.ProblemSpec.constraints" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ProblemSpec.formulation">
+<span class="sig-name descname"><span class="pre">formulation</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#ggp.problem.spec.FormulationSpec" title="ggp.problem.spec.FormulationSpec"><span class="pre">FormulationSpec</span></a></em><a class="headerlink" href="#ggp.problem.spec.ProblemSpec.formulation" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ProblemSpec.geometries">
+<span class="sig-name descname"><span class="pre">geometries</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#ggp.problem.spec.GeometrySpec" title="ggp.problem.spec.GeometrySpec"><span class="pre">GeometrySpec</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#ggp.problem.spec.ProblemSpec.geometries" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ProblemSpec.loads">
+<span class="sig-name descname"><span class="pre">loads</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><a class="reference internal" href="#ggp.problem.spec.Load" title="ggp.problem.spec.Load"><span class="pre">Load</span></a><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#ggp.problem.spec.ProblemSpec.loads" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ProblemSpec.material">
+<span class="sig-name descname"><span class="pre">material</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#ggp.problem.spec.MaterialSpec" title="ggp.problem.spec.MaterialSpec"><span class="pre">MaterialSpec</span></a></em><a class="headerlink" href="#ggp.problem.spec.ProblemSpec.material" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ProblemSpec.objective">
+<span class="sig-name descname"><span class="pre">objective</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#ggp.problem.spec.ObjectiveSpec" title="ggp.problem.spec.ObjectiveSpec"><span class="pre">ObjectiveSpec</span></a></em><a class="headerlink" href="#ggp.problem.spec.ProblemSpec.objective" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ProblemSpec.solver">
+<span class="sig-name descname"><span class="pre">solver</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><a class="reference internal" href="#ggp.problem.spec.SolverSpec" title="ggp.problem.spec.SolverSpec"><span class="pre">SolverSpec</span></a></em><a class="headerlink" href="#ggp.problem.spec.ProblemSpec.solver" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.ProblemSpec.volfrac">
+<span class="sig-name descname"><span class="pre">volfrac</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">0.4</span></em><a class="headerlink" href="#ggp.problem.spec.ProblemSpec.volfrac" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.problem.spec.SolverSpec">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.problem.spec.</span></span><span class="sig-name descname"><span class="pre">SolverSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">algorithm:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'MMA'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_iter:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">iterative:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_line_search:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options:</span> <span class="pre">~typing.Dict[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/problem/spec.html#SolverSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.problem.spec.SolverSpec" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Optimisation solver / algorithm configuration.</p>
+<section id="id8">
+<h3>Parameters<a class="headerlink" href="#id8" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>algorithm<span class="classifier">str</span></dt><dd><p>Optimisation algorithm name (<code class="docutils literal notranslate"><span class="pre">&quot;MMA&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;SLP&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;CONLIN&quot;</span></code>).</p>
+</dd>
+<dt>max_iter<span class="classifier">int</span></dt><dd><p>Maximum number of outer iterations.</p>
+</dd>
+<dt>iterative<span class="classifier">bool</span></dt><dd><p>Use PETSc iterative (PCG + GAMG) solver instead of direct LU.</p>
+</dd>
+<dt>use_line_search<span class="classifier">bool</span></dt><dd><p>Enable line search (SLP / CONLIN only).</p>
+</dd>
+<dt>options<span class="classifier">dict</span></dt><dd><p>Additional algorithm-specific key-value options.</p>
+</dd>
+</dl>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.SolverSpec.algorithm">
+<span class="sig-name descname"><span class="pre">algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'MMA'</span></em><a class="headerlink" href="#ggp.problem.spec.SolverSpec.algorithm" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.SolverSpec.iterative">
+<span class="sig-name descname"><span class="pre">iterative</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#ggp.problem.spec.SolverSpec.iterative" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.SolverSpec.max_iter">
+<span class="sig-name descname"><span class="pre">max_iter</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">50</span></em><a class="headerlink" href="#ggp.problem.spec.SolverSpec.max_iter" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.SolverSpec.options">
+<span class="sig-name descname"><span class="pre">options</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#ggp.problem.spec.SolverSpec.options" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.SolverSpec.use_line_search">
+<span class="sig-name descname"><span class="pre">use_line_search</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">bool</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">False</span></em><a class="headerlink" href="#ggp.problem.spec.SolverSpec.use_line_search" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</section>
+</dd></dl>
+
+</section>
+<section id="module-ggp.geometry.io.registry">
+<span id="geometry-i-o-parsers"></span><h2>Geometry I/O &amp; Parsers<a class="headerlink" href="#module-ggp.geometry.io.registry" title="Link to this heading"></a></h2>
+<p>Self-registering geometry reader registry.</p>
+<section id="usage">
+<h3>Usage<a class="headerlink" href="#usage" title="Link to this heading"></a></h3>
+<p><strong>Register</strong> a reader:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nd">@register_reader</span><span class="p">(</span><span class="s2">&quot;step&quot;</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">STEPReader</span><span class="p">(</span><span class="n">GeometryReader</span><span class="p">):</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<p><strong>Retrieve</strong> a reader:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">reader</span> <span class="o">=</span> <span class="n">get_reader</span><span class="p">(</span><span class="s2">&quot;step&quot;</span><span class="p">)</span>
+<span class="n">domain</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">geometry_spec</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>List</strong> available readers:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">names</span> <span class="o">=</span> <span class="n">list_readers</span><span class="p">()</span>  <span class="c1"># [&quot;fenics_rectangle&quot;, &quot;fenics_box&quot;, &quot;step&quot;, ...]</span>
+</pre></div>
+</div>
+</section>
+<dl class="py function">
+<dt class="sig sig-object py" id="ggp.geometry.io.registry.get_reader">
+<span class="sig-prename descclassname"><span class="pre">ggp.geometry.io.registry.</span></span><span class="sig-name descname"><span class="pre">get_reader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geometry_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">GeometryReader</span></span></span><a class="reference internal" href="_modules/ggp/geometry/io/registry.html#get_reader"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.geometry.io.registry.get_reader" title="Link to this definition"></a></dt>
+<dd><p>Instantiate the registered reader for <em>geometry_type</em>.</p>
+<section id="raises">
+<h3>Raises<a class="headerlink" href="#raises" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>ValueError</dt><dd><p>If <em>geometry_type</em> has not been registered.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ggp.geometry.io.registry.list_readers">
+<span class="sig-prename descclassname"><span class="pre">ggp.geometry.io.registry.</span></span><span class="sig-name descname"><span class="pre">list_readers</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/geometry/io/registry.html#list_readers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.geometry.io.registry.list_readers" title="Link to this definition"></a></dt>
+<dd><p>Return the names of all registered geometry readers.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ggp.geometry.io.registry.register_reader">
+<span class="sig-prename descclassname"><span class="pre">ggp.geometry.io.registry.</span></span><span class="sig-name descname"><span class="pre">register_reader</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geometry_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/geometry/io/registry.html#register_reader"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.geometry.io.registry.register_reader" title="Link to this definition"></a></dt>
+<dd><p>Class decorator that registers a <code class="xref py py-class docutils literal notranslate"><span class="pre">GeometryReader</span></code> subclass.</p>
+<section id="id9">
+<h3>Parameters<a class="headerlink" href="#id9" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>geometry_type<span class="classifier">str</span></dt><dd><p>The <code class="docutils literal notranslate"><span class="pre">GeometrySpec.type</span></code> value this reader handles.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<p id="module-ggp.geometry.io.fenics_reader">FEniCS built-in geometry reader.</p>
+<p>Handles <code class="docutils literal notranslate"><span class="pre">fenics_rectangle</span></code> (2-D quadrilateral mesh) and <code class="docutils literal notranslate"><span class="pre">fenics_box</span></code>
+(3-D hexahedral mesh) geometry types by calling FEniCS mesh generators.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.geometry.io.fenics_reader.FenicsBoxReader">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.geometry.io.fenics_reader.</span></span><span class="sig-name descname"><span class="pre">FenicsBoxReader</span></span><a class="reference internal" href="_modules/ggp/geometry/io/fenics_reader.html#FenicsBoxReader"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.geometry.io.fenics_reader.FenicsBoxReader" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">GeometryReader</span></code></p>
+<p>Creates a structured hexahedral box via <code class="docutils literal notranslate"><span class="pre">dolfin.BoxMesh</span></code>.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.geometry.io.fenics_reader.FenicsBoxReader.read">
+<span class="sig-name descname"><span class="pre">read</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DomainRepresentation</span></span></span><a class="reference internal" href="_modules/ggp/geometry/io/fenics_reader.html#FenicsBoxReader.read"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.geometry.io.fenics_reader.FenicsBoxReader.read" title="Link to this definition"></a></dt>
+<dd><p>Convert <em>spec</em> (a <code class="xref py py-class docutils literal notranslate"><span class="pre">GeometrySpec</span></code>) into a domain representation.</p>
+<section id="id10">
+<h3>Parameters<a class="headerlink" href="#id10" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>spec<span class="classifier">GeometrySpec</span></dt><dd><p>Geometry specification from the problem definition layer.</p>
+</dd>
+</dl>
+</section>
+<section id="returns">
+<h3>Returns<a class="headerlink" href="#returns" title="Link to this heading"></a></h3>
+<p>DomainRepresentation</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.geometry.io.fenics_reader.FenicsBoxReader.supports">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">supports</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geometry_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="_modules/ggp/geometry/io/fenics_reader.html#FenicsBoxReader.supports"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.geometry.io.fenics_reader.FenicsBoxReader.supports" title="Link to this definition"></a></dt>
+<dd><p>Return <code class="docutils literal notranslate"><span class="pre">True</span></code> if this reader handles <em>geometry_type</em>.</p>
+</dd></dl>
+
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.geometry.io.fenics_reader.FenicsRectangleReader">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.geometry.io.fenics_reader.</span></span><span class="sig-name descname"><span class="pre">FenicsRectangleReader</span></span><a class="reference internal" href="_modules/ggp/geometry/io/fenics_reader.html#FenicsRectangleReader"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.geometry.io.fenics_reader.FenicsRectangleReader" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">GeometryReader</span></code></p>
+<p>Creates a structured quadrilateral rectangle via <code class="docutils literal notranslate"><span class="pre">dolfin.RectangleMesh</span></code>.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.geometry.io.fenics_reader.FenicsRectangleReader.read">
+<span class="sig-name descname"><span class="pre">read</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">DomainRepresentation</span></span></span><a class="reference internal" href="_modules/ggp/geometry/io/fenics_reader.html#FenicsRectangleReader.read"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.geometry.io.fenics_reader.FenicsRectangleReader.read" title="Link to this definition"></a></dt>
+<dd><p>Convert <em>spec</em> (a <code class="xref py py-class docutils literal notranslate"><span class="pre">GeometrySpec</span></code>) into a domain representation.</p>
+<section id="id11">
+<h3>Parameters<a class="headerlink" href="#id11" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>spec<span class="classifier">GeometrySpec</span></dt><dd><p>Geometry specification from the problem definition layer.</p>
+</dd>
+</dl>
+</section>
+<section id="id12">
+<h3>Returns<a class="headerlink" href="#id12" title="Link to this heading"></a></h3>
+<p>DomainRepresentation</p>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.geometry.io.fenics_reader.FenicsRectangleReader.supports">
+<em class="property"><span class="pre">static</span><span class="w"> </span></em><span class="sig-name descname"><span class="pre">supports</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">geometry_type</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">bool</span></span></span><a class="reference internal" href="_modules/ggp/geometry/io/fenics_reader.html#FenicsRectangleReader.supports"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.geometry.io.fenics_reader.FenicsRectangleReader.supports" title="Link to this definition"></a></dt>
+<dd><p>Return <code class="docutils literal notranslate"><span class="pre">True</span></code> if this reader handles <em>geometry_type</em>.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-ggp.discretisation.fem">
+<span id="discretisation"></span><h2>Discretisation<a class="headerlink" href="#module-ggp.discretisation.fem" title="Link to this heading"></a></h2>
+<p>Discretisation layer — FEM mesh discretiser.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.discretisation.fem.AnalysisDomain">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.discretisation.fem.</span></span><span class="sig-name descname"><span class="pre">AnalysisDomain</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">dim</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eval_coords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">metadata</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">dict</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/discretisation/fem.html#AnalysisDomain"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.discretisation.fem.AnalysisDomain" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Analysis-ready domain containing mesh and BCs.</p>
+</dd></dl>
+
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.discretisation.fem.FEMDiscretiser">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.discretisation.fem.</span></span><span class="sig-name descname"><span class="pre">FEMDiscretiser</span></span><a class="reference internal" href="_modules/ggp/discretisation/fem.html#FEMDiscretiser"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.discretisation.fem.FEMDiscretiser" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Converts a DomainRepresentation into a FEniCS-ready AnalysisDomain.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.discretisation.fem.FEMDiscretiser.discretise">
+<span class="sig-name descname"><span class="pre">discretise</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">domain</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">DomainRepresentation</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">spec</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><a class="reference internal" href="#ggp.problem.spec.ProblemSpec" title="ggp.problem.spec.ProblemSpec"><span class="pre">ProblemSpec</span></a></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><a class="reference internal" href="#ggp.discretisation.fem.AnalysisDomain" title="ggp.discretisation.fem.AnalysisDomain"><span class="pre">AnalysisDomain</span></a></span></span><a class="reference internal" href="_modules/ggp/discretisation/fem.html#FEMDiscretiser.discretise"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.discretisation.fem.FEMDiscretiser.discretise" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-ggp.projection.registry">
+<span id="projection-mappers"></span><h2>Projection Mappers<a class="headerlink" href="#module-ggp.projection.registry" title="Link to this heading"></a></h2>
+<p>Self-registering mapper registry.</p>
+<section id="id13">
+<h3>Usage<a class="headerlink" href="#id13" title="Link to this heading"></a></h3>
+<p><strong>Register</strong> a mapper:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="nd">@register_mapper</span><span class="p">(</span><span class="s2">&quot;Free&quot;</span><span class="p">)</span>
+<span class="k">class</span><span class="w"> </span><span class="nc">Free2DMapper</span><span class="p">(</span><span class="n">ProjectionMapper</span><span class="p">):</span>
+    <span class="o">...</span>
+</pre></div>
+</div>
+<p><strong>Retrieve</strong> a mapper:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">mapper</span> <span class="o">=</span> <span class="n">get_mapper</span><span class="p">(</span><span class="s2">&quot;Free&quot;</span><span class="p">,</span> <span class="n">num_components</span><span class="o">=</span><span class="mi">18</span><span class="p">,</span> <span class="o">...</span><span class="p">)</span>
+</pre></div>
+</div>
+<p><strong>List</strong> available mappers:</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span><span class="n">names</span> <span class="o">=</span> <span class="n">list_mappers</span><span class="p">()</span>  <span class="c1"># [&quot;Free&quot;, &quot;ALM&quot;, &quot;3D_Free&quot;, ...]</span>
+</pre></div>
+</div>
+</section>
+<dl class="py function">
+<dt class="sig sig-object py" id="ggp.projection.registry.get_mapper">
+<span class="sig-prename descclassname"><span class="pre">ggp.projection.registry.</span></span><span class="sig-name descname"><span class="pre">get_mapper</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">ProjectionMapper</span></span></span><a class="reference internal" href="_modules/ggp/projection/registry.html#get_mapper"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.registry.get_mapper" title="Link to this definition"></a></dt>
+<dd><p>Instantiate the registered mapper for <em>mode</em>.</p>
+<section id="id14">
+<h3>Parameters<a class="headerlink" href="#id14" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>mode<span class="classifier">str</span></dt><dd><p>Formulation mode (must match a previously registered mapper).</p>
+</dd>
+<dt><a href="#id15"><span class="problematic" id="id16">**</span></a>kwargs</dt><dd><p>Forwarded to the mapper constructor.</p>
+</dd>
+</dl>
+</section>
+<section id="id17">
+<h3>Raises<a class="headerlink" href="#id17" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>ValueError</dt><dd><p>If <em>mode</em> has not been registered.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ggp.projection.registry.list_mappers">
+<span class="sig-prename descclassname"><span class="pre">ggp.projection.registry.</span></span><span class="sig-name descname"><span class="pre">list_mappers</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/registry.html#list_mappers"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.registry.list_mappers" title="Link to this definition"></a></dt>
+<dd><p>Return the names of all registered mappers.</p>
+</dd></dl>
+
+<dl class="py function">
+<dt class="sig sig-object py" id="ggp.projection.registry.register_mapper">
+<span class="sig-prename descclassname"><span class="pre">ggp.projection.registry.</span></span><span class="sig-name descname"><span class="pre">register_mapper</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/projection/registry.html#register_mapper"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.registry.register_mapper" title="Link to this definition"></a></dt>
+<dd><p>Class decorator that registers a <code class="xref py py-class docutils literal notranslate"><span class="pre">ProjectionMapper</span></code> subclass.</p>
+<section id="id18">
+<h3>Parameters<a class="headerlink" href="#id18" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>mode<span class="classifier">str</span></dt><dd><p>Formulation mode identifier (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;Free&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;ALM&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;3D_Free&quot;</span></code>).</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<p id="module-ggp.projection.free_2d">Free 2-D geometry projection mapper.</p>
+<p>Maps 6 variables per component: [Xc, Yc, L, h, Theta, Mc].</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.projection.free_2d.Free2DMapper">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.projection.free_2d.</span></span><span class="sig-name descname"><span class="pre">Free2DMapper</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">num_components</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_gp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'GP'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ngp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/projection/free_2d.html#Free2DMapper"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.free_2d.Free2DMapper" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ProjectionMapper</span></code></p>
+<p>Free 2-D projection mapper.</p>
+<dl class="simple">
+<dt>Each component uses 6 parameters:</dt><dd><p>[Xc, Yc, length, thickness, angle, density]</p>
+</dd>
+</dl>
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.projection.free_2d.Free2DMapper.default_bounds">
+<span class="sig-name descname"><span class="pre">default_bounds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">domain_extents</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_components</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/free_2d.html#Free2DMapper.default_bounds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.free_2d.Free2DMapper.default_bounds" title="Link to this definition"></a></dt>
+<dd><p>Return <code class="docutils literal notranslate"><span class="pre">(lb,</span> <span class="pre">ub)</span></code> arrays for the full design-variable vector.</p>
+<section id="id19">
+<h3>Parameters<a class="headerlink" href="#id19" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>domain_extents<span class="classifier">tuple of float</span></dt><dd><p><code class="docutils literal notranslate"><span class="pre">(Lx,</span> <span class="pre">Ly)</span></code> for 2-D, <code class="docutils literal notranslate"><span class="pre">(Lx,</span> <span class="pre">Ly,</span> <span class="pre">Lz)</span></code> for 3-D.</p>
+</dd>
+<dt>num_components<span class="classifier">int</span></dt><dd><p>Number of geometric primitives.</p>
+</dd>
+</dl>
+</section>
+<section id="id20">
+<h3>Returns<a class="headerlink" href="#id20" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>lb, ub<span class="classifier">ndarray, ndarray</span></dt><dd><p>Lower and upper bounds, each of shape <code class="docutils literal notranslate"><span class="pre">(n_vars,)</span></code>.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.projection.free_2d.Free2DMapper.forward">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_vars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eval_coords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_E</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_V</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/free_2d.html#Free2DMapper.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.free_2d.Free2DMapper.forward" title="Link to this definition"></a></dt>
+<dd><p>Compute density fields.</p>
+<section id="id21">
+<h3>Parameters<a class="headerlink" href="#id21" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>x_vars<span class="classifier">ndarray, shape (n_vars,)</span></dt><dd><p>Flat design-variable vector (already unscaled).</p>
+</dd>
+<dt>eval_coords<span class="classifier">ndarray, shape (n_eval, dim)</span></dt><dd><p>Element centroid (or evaluation-point) coordinates.</p>
+</dd>
+<dt>power_E<span class="classifier">float</span></dt><dd><p>Penalisation exponent for stiffness density.</p>
+</dd>
+<dt>power_V<span class="classifier">float</span></dt><dd><p>Penalisation exponent for volume density.</p>
+</dd>
+</dl>
+</section>
+<section id="id22">
+<h3>Returns<a class="headerlink" href="#id22" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>rho_E<span class="classifier">ndarray, shape (n_elements,)</span></dt><dd><p>Stiffness density per element.</p>
+</dd>
+<dt>rho_V<span class="classifier">ndarray, shape (n_elements,)</span></dt><dd><p>Volume density per element.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.projection.free_2d.Free2DMapper.jacobian">
+<span class="sig-name descname"><span class="pre">jacobian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_vars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eval_coords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_E</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_V</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/free_2d.html#Free2DMapper.jacobian"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.free_2d.Free2DMapper.jacobian" title="Link to this definition"></a></dt>
+<dd><p>Compute analytic Jacobians.</p>
+<section id="id23">
+<h3>Returns<a class="headerlink" href="#id23" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>dict</dt><dd><p><code class="docutils literal notranslate"><span class="pre">{&quot;rho_E&quot;:</span> <span class="pre">drho_E_dx,</span> <span class="pre">&quot;rho_V&quot;:</span> <span class="pre">drho_V_dx}</span></code> where each
+value has shape <code class="docutils literal notranslate"><span class="pre">(n_elements,</span> <span class="pre">n_vars)</span></code>.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.projection.free_2d.Free2DMapper.num_vars_per_component">
+<span class="sig-name descname"><span class="pre">num_vars_per_component</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="reference internal" href="_modules/ggp/projection/free_2d.html#Free2DMapper.num_vars_per_component"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.free_2d.Free2DMapper.num_vars_per_component" title="Link to this definition"></a></dt>
+<dd><p>Number of design variables per geometric primitive.</p>
+</dd></dl>
+
+</dd></dl>
+
+<p id="module-ggp.projection.alm_2d">Additive Layer Manufacturing (ALM) 2-D geometry projection mapper.</p>
+<p>Maps components layer-by-layer.
+Standard mode: 3 variables per component: [Xc, width, Mc].
+Extended mode: 4 variables per component + [y0, theta0].</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.projection.alm_2d.</span></span><span class="sig-name descname"><span class="pre">ALM2DMapper</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">num_components</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">comp_per_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_height</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_gp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'GP'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ngp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ProjectionMapper</span></code></p>
+<p>ALM 2-D projection mapper.</p>
+<p>Components are arranged in layers.</p>
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper.default_bounds">
+<span class="sig-name descname"><span class="pre">default_bounds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">domain_extents</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_components</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper.default_bounds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper.default_bounds" title="Link to this definition"></a></dt>
+<dd><p>Return <code class="docutils literal notranslate"><span class="pre">(lb,</span> <span class="pre">ub)</span></code> arrays for the full design-variable vector.</p>
+<section id="id24">
+<h3>Parameters<a class="headerlink" href="#id24" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>domain_extents<span class="classifier">tuple of float</span></dt><dd><p><code class="docutils literal notranslate"><span class="pre">(Lx,</span> <span class="pre">Ly)</span></code> for 2-D, <code class="docutils literal notranslate"><span class="pre">(Lx,</span> <span class="pre">Ly,</span> <span class="pre">Lz)</span></code> for 3-D.</p>
+</dd>
+<dt>num_components<span class="classifier">int</span></dt><dd><p>Number of geometric primitives.</p>
+</dd>
+</dl>
+</section>
+<section id="id25">
+<h3>Returns<a class="headerlink" href="#id25" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>lb, ub<span class="classifier">ndarray, ndarray</span></dt><dd><p>Lower and upper bounds, each of shape <code class="docutils literal notranslate"><span class="pre">(n_vars,)</span></code>.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper.forward">
+<span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_vars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eval_coords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_E</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_V</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper.forward" title="Link to this definition"></a></dt>
+<dd><p>Compute density fields.</p>
+<section id="id26">
+<h3>Parameters<a class="headerlink" href="#id26" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>x_vars<span class="classifier">ndarray, shape (n_vars,)</span></dt><dd><p>Flat design-variable vector (already unscaled).</p>
+</dd>
+<dt>eval_coords<span class="classifier">ndarray, shape (n_eval, dim)</span></dt><dd><p>Element centroid (or evaluation-point) coordinates.</p>
+</dd>
+<dt>power_E<span class="classifier">float</span></dt><dd><p>Penalisation exponent for stiffness density.</p>
+</dd>
+<dt>power_V<span class="classifier">float</span></dt><dd><p>Penalisation exponent for volume density.</p>
+</dd>
+</dl>
+</section>
+<section id="id27">
+<h3>Returns<a class="headerlink" href="#id27" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>rho_E<span class="classifier">ndarray, shape (n_elements,)</span></dt><dd><p>Stiffness density per element.</p>
+</dd>
+<dt>rho_V<span class="classifier">ndarray, shape (n_elements,)</span></dt><dd><p>Volume density per element.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper.jacobian">
+<span class="sig-name descname"><span class="pre">jacobian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_vars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eval_coords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_E</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_V</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper.jacobian"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper.jacobian" title="Link to this definition"></a></dt>
+<dd><p>Compute analytic Jacobians.</p>
+<section id="id28">
+<h3>Returns<a class="headerlink" href="#id28" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>dict</dt><dd><p><code class="docutils literal notranslate"><span class="pre">{&quot;rho_E&quot;:</span> <span class="pre">drho_E_dx,</span> <span class="pre">&quot;rho_V&quot;:</span> <span class="pre">drho_V_dx}</span></code> where each
+value has shape <code class="docutils literal notranslate"><span class="pre">(n_elements,</span> <span class="pre">n_vars)</span></code>.</p>
+</dd>
+</dl>
+</section>
+</dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper.num_vars_per_component">
+<span class="sig-name descname"><span class="pre">num_vars_per_component</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper.num_vars_per_component"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper.num_vars_per_component" title="Link to this definition"></a></dt>
+<dd><p>Number of design variables per geometric primitive.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-ggp.optimization.results">
+<span id="optimization-pipeline"></span><h2>Optimization Pipeline<a class="headerlink" href="#module-ggp.optimization.results" title="Link to this heading"></a></h2>
+<p>Results containers for GGP optimization.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.optimization.results.</span></span><span class="sig-name descname"><span class="pre">OptimisationResult</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">problem_name</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">algorithm</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">status</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">iterations</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">objective_value</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_constraint_violation</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">design_variables</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">history</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">mesh_path</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">execution_time_s</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">None</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/optimization/results.html#OptimisationResult"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.optimization.results.OptimisationResult" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
+<p>Container for the results of a GGP optimization run.</p>
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult.algorithm">
+<span class="sig-name descname"><span class="pre">algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#ggp.optimization.results.OptimisationResult.algorithm" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult.design_variables">
+<span class="sig-name descname"><span class="pre">design_variables</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span></em><a class="headerlink" href="#ggp.optimization.results.OptimisationResult.design_variables" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult.execution_time_s">
+<span class="sig-name descname"><span class="pre">execution_time_s</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#ggp.optimization.results.OptimisationResult.execution_time_s" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult.history">
+<span class="sig-name descname"><span class="pre">history</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">List</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">]</span></span><span class="p"><span class="pre">]</span></span></em><a class="headerlink" href="#ggp.optimization.results.OptimisationResult.history" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult.iterations">
+<span class="sig-name descname"><span class="pre">iterations</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">int</span></em><a class="headerlink" href="#ggp.optimization.results.OptimisationResult.iterations" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult.max_constraint_violation">
+<span class="sig-name descname"><span class="pre">max_constraint_violation</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#ggp.optimization.results.OptimisationResult.max_constraint_violation" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult.mesh_path">
+<span class="sig-name descname"><span class="pre">mesh_path</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span><span class="w"> </span><span class="p"><span class="pre">|</span></span><span class="w"> </span><span class="pre">None</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">None</span></em><a class="headerlink" href="#ggp.optimization.results.OptimisationResult.mesh_path" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult.objective_value">
+<span class="sig-name descname"><span class="pre">objective_value</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">float</span></em><a class="headerlink" href="#ggp.optimization.results.OptimisationResult.objective_value" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult.problem_name">
+<span class="sig-name descname"><span class="pre">problem_name</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#ggp.optimization.results.OptimisationResult.problem_name" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult.status">
+<span class="sig-name descname"><span class="pre">status</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><a class="headerlink" href="#ggp.optimization.results.OptimisationResult.status" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py method">
+<dt class="sig sig-object py" id="ggp.optimization.results.OptimisationResult.to_dict">
+<span class="sig-name descname"><span class="pre">to_dict</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">Any</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/optimization/results.html#OptimisationResult.to_dict"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.optimization.results.OptimisationResult.to_dict" title="Link to this definition"></a></dt>
+<dd><p>Convert the result to a serializable dictionary.</p>
+</dd></dl>
+
+</dd></dl>
+
+</section>
+<section id="module-ggp.gemseo_wrappers.geometry_discipline">
+<span id="gemseo-wrappers"></span><h2>GEMSEO Wrappers<a class="headerlink" href="#module-ggp.gemseo_wrappers.geometry_discipline" title="Link to this heading"></a></h2>
+<p>Refactored geometry discipline using projection mappers.</p>
+<dl class="py class">
+<dt class="sig sig-object py" id="ggp.gemseo_wrappers.geometry_discipline.GGPGeometryDiscipline">
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.gemseo_wrappers.geometry_discipline.</span></span><span class="sig-name descname"><span class="pre">GGPGeometryDiscipline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/gemseo_wrappers/geometry_discipline.html#GGPGeometryDiscipline"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.gemseo_wrappers.geometry_discipline.GGPGeometryDiscipline" title="Link to this definition"></a></dt>
+<dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Discipline</span></code></p>
+<p>GEMSEO discipline for GGP geometry projection.</p>
+<p>Delegates the core maths to a ProjectionMapper.</p>
+</dd></dl>
+
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="developer_guide.html" class="btn btn-neutral float-left" title="Developer Guide" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="3d_optimization.html" class="btn btn-neutral float-right" title="3D Topology Optimization Framework" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Simone Coniglio.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
