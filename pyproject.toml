@@ -1,0 +1,54 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "ggp-topo"
+version = "0.2.0"
+description = "Generalized Geometry Projection for Topology Optimisation"
+readme = "README.md"
+license = { text = "MIT" }
+authors = [{ name = "Simone Coniglio" }]
+requires-python = ">=3.10"
+classifiers = [
+    "Development Status :: 4 - Beta",
+    "Intended Audience :: Science/Research",
+    "License :: OSI Approved :: MIT License",
+    "Programming Language :: Python :: 3",
+    "Programming Language :: Python :: 3.10",
+    "Topic :: Scientific/Engineering",
+    "Topic :: Scientific/Engineering :: Mathematics",
+]
+
+dependencies = [
+    "numpy",
+    "scipy",
+    "click>=8.0",
+    "pyyaml",
+]
+
+[project.optional-dependencies]
+fenics = ["fenics-dolfin", "dolfin-adjoint", "petsc4py"]
+gemseo = ["gemseo>=5.0", "gemseo-mma"]
+cad = ["gmsh", "meshio"]
+dev = ["pytest", "pytest-cov", "sphinx", "sphinx-rtd-theme"]
+all = ["ggp-topo[fenics,gemseo,cad,dev]"]
+
+[project.scripts]
+ggp = "ggp.cli.main:cli"
+
+[project.urls]
+Homepage = "https://github.com/SimoneConiglio/generalized_geometry_projection"
+Documentation = "https://simoneconiglio.github.io/generalized_geometry_projection/"
+Repository = "https://github.com/SimoneConiglio/generalized_geometry_projection"
+
+[tool.setuptools.packages.find]
+include = ["ggp*", "scp_uno*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+addopts = "--cov=ggp --cov-fail-under=80"
+
+[tool.coverage.run]
+source = ["ggp"]
+branch = true

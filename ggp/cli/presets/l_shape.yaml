@@ -1,0 +1,44 @@
+# L-Shape Bracket Benchmark
+# Square domain with top edge fixed and a point load on the mid-right edge.
+# Upper-right quadrant is voided (non-design / empty elements).
+
+geometries:
+  - type: fenics_rectangle
+    role: design
+    params:
+      Lx: 60.0
+      Ly: 60.0
+      nx: 60
+      ny: 60
+  - type: box
+    role: non_design
+    params:
+      origin: [30.0, 30.0]
+      extent: [60.0, 60.0]
+
+boundary_conditions:
+  - region: top
+    type: fixed
+
+loads:
+  - region: mid_right
+    type: point
+    value: [0.0, -1.0]
+
+formulation:
+  mode: Free
+  num_components: 18
+
+objective:
+  name: compliance
+
+constraints:
+  - name: volume
+    type: ineq
+    bound: 0.0
+
+solver:
+  algorithm: MMA
+  max_iter: 50
+
+volfrac: 0.4
