@@ -10,7 +10,6 @@
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
-      <link rel="stylesheet" type="text/css" href="_static/nbsphinx-code-cells.css?v=2aa19091" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
@@ -20,13 +19,10 @@
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="_static/copybutton.js?v=f281be69"></script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
-      <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="ALM Cantilever (Continuous Overhang Constraints)" href="ex04_alm_cantilever.html" />
+    <link rel="next" title="ALM Cantilever" href="ex04_alm_cantilever.html" />
     <link rel="prev" title="MBB Beam" href="ex02_mbb_beam.html" /> 
 </head>
 
@@ -62,11 +58,14 @@
 <li class="toctree-l2"><a class="reference internal" href="ex01_short_cantilever.html">Short Cantilever</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ex02_mbb_beam.html">MBB Beam</a></li>
 <li class="toctree-l2 current"><a class="current reference internal" href="#">L-Shape Bracket</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#Optimized-Result">Optimized Result</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#running">Running</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#result">Result</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#problem-details">Problem details</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="ex04_alm_cantilever.html">ALM Cantilever (Continuous Overhang Constraints)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ex05_3d_cantilever.html">Example 5: 3D Short Cantilever</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ex04_alm_cantilever.html">ALM Cantilever</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ex05_3d_cantilever.html">3D Cantilever</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#regenerating-the-images">Regenerating the images</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="credits.html">Credits &amp; Dependencies</a></li>
@@ -89,7 +88,7 @@
           <li class="breadcrumb-item"><a href="examples.html">Examples</a></li>
       <li class="breadcrumb-item active">L-Shape Bracket</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="_sources/ex03_l_shape_bracket.ipynb.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/ex03_l_shape_bracket.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -97,107 +96,63 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="L-Shape-Bracket">
-<h1>L-Shape Bracket<a class="headerlink" href="#L-Shape-Bracket" title="Link to this heading"></a></h1>
-<p>This is an interactive Jupyter Notebook implementation. The optimization runs for 50 iterations to ensure proper convergence.</p>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+  <section id="l-shape-bracket">
+<h1>L-Shape Bracket<a class="headerlink" href="#l-shape-bracket" title="Link to this heading"></a></h1>
+<p>An L-shaped structural bracket: a 60 × 60 square domain with the
+upper-right quadrant voided (non-design region).  The top edge is fixed and
+a downward point load is applied at the mid-right edge.</p>
+<section id="running">
+<h2>Running<a class="headerlink" href="#running" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>l_shape
 </pre></div>
 </div>
-<div class="input_area highlight-none notranslate"><div class="highlight"><pre><span></span>import dolfin as df
-from dolfin_adjoint import Constant, DirichletBC, RectangleMesh, stop_annotating
-import numpy as np
-import gemseo
-from gemseo import create_scenario
-from ggp.geometry.factory import GeometryFactory
-from ggp.physics.factory import PhysicsFactory
-from ggp.gemseo_wrappers.macro_discipline import GGPMacroDiscipline
-import matplotlib.pyplot as plt
-import os
+<p>To save the density image:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>l_shape<span class="w"> </span>--output-dir<span class="w"> </span>docs/_static
 </pre></div>
 </div>
-</div>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
-</pre></div>
-</div>
-<div class="input_area highlight-none notranslate"><div class="highlight"><pre><span></span>def run_l_shape_bracket():
-    # Model a simple rectangle and carve out the top right via properties later if needed
-    # For a true L-Shape, one would use an L-shaped mesh or penalize the void region
-    L, H = 100.0, 100.0
-    nelx, nely = 100, 100
-    volfrac = 0.4
-    num_components = 15
-
-    mesh = RectangleMesh(df.Point(0, 0), df.Point(L, H), nelx, nely)
-    V_u = df.VectorFunctionSpace(mesh, &quot;CG&quot;, 1)
-
-    # Boundary Conditions: Top edge fixed
-    def top_boundary(x, on_boundary): return on_boundary and df.near(x[1], H)
-    bc = [DirichletBC(V_u, Constant((0.0, 0.0)), top_boundary)]
-
-    # Load: Bottom right corner pointing down
-    boundaries = df.MeshFunction(&quot;size_t&quot;, mesh, mesh.topology().dim() - 1)
-    boundaries.set_all(0)
-    class BottomRightArea(df.SubDomain):
-        def inside(self, x, on_boundary): return df.near(x[0], L, 5.0) and df.near(x[1], 0.0, 5.0)
-    BottomRightArea().mark(boundaries, 1)
-    ds_load = df.Measure(&quot;ds&quot;, domain=mesh, subdomain_data=boundaries)
-    L_rhs_vec = Constant((0.0, -1.0))
-
-    # Initialization
-    mapper = GeometryFactory.create_mapper(&quot;2D_Free&quot;, mesh=mesh, num_components=num_components)
-    solver = PhysicsFactory.create_solver(&quot;Elasticity_2D&quot;, V_u=V_u, bc=bc, ds_load=ds_load, L_rhs_vec=L_rhs_vec)
-    x_init = mapper.get_initial_design(L, H)
-    lb = np.array([0.0, 0.0, 5.0, 2.0, -np.pi] * num_components)
-    ub = np.array([L, H, L, H/2, np.pi] * num_components)
-
-    disc = GGPMacroDiscipline(mapper, solver, x_init, lb, ub, mesh_area=L*H, name=&quot;GGP_L_Shape&quot;)
-    design_space = gemseo.algos.design_space.DesignSpace()
-    design_space.add_variable(&quot;x_vars&quot;, size=len(x_init), lower_bound=lb, upper_bound=ub, value=x_init)
-
-    scenario = create_scenario(disciplines=[disc], objective_name=&quot;compliance&quot;, design_space=design_space, formulation_name=&quot;DisciplinaryOpt&quot;)
-    scenario.add_constraint(&quot;volume&quot;, &quot;ineq&quot;, positive=False, value=volfrac)
-
-    scenario.execute(algo_name=&quot;MMA&quot;, max_iter=50, max_optimization_step=0.1)
-
-    # --- Post-Processing ---
-    print(&quot;Post-processing optimal design...&quot;)
-    os.makedirs(&quot;results&quot;, exist_ok=True)
-
-    opt_x = scenario.optimization_result.x_opt
-    for c, v in zip(disc.controls_objs, opt_x):
-        c.assign(float(v))
-
-    with stop_annotating():
-        V_rho = df.FunctionSpace(mesh, &quot;CG&quot;, 1)
-        rho_opt_ufl = mapper.map_to_density(disc.controls_objs)
-        rho_opt = df.project(rho_opt_ufl, V_rho)
-        rho_opt.rename(&quot;Density&quot;, &quot;Optimized GGP Density&quot;)
-
-        df.File(&quot;results/l_shape_bracket_optimized.pvd&quot;) &lt;&lt; rho_opt
-
-        plt.figure(figsize=(7, 7))
-        p = df.plot(rho_opt, cmap=&quot;Blues&quot;)
-        plt.colorbar(p, label=&quot;Density $\\rho$&quot;, shrink=0.7)
-        plt.title(&quot;Optimized GGP Topology: L-Shape Bracket&quot;)
-        plt.savefig(&quot;results/l_shape_bracket_optimized.png&quot;, dpi=300, bbox_inches=&quot;tight&quot;)
-        print(&quot;Results saved to &#39;results/&#39; directory.&quot;)
-</pre></div>
-</div>
-</div>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
-</pre></div>
-</div>
-<div class="input_area highlight-none notranslate"><div class="highlight"><pre><span></span>if __name__ == &quot;__main__&quot;:
-    run_l_shape_bracket()
-</pre></div>
-</div>
-</div>
-<section id="Optimized-Result">
-<h2>Optimized Result<a class="headerlink" href="#Optimized-Result" title="Link to this heading"></a></h2>
-<img alt="Optimized Design" src="_images/l_shape_bracket_optimized.png" />
+</section>
+<section id="result">
+<h2>Result<a class="headerlink" href="#result" title="Link to this heading"></a></h2>
+<figure class="align-center" id="id1">
+<a class="reference internal image-reference" href="_images/l_shape_optimized.png"><img alt="Optimized L-shape bracket topology" src="_images/l_shape_optimized.png" style="width: 60%;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Optimized density field after 150 MMA iterations (40 % volume fraction).</span><a class="headerlink" href="#id1" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+</section>
+<section id="problem-details">
+<h2>Problem details<a class="headerlink" href="#problem-details" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Value</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Domain</p></td>
+<td><p>60 × 60 (L-shape)</p></td>
+</tr>
+<tr class="row-odd"><td><p>Mesh</p></td>
+<td><p>60 × 60 quads</p></td>
+</tr>
+<tr class="row-even"><td><p>Formulation</p></td>
+<td><p>Free 2D</p></td>
+</tr>
+<tr class="row-odd"><td><p>Components</p></td>
+<td><p>18</p></td>
+</tr>
+<tr class="row-even"><td><p>Volume fraction</p></td>
+<td><p>0.40</p></td>
+</tr>
+<tr class="row-odd"><td><p>Algorithm</p></td>
+<td><p>MMA</p></td>
+</tr>
+<tr class="row-even"><td><p>Max iterations</p></td>
+<td><p>150</p></td>
+</tr>
+</tbody>
+</table>
 </section>
 </section>
 
@@ -206,7 +161,7 @@ import os
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="ex02_mbb_beam.html" class="btn btn-neutral float-left" title="MBB Beam" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="ex04_alm_cantilever.html" class="btn btn-neutral float-right" title="ALM Cantilever (Continuous Overhang Constraints)" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="ex04_alm_cantilever.html" class="btn btn-neutral float-right" title="ALM Cantilever" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>

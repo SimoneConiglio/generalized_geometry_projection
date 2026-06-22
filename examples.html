@@ -19,9 +19,7 @@
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="_static/copybutton.js?v=f281be69"></script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
-      <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
@@ -61,8 +59,9 @@
 <li class="toctree-l2"><a class="reference internal" href="ex01_short_cantilever.html">Short Cantilever</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ex02_mbb_beam.html">MBB Beam</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ex03_l_shape_bracket.html">L-Shape Bracket</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ex04_alm_cantilever.html">ALM Cantilever (Continuous Overhang Constraints)</a></li>
-<li class="toctree-l2"><a class="reference internal" href="ex05_3d_cantilever.html">Example 5: 3D Short Cantilever</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ex04_alm_cantilever.html">ALM Cantilever</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ex05_3d_cantilever.html">3D Cantilever</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#regenerating-the-images">Regenerating the images</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="credits.html">Credits &amp; Dependencies</a></li>
@@ -94,16 +93,31 @@
              
   <section id="examples">
 <h1>Examples<a class="headerlink" href="#examples" title="Link to this heading"></a></h1>
-<p>Here are three topology optimization examples implemented using the <cite>ggp</cite> framework. These examples are interactive Jupyter Notebooks.</p>
+<p>Five topology optimisation examples built with the <code class="docutils literal notranslate"><span class="pre">ggp</span></code> CLI.  Each
+example runs a single command — no Python code required.  The density
+plots shown were generated with <code class="docutils literal notranslate"><span class="pre">--output-dir</span> <span class="pre">docs/_static</span></code>.</p>
 <div class="toctree-wrapper compound">
 <ul>
 <li class="toctree-l1"><a class="reference internal" href="ex01_short_cantilever.html">Short Cantilever</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ex02_mbb_beam.html">MBB Beam</a></li>
 <li class="toctree-l1"><a class="reference internal" href="ex03_l_shape_bracket.html">L-Shape Bracket</a></li>
-<li class="toctree-l1"><a class="reference internal" href="ex04_alm_cantilever.html">ALM Cantilever (Continuous Overhang Constraints)</a></li>
-<li class="toctree-l1"><a class="reference internal" href="ex05_3d_cantilever.html">Example 5: 3D Short Cantilever</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex04_alm_cantilever.html">ALM Cantilever</a></li>
+<li class="toctree-l1"><a class="reference internal" href="ex05_3d_cantilever.html">3D Cantilever</a></li>
 </ul>
 </div>
+<section id="regenerating-the-images">
+<h2>Regenerating the images<a class="headerlink" href="#regenerating-the-images" title="Link to this heading"></a></h2>
+<p>All images can be regenerated locally (requires the <code class="docutils literal notranslate"><span class="pre">ggp</span></code> conda
+environment):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>activate<span class="w"> </span>ggp
+ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>short_cantilever<span class="w">  </span>--output-dir<span class="w"> </span>docs/_static
+ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>mbb<span class="w">             </span>--output-dir<span class="w"> </span>docs/_static
+ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>l_shape<span class="w">          </span>--output-dir<span class="w"> </span>docs/_static
+ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>alm_cantilever<span class="w">   </span>--output-dir<span class="w"> </span>docs/_static
+ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>3d_cantilever<span class="w">    </span>--output-dir<span class="w"> </span>docs/_static
+</pre></div>
+</div>
+</section>
 </section>
 
 

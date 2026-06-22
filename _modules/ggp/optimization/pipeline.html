@@ -18,7 +18,6 @@
       <script src="../../../_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="../../../_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="../../../_static/copybutton.js?v=f281be69"></script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
       <script src="https://cdn.jsdelivr.net/npm/d3@7.9.0/dist/d3.min.js"></script>
       <script type="module">import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11.12.1/dist/mermaid.esm.min.mjs";
 
@@ -534,33 +533,123 @@ window.runMermaid = runMermaid;</script>
 
 <span class="kn">from</span><span class="w"> </span><span class="nn">gemseo</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_scenario</span><span class="p">,</span> <span class="n">create_design_space</span>
 <span class="kn">from</span><span class="w"> </span><span class="nn">gemseo.mda.mda_chain</span><span class="w"> </span><span class="kn">import</span> <span class="n">MDAChain</span>
+<span class="kn">from</span><span class="w"> </span><span class="nn">gemseo.core.discipline.discipline</span><span class="w"> </span><span class="kn">import</span> <span class="n">Discipline</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_OverhangDiscipline</span><span class="p">(</span><span class="n">Discipline</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Linear overhang constraint discipline for ALM 2-D mode.</span>
+
+<span class="sd">    Outputs ``overhang = A * x_unscaled - b`` (constraint &lt;= 0).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">num_layers</span><span class="p">,</span> <span class="n">comp_per_layer</span><span class="p">,</span> <span class="n">layer_height</span><span class="p">,</span> <span class="n">alpha_deg</span><span class="p">,</span> <span class="n">lb</span><span class="p">,</span> <span class="n">ub</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="s2">&quot;OverhangDiscipline&quot;</span><span class="p">)</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">ggp.utils.alm_utils</span><span class="w"> </span><span class="kn">import</span> <span class="n">create_alm_overhang_constraints</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">A</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">b_rhs</span> <span class="o">=</span> <span class="n">create_alm_overhang_constraints</span><span class="p">(</span>
+            <span class="n">num_layers</span><span class="p">,</span> <span class="n">comp_per_layer</span><span class="p">,</span> <span class="n">layer_height</span><span class="p">,</span> <span class="n">alpha_deg</span>
+        <span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">lb</span> <span class="o">=</span> <span class="n">lb</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ub</span> <span class="o">=</span> <span class="n">ub</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">lb</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">input_grammar</span><span class="o">.</span><span class="n">update_from_names</span><span class="p">([</span><span class="s2">&quot;x_vars&quot;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_grammar</span><span class="o">.</span><span class="n">update_from_names</span><span class="p">([</span><span class="s2">&quot;overhang&quot;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">default_inputs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;x_vars&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">n</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)}</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;cache&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;cache_type&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache_type</span> <span class="o">=</span> <span class="n">Discipline</span><span class="o">.</span><span class="n">CacheType</span><span class="o">.</span><span class="n">NONE</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">input_data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+        <span class="n">x</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="p">[</span><span class="s2">&quot;x_vars&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">x_unscaled</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">lb</span> <span class="o">+</span> <span class="n">x</span> <span class="o">*</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ub</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">lb</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="p">[</span><span class="s2">&quot;overhang&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">A</span> <span class="o">@</span> <span class="n">x_unscaled</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">b_rhs</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_jacobian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">outputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">scale</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">ub</span> <span class="o">-</span> <span class="bp">self</span><span class="o">.</span><span class="n">lb</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">jac</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;overhang&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;x_vars&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">A</span> <span class="o">*</span> <span class="n">scale</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">newaxis</span><span class="p">,</span> <span class="p">:]}}</span>
 
 
 <div class="viewcode-block" id="GGPPipeline">
 <a class="viewcode-back" href="../../../api.html#ggp.optimization.pipeline.GGPPipeline">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">GGPPipeline</span><span class="p">:</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Orchestrates the entire GGP optimization process.&quot;&quot;&quot;</span>
-    
+
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">spec</span><span class="p">:</span> <span class="n">ProblemSpec</span><span class="p">):</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">spec</span> <span class="o">=</span> <span class="n">spec</span>
-        
+
+    <span class="nd">@staticmethod</span>
+    <span class="k">def</span><span class="w"> </span><span class="nf">_make_init</span><span class="p">(</span><span class="n">mode</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">num_vars</span><span class="p">:</span> <span class="nb">int</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">np</span><span class="o">.</span><span class="n">ndarray</span><span class="p">:</span>
+<span class="w">        </span><span class="sd">&quot;&quot;&quot;Return a normalized [0,1] initial design vector appropriate for *mode*.</span>
+
+<span class="sd">        The key insight is that thin initial bars (small h) let MMA explore</span>
+<span class="sd">        freely, while thick blobs saturate KS and freeze gradients.</span>
+<span class="sd">        &quot;&quot;&quot;</span>
+        <span class="n">n</span> <span class="o">=</span> <span class="n">num_vars</span>
+        <span class="n">rng</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span>  <span class="c1"># fixed seed for reproducibility</span>
+
+        <span class="k">if</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;Free&quot;</span><span class="p">,</span> <span class="s2">&quot;2D_Free&quot;</span><span class="p">):</span>
+            <span class="c1"># 6 vars per component: [Xc, Yc, L, h, Theta, Mc]</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">n</span> <span class="o">//</span> <span class="mi">6</span><span class="p">)</span>   <span class="c1"># Xc: spread across domain</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">n</span> <span class="o">//</span> <span class="mi">6</span><span class="p">)</span>   <span class="c1"># Yc: spread across domain</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">::</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.25</span>                              <span class="c1"># L: medium length</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">3</span><span class="p">::</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.02</span>                              <span class="c1"># h: thin bars (h_unscaled ≈ 2-3)</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">4</span><span class="p">::</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.4</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">,</span> <span class="n">n</span> <span class="o">//</span> <span class="mi">6</span><span class="p">)</span>   <span class="c1"># Theta: near-zero angle</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">5</span><span class="p">::</span><span class="mi">6</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.50</span>                              <span class="c1"># Mc: medium density</span>
+            <span class="k">return</span> <span class="n">x</span>
+
+        <span class="k">if</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;ALM&quot;</span><span class="p">,</span> <span class="s2">&quot;2D_ALM&quot;</span><span class="p">):</span>
+            <span class="c1"># 3 vars per component: [Xc, width, Mc]</span>
+            <span class="n">n_comp</span> <span class="o">=</span> <span class="n">n</span> <span class="o">//</span> <span class="mi">3</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+            <span class="c1"># Xc: spread uniformly within each layer (inferred from position)</span>
+            <span class="n">comp_positions</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">tile</span><span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">linspace</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="nb">max</span><span class="p">(</span><span class="n">n_comp</span><span class="p">,</span> <span class="mi">1</span><span class="p">)),</span> <span class="mi">1</span>
+            <span class="p">)[:</span><span class="n">n_comp</span><span class="p">]</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="n">comp_positions</span>                    <span class="c1"># Xc: uniform in [0.1, 0.9]</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.15</span>                              <span class="c1"># width: thin</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">::</span><span class="mi">3</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.50</span>                              <span class="c1"># Mc: medium density</span>
+            <span class="k">return</span> <span class="n">x</span>
+
+        <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;3D_Free&quot;</span><span class="p">:</span>
+            <span class="c1"># 8 vars per component: [Xc, Yc, Zc, L, h, Theta, Phi, Mc]</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+            <span class="n">nc</span> <span class="o">=</span> <span class="n">n</span> <span class="o">//</span> <span class="mi">8</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">nc</span><span class="p">)</span>        <span class="c1"># Xc</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">nc</span><span class="p">)</span>        <span class="c1"># Yc</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">::</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.1</span><span class="p">,</span> <span class="mf">0.9</span><span class="p">,</span> <span class="n">nc</span><span class="p">)</span>        <span class="c1"># Zc</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">3</span><span class="p">::</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.25</span>                              <span class="c1"># L</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">4</span><span class="p">::</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.02</span>                              <span class="c1"># h (thin)</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">5</span><span class="p">::</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.4</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">,</span> <span class="n">nc</span><span class="p">)</span>        <span class="c1"># Theta</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">6</span><span class="p">::</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.4</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">,</span> <span class="n">nc</span><span class="p">)</span>        <span class="c1"># Phi</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">7</span><span class="p">::</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.50</span>                              <span class="c1"># Mc</span>
+            <span class="k">return</span> <span class="n">x</span>
+
+        <span class="c1"># Fallback for other modes</span>
+        <span class="k">return</span> <span class="n">rng</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.4</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
+
 <div class="viewcode-block" id="GGPPipeline.run">
 <a class="viewcode-back" href="../../../api.html#ggp.optimization.pipeline.GGPPipeline.run">[docs]</a>
     <span class="k">def</span><span class="w"> </span><span class="nf">run</span><span class="p">(</span><span class="bp">self</span><span class="p">)</span> <span class="o">-&gt;</span> <span class="n">OptimisationResult</span><span class="p">:</span>
         <span class="n">start_time</span> <span class="o">=</span> <span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span>
-        
+
         <span class="c1"># 1. Geometry I/O</span>
         <span class="n">domain_geom</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">geometries</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span>
         <span class="n">reader</span> <span class="o">=</span> <span class="n">get_reader</span><span class="p">(</span><span class="n">domain_geom</span><span class="o">.</span><span class="n">type</span><span class="p">)</span>
         <span class="n">domain</span> <span class="o">=</span> <span class="n">reader</span><span class="o">.</span><span class="n">read</span><span class="p">(</span><span class="n">domain_geom</span><span class="p">)</span>
-        
+
         <span class="c1"># 2. FEM Discretisation</span>
         <span class="n">discretiser</span> <span class="o">=</span> <span class="n">FEMDiscretiser</span><span class="p">()</span>
         <span class="n">analysis</span> <span class="o">=</span> <span class="n">discretiser</span><span class="o">.</span><span class="n">discretise</span><span class="p">(</span><span class="n">domain</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="p">)</span>
-        
-        <span class="n">mesh_area</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;mesh_area&quot;</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
-        
-        <span class="c1"># 3. Create Disciplines</span>
+
+        <span class="n">Lx</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Lx&quot;</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="n">Ly</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Ly&quot;</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="n">Lz</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Lz&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="n">mesh_area</span> <span class="o">=</span> <span class="n">Lx</span> <span class="o">*</span> <span class="n">Ly</span> <span class="o">*</span> <span class="p">(</span><span class="n">Lz</span> <span class="k">if</span> <span class="n">Lz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">1.0</span><span class="p">)</span>
+
+        <span class="c1"># 3. Geometry Discipline</span>
         <span class="n">geom_kwargs</span> <span class="o">=</span> <span class="p">{</span>
             <span class="s2">&quot;num_layers&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_layers</span><span class="p">,</span>
             <span class="s2">&quot;comp_per_layer&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">comp_per_layer</span><span class="p">,</span>
@@ -568,21 +657,22 @@ window.runMermaid = runMermaid;</script>
             <span class="s2">&quot;ka&quot;</span><span class="p">:</span> <span class="mf">10.0</span><span class="p">,</span>
             <span class="s2">&quot;pp&quot;</span><span class="p">:</span> <span class="mf">10.0</span><span class="p">,</span>
             <span class="s2">&quot;method&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">method</span><span class="p">,</span>
+            <span class="s2">&quot;r_gp&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">r_gp</span><span class="p">,</span>
         <span class="p">}</span>
-        
+
         <span class="n">geom_discipline</span> <span class="o">=</span> <span class="n">GGPGeometryDiscipline</span><span class="p">(</span>
             <span class="n">mesh</span><span class="o">=</span><span class="n">analysis</span><span class="o">.</span><span class="n">mesh</span><span class="p">,</span>
             <span class="n">num_components</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_components</span><span class="p">,</span>
             <span class="n">mode</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">mode</span><span class="p">,</span>
             <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">geom_kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">}</span>
         <span class="p">)</span>
-        
-        <span class="c1"># Extract fixed dofs</span>
-        <span class="n">fixed_dofs</span> <span class="o">=</span> <span class="p">[]</span>
+
+        <span class="c1"># 4. Physics Discipline</span>
+        <span class="n">fixed_dofs</span> <span class="o">=</span> <span class="nb">list</span><span class="p">(</span><span class="n">analysis</span><span class="o">.</span><span class="n">point_fixed_dofs</span><span class="p">)</span>
         <span class="k">for</span> <span class="n">bc</span> <span class="ow">in</span> <span class="n">analysis</span><span class="o">.</span><span class="n">bcs_applied</span><span class="p">:</span>
             <span class="n">fixed_dofs</span><span class="o">.</span><span class="n">extend</span><span class="p">(</span><span class="n">bc</span><span class="o">.</span><span class="n">get_boundary_values</span><span class="p">()</span><span class="o">.</span><span class="n">keys</span><span class="p">())</span>
         <span class="n">fixed_dofs</span> <span class="o">=</span> <span class="nb">sorted</span><span class="p">(</span><span class="nb">list</span><span class="p">(</span><span class="nb">set</span><span class="p">(</span><span class="n">fixed_dofs</span><span class="p">)))</span>
-        
+
         <span class="n">phys_discipline</span> <span class="o">=</span> <span class="n">GGPPhysicsDiscipline</span><span class="p">(</span>
             <span class="n">V_u</span><span class="o">=</span><span class="n">analysis</span><span class="o">.</span><span class="n">function_spaces</span><span class="p">[</span><span class="s2">&quot;u&quot;</span><span class="p">],</span>
             <span class="n">ke_ref</span><span class="o">=</span><span class="n">analysis</span><span class="o">.</span><span class="n">ke_ref</span><span class="p">,</span>
@@ -595,57 +685,112 @@ window.runMermaid = runMermaid;</script>
             <span class="n">Emin</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span>
             <span class="n">E0</span><span class="o">=</span><span class="mf">1.0</span>
         <span class="p">)</span>
-        
-        <span class="c1"># 4. Design Space</span>
+
+        <span class="c1"># 5. Design Space</span>
         <span class="n">design_space</span> <span class="o">=</span> <span class="n">create_design_space</span><span class="p">()</span>
-        <span class="n">num_vars</span> <span class="o">=</span> <span class="n">geom_discipline</span><span class="o">.</span><span class="n">mapper</span><span class="o">.</span><span class="n">num_vars_per_component</span><span class="p">()</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_components</span>
-        
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">mode</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;ALM&quot;</span><span class="p">,</span> <span class="s2">&quot;2D_ALM&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="n">geom_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;num_layers&quot;</span><span class="p">):</span>
-            <span class="n">num_vars</span> <span class="o">=</span> <span class="mi">3</span> <span class="o">*</span> <span class="n">geom_kwargs</span><span class="p">[</span><span class="s2">&quot;comp_per_layer&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">geom_kwargs</span><span class="p">[</span><span class="s2">&quot;num_layers&quot;</span><span class="p">]</span>
-        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;3D_ALM&quot;</span> <span class="ow">and</span> <span class="n">geom_kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;num_layers&quot;</span><span class="p">):</span>
-            <span class="n">num_vars</span> <span class="o">=</span> <span class="mi">6</span> <span class="o">*</span> <span class="n">geom_kwargs</span><span class="p">[</span><span class="s2">&quot;comp_per_layer&quot;</span><span class="p">]</span> <span class="o">*</span> <span class="n">geom_kwargs</span><span class="p">[</span><span class="s2">&quot;num_layers&quot;</span><span class="p">]</span>
-            
-        <span class="n">x_init</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">rand</span><span class="p">(</span><span class="n">num_vars</span><span class="p">)</span> <span class="o">*</span> <span class="mf">0.1</span> <span class="o">+</span> <span class="mf">0.45</span>
-        <span class="n">design_space</span><span class="o">.</span><span class="n">add_variable</span><span class="p">(</span><span class="s2">&quot;x_vars&quot;</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">num_vars</span><span class="p">,</span> <span class="n">lower_bound</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">x_init</span><span class="p">)</span>
-        
-        <span class="c1"># 5. MDA &amp; Scenario</span>
+        <span class="n">mode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">mode</span>
+
+        <span class="k">if</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;ALM&quot;</span><span class="p">,</span> <span class="s2">&quot;2D_ALM&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_layers</span><span class="p">:</span>
+            <span class="n">num_vars</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="mi">3</span>
+                <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">comp_per_layer</span>
+                <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_layers</span>
+            <span class="p">)</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;3D_ALM&quot;</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_layers</span><span class="p">:</span>
+            <span class="n">num_vars</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="mi">6</span>
+                <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">comp_per_layer</span>
+                <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_layers</span>
+            <span class="p">)</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">num_vars</span> <span class="o">=</span> <span class="p">(</span>
+                <span class="n">geom_discipline</span><span class="o">.</span><span class="n">mapper</span><span class="o">.</span><span class="n">num_vars_per_component</span><span class="p">()</span>
+                <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_components</span>
+            <span class="p">)</span>
+
+        <span class="n">x_init</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_make_init</span><span class="p">(</span><span class="n">mode</span><span class="p">,</span> <span class="n">num_vars</span><span class="p">)</span>
+        <span class="n">design_space</span><span class="o">.</span><span class="n">add_variable</span><span class="p">(</span>
+            <span class="s2">&quot;x_vars&quot;</span><span class="p">,</span> <span class="n">size</span><span class="o">=</span><span class="n">num_vars</span><span class="p">,</span> <span class="n">lower_bound</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span> <span class="n">upper_bound</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="n">x_init</span>
+        <span class="p">)</span>
+
+        <span class="c1"># 6. MDA Chain</span>
         <span class="n">chain</span> <span class="o">=</span> <span class="n">MDAChain</span><span class="p">([</span><span class="n">geom_discipline</span><span class="p">,</span> <span class="n">phys_discipline</span><span class="p">])</span>
-        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">chain</span><span class="p">,</span> <span class="s1">&#39;cache&#39;</span><span class="p">):</span> <span class="n">chain</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="kc">None</span>
-        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">chain</span><span class="p">,</span> <span class="s1">&#39;cache_type&#39;</span><span class="p">):</span> <span class="n">chain</span><span class="o">.</span><span class="n">cache_type</span> <span class="o">=</span> <span class="n">chain</span><span class="o">.</span><span class="n">CacheType</span><span class="o">.</span><span class="n">NONE</span>
-        
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">chain</span><span class="p">,</span> <span class="s2">&quot;cache&quot;</span><span class="p">):</span>
+            <span class="n">chain</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="n">chain</span><span class="p">,</span> <span class="s2">&quot;cache_type&quot;</span><span class="p">):</span>
+            <span class="n">chain</span><span class="o">.</span><span class="n">cache_type</span> <span class="o">=</span> <span class="n">chain</span><span class="o">.</span><span class="n">CacheType</span><span class="o">.</span><span class="n">NONE</span>
+
+        <span class="c1"># 7. Collect additional disciplines (overhang constraint)</span>
+        <span class="n">extra_disciplines</span><span class="p">:</span> <span class="nb">list</span><span class="p">[</span><span class="n">Discipline</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="n">has_overhang</span> <span class="o">=</span> <span class="nb">any</span><span class="p">(</span><span class="n">c</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;overhang&quot;</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">constraints</span><span class="p">)</span>
+        <span class="k">if</span> <span class="n">has_overhang</span> <span class="ow">and</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;ALM&quot;</span><span class="p">,</span> <span class="s2">&quot;2D_ALM&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_layers</span><span class="p">:</span>
+            <span class="n">overhang_spec</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">constraints</span> <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;overhang&quot;</span><span class="p">)</span>
+            <span class="n">alpha_deg</span> <span class="o">=</span> <span class="n">overhang_spec</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha_deg&quot;</span><span class="p">,</span> <span class="mf">45.0</span><span class="p">)</span>
+            <span class="n">oh_disc</span> <span class="o">=</span> <span class="n">_OverhangDiscipline</span><span class="p">(</span>
+                <span class="n">num_layers</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_layers</span><span class="p">,</span>
+                <span class="n">comp_per_layer</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">comp_per_layer</span><span class="p">,</span>
+                <span class="n">layer_height</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">layer_height</span><span class="p">,</span>
+                <span class="n">alpha_deg</span><span class="o">=</span><span class="n">alpha_deg</span><span class="p">,</span>
+                <span class="n">lb</span><span class="o">=</span><span class="n">geom_discipline</span><span class="o">.</span><span class="n">lb</span><span class="p">,</span>
+                <span class="n">ub</span><span class="o">=</span><span class="n">geom_discipline</span><span class="o">.</span><span class="n">ub</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">extra_disciplines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">oh_disc</span><span class="p">)</span>
+
+        <span class="c1"># 8. Scenario</span>
+        <span class="n">all_disciplines</span> <span class="o">=</span> <span class="p">[</span><span class="n">chain</span><span class="p">]</span> <span class="o">+</span> <span class="n">extra_disciplines</span>
         <span class="n">scenario</span> <span class="o">=</span> <span class="n">create_scenario</span><span class="p">(</span>
-            <span class="p">[</span><span class="n">chain</span><span class="p">],</span> 
-            <span class="n">objective_name</span><span class="o">=</span><span class="s2">&quot;compliance&quot;</span><span class="p">,</span> 
-            <span class="n">design_space</span><span class="o">=</span><span class="n">design_space</span><span class="p">,</span> 
-            <span class="n">maximize_objective</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> 
+            <span class="n">all_disciplines</span><span class="p">,</span>
+            <span class="n">objective_name</span><span class="o">=</span><span class="s2">&quot;compliance&quot;</span><span class="p">,</span>
+            <span class="n">design_space</span><span class="o">=</span><span class="n">design_space</span><span class="p">,</span>
+            <span class="n">maximize_objective</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
             <span class="n">formulation_name</span><span class="o">=</span><span class="s2">&quot;MDF&quot;</span>
         <span class="p">)</span>
-        <span class="n">scenario</span><span class="o">.</span><span class="n">add_constraint</span><span class="p">(</span><span class="s2">&quot;volume&quot;</span><span class="p">,</span> <span class="n">constraint_type</span><span class="o">=</span><span class="s2">&quot;ineq&quot;</span><span class="p">,</span> <span class="n">positive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mf">0.0</span><span class="p">)</span>
-        
+
+        <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">constraints</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;volume&quot;</span><span class="p">:</span>
+                <span class="n">scenario</span><span class="o">.</span><span class="n">add_constraint</span><span class="p">(</span>
+                    <span class="s2">&quot;volume&quot;</span><span class="p">,</span> <span class="n">constraint_type</span><span class="o">=</span><span class="s2">&quot;ineq&quot;</span><span class="p">,</span> <span class="n">positive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mf">0.0</span>
+                <span class="p">)</span>
+            <span class="k">elif</span> <span class="n">c</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;overhang&quot;</span> <span class="ow">and</span> <span class="n">extra_disciplines</span><span class="p">:</span>
+                <span class="n">scenario</span><span class="o">.</span><span class="n">add_constraint</span><span class="p">(</span>
+                    <span class="s2">&quot;overhang&quot;</span><span class="p">,</span> <span class="n">constraint_type</span><span class="o">=</span><span class="s2">&quot;ineq&quot;</span><span class="p">,</span> <span class="n">positive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mf">0.0</span>
+                <span class="p">)</span>
+
         <span class="n">algo_options</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">options</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
         <span class="k">if</span> <span class="s2">&quot;max_iter&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">algo_options</span><span class="p">:</span>
             <span class="n">algo_options</span><span class="p">[</span><span class="s2">&quot;max_iter&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">max_iter</span>
         <span class="k">if</span> <span class="s2">&quot;algo_name&quot;</span> <span class="ow">not</span> <span class="ow">in</span> <span class="n">algo_options</span><span class="p">:</span>
             <span class="n">algo_options</span><span class="p">[</span><span class="s2">&quot;algo_name&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">algorithm</span>
-            
+
         <span class="n">scenario</span><span class="o">.</span><span class="n">execute</span><span class="p">(</span><span class="o">**</span><span class="n">algo_options</span><span class="p">)</span>
-        
-        <span class="n">opt_problem</span> <span class="o">=</span> <span class="n">scenario</span><span class="o">.</span><span class="n">optimization_result</span>
-        
+
+        <span class="n">opt_result</span> <span class="o">=</span> <span class="n">scenario</span><span class="o">.</span><span class="n">optimization_result</span>
+
+        <span class="c1"># 9. Capture final density field at the optimal point</span>
+        <span class="n">x_opt</span> <span class="o">=</span> <span class="n">opt_result</span><span class="o">.</span><span class="n">x_opt</span>
+        <span class="k">try</span><span class="p">:</span>
+            <span class="n">geom_discipline</span><span class="o">.</span><span class="n">execute</span><span class="p">({</span><span class="s2">&quot;x_vars&quot;</span><span class="p">:</span> <span class="n">x_opt</span><span class="p">})</span>
+            <span class="n">density_field</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">geom_discipline</span><span class="o">.</span><span class="n">local_data</span><span class="p">[</span><span class="s2">&quot;rho_E&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+        <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
+            <span class="n">density_field</span> <span class="o">=</span> <span class="kc">None</span>
+
+        <span class="n">n_iter</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">scenario</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">optimization_problem</span><span class="o">.</span><span class="n">database</span><span class="p">)</span>
+
         <span class="n">result</span> <span class="o">=</span> <span class="n">OptimisationResult</span><span class="p">(</span>
             <span class="n">problem_name</span><span class="o">=</span><span class="s2">&quot;optimization_run&quot;</span><span class="p">,</span>
             <span class="n">algorithm</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">algorithm</span><span class="p">,</span>
-            <span class="n">status</span><span class="o">=</span><span class="n">opt_problem</span><span class="o">.</span><span class="n">status</span><span class="p">,</span>
-            <span class="n">iterations</span><span class="o">=</span><span class="nb">len</span><span class="p">(</span><span class="n">scenario</span><span class="o">.</span><span class="n">optimization_history</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;objective&quot;</span><span class="p">,</span> <span class="p">[])),</span>
-            <span class="n">objective_value</span><span class="o">=</span><span class="n">opt_problem</span><span class="o">.</span><span class="n">f_opt</span><span class="p">,</span>
+            <span class="n">status</span><span class="o">=</span><span class="n">opt_result</span><span class="o">.</span><span class="n">status</span><span class="p">,</span>
+            <span class="n">iterations</span><span class="o">=</span><span class="n">n_iter</span><span class="p">,</span>
+            <span class="n">objective_value</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">opt_result</span><span class="o">.</span><span class="n">f_opt</span><span class="p">),</span>
             <span class="n">max_constraint_violation</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
-            <span class="n">design_variables</span><span class="o">=</span><span class="n">opt_problem</span><span class="o">.</span><span class="n">x_opt</span><span class="p">,</span>
-            <span class="n">history</span><span class="o">=</span><span class="p">{</span>
-                <span class="s2">&quot;objective&quot;</span><span class="p">:</span> <span class="n">scenario</span><span class="o">.</span><span class="n">optimization_history</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;objective&quot;</span><span class="p">,</span> <span class="p">[]),</span>
-            <span class="p">},</span>
-            <span class="n">execution_time_s</span><span class="o">=</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span>
+            <span class="n">design_variables</span><span class="o">=</span><span class="n">x_opt</span><span class="p">,</span>
+            <span class="n">history</span><span class="o">=</span><span class="p">{},</span>
+            <span class="n">execution_time_s</span><span class="o">=</span><span class="n">time</span><span class="o">.</span><span class="n">time</span><span class="p">()</span> <span class="o">-</span> <span class="n">start_time</span><span class="p">,</span>
+            <span class="n">density_field</span><span class="o">=</span><span class="n">density_field</span><span class="p">,</span>
+            <span class="n">eval_coords</span><span class="o">=</span><span class="n">geom_discipline</span><span class="o">.</span><span class="n">eval_coords</span><span class="o">.</span><span class="n">copy</span><span class="p">(),</span>
+            <span class="n">dim</span><span class="o">=</span><span class="n">domain</span><span class="o">.</span><span class="n">dim</span><span class="p">,</span>
         <span class="p">)</span>
-        
+
         <span class="k">return</span> <span class="n">result</span></div>
 </div>
 

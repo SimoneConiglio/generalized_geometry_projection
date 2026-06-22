@@ -6,11 +6,10 @@
   <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
 
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>ALM Cantilever (Continuous Overhang Constraints) &mdash; ggp 0.1.0 documentation</title>
+  <title>ALM Cantilever &mdash; ggp 0.1.0 documentation</title>
       <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
       <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
       <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
-      <link rel="stylesheet" type="text/css" href="_static/nbsphinx-code-cells.css?v=2aa19091" />
 
   
       <script src="_static/jquery.js?v=5d32c60e"></script>
@@ -20,13 +19,11 @@
       <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
       <script src="_static/clipboard.min.js?v=a7894cd8"></script>
       <script src="_static/copybutton.js?v=f281be69"></script>
-      <script crossorigin="anonymous" integrity="sha256-Ae2Vz/4ePdIu6ZyI/5ZGsYnb+m0JlOmKPjt6XZ9JJkA=" src="https://cdnjs.cloudflare.com/ajax/libs/require.js/2.3.4/require.min.js"></script>
-      <script>window.MathJax = {"tex": {"inlineMath": [["$", "$"], ["\\(", "\\)"]], "processEscapes": true}, "options": {"ignoreHtmlClass": "tex2jax_ignore|mathjax_ignore|document", "processHtmlClass": "tex2jax_process|mathjax_process|math|output_area"}}</script>
-      <script defer="defer" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
+      <script async="async" src="https://cdn.jsdelivr.net/npm/mathjax@3/es5/tex-mml-chtml.js"></script>
     <script src="_static/js/theme.js"></script>
     <link rel="index" title="Index" href="genindex.html" />
     <link rel="search" title="Search" href="search.html" />
-    <link rel="next" title="Example 5: 3D Short Cantilever" href="ex05_3d_cantilever.html" />
+    <link rel="next" title="3D Cantilever" href="ex05_3d_cantilever.html" />
     <link rel="prev" title="L-Shape Bracket" href="ex03_l_shape_bracket.html" /> 
 </head>
 
@@ -62,12 +59,14 @@
 <li class="toctree-l2"><a class="reference internal" href="ex01_short_cantilever.html">Short Cantilever</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ex02_mbb_beam.html">MBB Beam</a></li>
 <li class="toctree-l2"><a class="reference internal" href="ex03_l_shape_bracket.html">L-Shape Bracket</a></li>
-<li class="toctree-l2 current"><a class="current reference internal" href="#">ALM Cantilever (Continuous Overhang Constraints)</a><ul>
-<li class="toctree-l3"><a class="reference internal" href="#Problem-Setup">Problem Setup</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#Optimized-Result">Optimized Result</a></li>
+<li class="toctree-l2 current"><a class="current reference internal" href="#">ALM Cantilever</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#running">Running</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#result">Result</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#problem-details">Problem details</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="ex05_3d_cantilever.html">Example 5: 3D Short Cantilever</a></li>
+<li class="toctree-l2"><a class="reference internal" href="ex05_3d_cantilever.html">3D Cantilever</a></li>
+<li class="toctree-l2"><a class="reference internal" href="examples.html#regenerating-the-images">Regenerating the images</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="credits.html">Credits &amp; Dependencies</a></li>
@@ -88,9 +87,9 @@
   <ul class="wy-breadcrumbs">
       <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
           <li class="breadcrumb-item"><a href="examples.html">Examples</a></li>
-      <li class="breadcrumb-item active">ALM Cantilever (Continuous Overhang Constraints)</li>
+      <li class="breadcrumb-item active">ALM Cantilever</li>
       <li class="wy-breadcrumbs-aside">
-            <a href="_sources/ex04_alm_cantilever.ipynb.txt" rel="nofollow"> View page source</a>
+            <a href="_sources/ex04_alm_cantilever.rst.txt" rel="nofollow"> View page source</a>
       </li>
   </ul>
   <hr/>
@@ -98,216 +97,74 @@
           <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
            <div itemprop="articleBody">
              
-  <section id="ALM-Cantilever-(Continuous-Overhang-Constraints)">
-<h1>ALM Cantilever (Continuous Overhang Constraints)<a class="headerlink" href="#ALM-Cantilever-(Continuous-Overhang-Constraints)" title="Link to this heading"></a></h1>
-<p>This is an interactive Jupyter Notebook implementation of the Additive Manufacturing topology optimization using the continuous GGP mapping formulation and the Alternating Augmented Lagrangian optimization loops.</p>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+  <section id="alm-cantilever">
+<h1>ALM Cantilever<a class="headerlink" href="#alm-cantilever" title="Link to this heading"></a></h1>
+<p>A cantilever optimised under Additive Layer Manufacturing (ALM) constraints.
+Components are arranged in horizontal layers; linear overhang constraints
+enforce a 45° self-support angle between adjacent layers, restricting the
+optimiser to shapes that can be printed without support material.</p>
+<section id="running">
+<h2>Running<a class="headerlink" href="#running" title="Link to this heading"></a></h2>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>alm_cantilever
 </pre></div>
 </div>
-<div class="input_area highlight-none notranslate"><div class="highlight"><pre><span></span>import numpy as np
-import dolfin as df
-from gemseo import create_scenario
-from ggp.gemseo_wrappers.modular_disciplines import GGPVectorizedGeometryDiscipline, GGPPhysicsFastDiscipline
-from gemseo.core.discipline.discipline import Discipline
-import matplotlib.pyplot as plt
-import os
-
-class AlternatingLowerDiscipline(Discipline):
-    def __init__(self, geom_disc, dE_drho, E_e_array, volfrac, lb, ub, num_layers, comp_per_layer, layer_height, alpha_deg, C_offset):
-        super().__init__(name=&quot;AlternatingLowerDiscipline&quot;)
-        self.geom_disc = geom_disc
-        self.dE_drho = dE_drho
-        self.E_e_array = E_e_array
-        self.volfrac = volfrac
-        self.lb = lb
-        self.ub = ub
-        self.num_layers = num_layers
-        self.comp_per_layer = comp_per_layer
-        self.layer_height = layer_height
-        self.alpha_deg = alpha_deg
-        self.C_offset = C_offset
-        self.num_elements = geom_disc.num_elements
-
-        self.input_grammar.update_from_names([&quot;x_vars&quot;])
-        self.output_grammar.update_from_names([&quot;proxy_obj&quot;, &quot;vol_cons&quot;, &quot;overhang_cons&quot;])
-
-    def _run(self, input_data=None):
-        xval = input_data[&quot;x_vars&quot;].flatten()
-        self.geom_disc.execute({&quot;x_vars&quot;: xval})
-
-        rho_E = self.geom_disc.local_data[&quot;rho_E&quot;].flatten()
-        rho_V = self.geom_disc.local_data[&quot;rho_V&quot;].flatten()
-
-        proxy = self.C_offset - np.sum(rho_E * self.dE_drho * self.E_e_array)
-        proxy_log = np.log(proxy + 1.0)
-
-        v_val = np.sum(rho_V) / self.num_elements
-        vol_cons = (v_val - self.volfrac) / self.volfrac * 100.0
-
-        x_unscaled = self.lb + xval * (self.ub - self.lb)
-        alpha = np.deg2rad(self.alpha_deg)
-        np_val = self.comp_per_layer
-        nY = self.num_layers
-
-        Xk = x_unscaled[0:np_val*nY]
-        Lk = x_unscaled[np_val*nY:2*np_val*nY]
-        hk = x_unscaled[2*np_val*nY:2*np_val*nY+nY]
-
-        num_cons = (nY - 1) * np_val * 2
-        cons = np.zeros(num_cons)
-
-        row = 0
-        for layer in range(nY - 1):
-            for k in range(np_val):
-                idx = layer * np_val + k
-                idx_next = (layer + 1) * np_val + k
-                delta = hk[layer] * np.tan(alpha)
-                cons[row] = Xk[idx_next] - Xk[idx] + 0.5*(Lk[idx_next] - Lk[idx]) - delta
-                row += 1
-                cons[row] = -(Xk[idx_next] - Xk[idx]) + 0.5*(Lk[idx_next] - Lk[idx]) - delta
-                row += 1
-
-        self.local_data[&quot;proxy_obj&quot;] = np.array([proxy_log])
-        self.local_data[&quot;vol_cons&quot;] = np.array([vol_cons])
-        self.local_data[&quot;overhang_cons&quot;] = cons
-
-    def _compute_jacobian(self, input_data=None, output_data=None):
-        xval = self.local_data[&quot;x_vars&quot;].flatten()
-        jac_geom = self.geom_disc.linearize(input_data={&quot;x_vars&quot;: xval}, compute_all_jacobians=True)
-        jac_E = jac_geom[&quot;rho_E&quot;][&quot;x_vars&quot;]
-        jac_V = jac_geom[&quot;rho_V&quot;][&quot;x_vars&quot;]
-
-        rho_E = self.geom_disc.local_data[&quot;rho_E&quot;].flatten()
-        proxy = self.C_offset - np.sum(rho_E * self.dE_drho * self.E_e_array)
-        dj_drhoE = - (self.dE_drho * self.E_e_array)
-        df0dx = (dj_drhoE @ jac_E) / (proxy + 1.0)
-
-        dv_drhoV = np.ones(self.num_elements) * (100.0 / (self.volfrac * self.num_elements))
-        dv_dx = dv_drhoV @ jac_V
-
-        x_unscaled = self.lb + xval * (self.ub - self.lb)
-        alpha = np.deg2rad(self.alpha_deg)
-        np_val = self.comp_per_layer
-        nY = self.num_layers
-        num_vars = len(x_unscaled)
-        num_cons = (nY - 1) * np_val * 2
-        jac_unscaled = np.zeros((num_cons, num_vars))
-
-        row = 0
-        for layer in range(nY - 1):
-            for k in range(np_val):
-                idx = layer * np_val + k
-                idx_next = (layer + 1) * np_val + k
-
-                jac_unscaled[row, idx_next] = 1.0
-                jac_unscaled[row, idx] = -1.0
-                jac_unscaled[row, np_val*nY + idx_next] = 0.5
-                jac_unscaled[row, np_val*nY + idx] = -0.5
-                jac_unscaled[row, 2*np_val*nY + layer] = -np.tan(alpha)
-                row += 1
-
-                jac_unscaled[row, idx_next] = -1.0
-                jac_unscaled[row, idx] = 1.0
-                jac_unscaled[row, np_val*nY + idx_next] = 0.5
-                jac_unscaled[row, np_val*nY + idx] = -0.5
-                jac_unscaled[row, 2*np_val*nY + layer] = -np.tan(alpha)
-                row += 1
-
-        jac_cons = jac_unscaled * (self.ub - self.lb)
-
-        self.jac = {
-            &quot;proxy_obj&quot;: {&quot;x_vars&quot;: df0dx.reshape(1, -1)},
-            &quot;vol_cons&quot;: {&quot;x_vars&quot;: dv_dx.reshape(1, -1)},
-            &quot;overhang_cons&quot;: {&quot;x_vars&quot;: jac_cons}
-        }
-<br/></pre></div>
-</div>
-</div>
-<section id="Problem-Setup">
-<h2>Problem Setup<a class="headerlink" href="#Problem-Setup" title="Link to this heading"></a></h2>
-<p>Initialize mesh, variables and start optimization.</p>
-<div class="nbinput nblast docutils container">
-<div class="prompt highlight-none notranslate"><div class="highlight"><pre><span></span>[ ]:
+<p>To save the density image:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>alm_cantilever<span class="w"> </span>--output-dir<span class="w"> </span>docs/_static
 </pre></div>
-</div>
-<div class="input_area highlight-none notranslate"><div class="highlight"><pre><span></span>L, H = 60.0, 30.0
-nelx, nely = 60, 30
-volfrac = 0.3
-num_layers = 30
-comp_per_layer = 4
-layer_height = H / num_layers
-alpha_deg = 45.0
-
-mesh = df.RectangleMesh(df.Point(0, 0), df.Point(L, H), nelx, nely)
-V_u = df.VectorFunctionSpace(mesh, &quot;CG&quot;, 1)
-def left_boundary(x, on_boundary): return on_boundary and df.near(x[0], 0.0)
-bc = [df.DirichletBC(V_u, df.Constant((0.0, 0.0)), left_boundary)]
-boundaries = df.MeshFunction(&quot;size_t&quot;, mesh, mesh.topology().dim() - 1)
-boundaries.set_all(0)
-class BottomRight(df.SubDomain):
-    def inside(self, x, on_boundary): return df.near(x[0], L) and df.near(x[1], 0.0, 1.0)
-BottomRight().mark(boundaries, 1)
-ds_load = df.Measure(&quot;ds&quot;, domain=mesh, subdomain_data=boundaries)
-L_rhs_vec = df.Constant((0.0, -1.0))
-
-xLB = np.full(num_layers * comp_per_layer, 0.0)
-xUB = np.full(num_layers * comp_per_layer, L)
-x0 = np.linspace(0.1*L, 0.9*L, comp_per_layer)
-x0_rep = np.tile(x0, num_layers)
-
-LLB = np.full(num_layers * comp_per_layer, 0.1)
-LUB = np.full(num_layers * comp_per_layer, L)
-L0_rep = np.full(num_layers * comp_per_layer, L/comp_per_layer * 0.8)
-
-hLB = np.full(num_layers, layer_height)
-hUB = np.full(num_layers, layer_height)
-h0_rep = np.full(num_layers, layer_height)
-
-mLB = np.full(comp_per_layer, 1e-3)
-mUB = np.full(comp_per_layer, 1.0)
-m0 = np.full(comp_per_layer, volfrac)
-
-lb = np.concatenate([xLB, LLB, hLB, mLB])
-ub = np.concatenate([xUB, LUB, hUB, mUB])
-x_init = np.concatenate([x0_rep, L0_rep, h0_rep, m0])
-xval = (x_init - lb) / (ub - lb)
-
-geom_disc = GGPVectorizedGeometryDiscipline(mesh, len(lb), mode=&#39;ALM&#39;, num_layers=num_layers, comp_per_layer=comp_per_layer, layer_height=layer_height, pp=10.0, r_gp=0.5, lb=lb, ub=ub)
-phys_disc = GGPPhysicsFastDiscipline(mesh, V_u, bc, ds_load, L_rhs_vec, Emin=1e-6)
-
-print(&quot;Evaluating initial design...&quot;)
-geom_disc.execute({&quot;x_vars&quot;: xval})
-rho_E = geom_disc.local_data[&quot;rho_E&quot;].flatten()
-phys_disc.execute({&quot;rho_E&quot;: rho_E})
-U = phys_disc.local_data[&quot;U&quot;]
-
-C_offset = np.sum(rho_E * phys_disc.E_e_array) * 1.5
-
-opt_disc = AlternatingLowerDiscipline(geom_disc, phys_disc.dE_drho_array, phys_disc.E_e_array, volfrac, lb, ub, num_layers, comp_per_layer, layer_height, alpha_deg, C_offset)
-
-import gemseo
-design_space = gemseo.algos.design_space.DesignSpace()
-design_space.add_variable(&quot;x_vars&quot;, size=len(lb), lower_bound=0.0, upper_bound=1.0, value=xval)
-
-scenario = create_scenario(disciplines=[opt_disc], objective_name=&quot;proxy_obj&quot;, design_space=design_space, formulation_name=&quot;DisciplinaryOpt&quot;)
-scenario.add_constraint(&quot;vol_cons&quot;, &quot;ineq&quot;, positive=False, value=0.0)
-scenario.add_constraint(&quot;overhang_cons&quot;, &quot;ineq&quot;, positive=False, value=0.0)
-
-print(&quot;Starting optimization...&quot;)
-scenario.execute(algo_name=&quot;Augmented_Lagrangian_order_1&quot;, max_iter=2, algo_options={&quot;algo_options&quot;: {&quot;max_iter&quot;: 3, &quot;ftol_rel&quot;: 1e-4}})
-
-opt_x = scenario.optimization_result.x_opt
-geom_disc.execute({&quot;x_vars&quot;: opt_x})
-rho_opt = geom_disc.local_data[&quot;rho_E&quot;]
-print(&quot;Optimization Finished.&quot;)
-<br/></pre></div>
-</div>
 </div>
 </section>
-<section id="Optimized-Result">
-<h2>Optimized Result<a class="headerlink" href="#Optimized-Result" title="Link to this heading"></a></h2>
-<img alt="Optimized Design" src="_images/alm_cantilever_optimized.png" />
+<section id="result">
+<h2>Result<a class="headerlink" href="#result" title="Link to this heading"></a></h2>
+<figure class="align-center" id="id1">
+<a class="reference internal image-reference" href="_images/alm_cantilever_optimized.png"><img alt="Optimized ALM cantilever topology" src="_images/alm_cantilever_optimized.png" style="width: 90%;" />
+</a>
+<figcaption>
+<p><span class="caption-text">Optimized density field after 150 MMA iterations (40 % volume fraction, 45° overhang limit).</span><a class="headerlink" href="#id1" title="Link to this image"></a></p>
+</figcaption>
+</figure>
+</section>
+<section id="problem-details">
+<h2>Problem details<a class="headerlink" href="#problem-details" title="Link to this heading"></a></h2>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parameter</p></th>
+<th class="head"><p>Value</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Domain</p></td>
+<td><p>60 × 30</p></td>
+</tr>
+<tr class="row-odd"><td><p>Mesh</p></td>
+<td><p>60 × 30 quads</p></td>
+</tr>
+<tr class="row-even"><td><p>Formulation</p></td>
+<td><p>ALM 2D</p></td>
+</tr>
+<tr class="row-odd"><td><p>Layers</p></td>
+<td><p>10</p></td>
+</tr>
+<tr class="row-even"><td><p>Components / layer</p></td>
+<td><p>5</p></td>
+</tr>
+<tr class="row-odd"><td><p>Volume fraction</p></td>
+<td><p>0.40</p></td>
+</tr>
+<tr class="row-even"><td><p>Overhang angle</p></td>
+<td><p>45°</p></td>
+</tr>
+<tr class="row-odd"><td><p>Algorithm</p></td>
+<td><p>MMA</p></td>
+</tr>
+<tr class="row-even"><td><p>Max iterations</p></td>
+<td><p>150</p></td>
+</tr>
+</tbody>
+</table>
+<p>The overhang constraint is linear in the design variables and enforces:</p>
+<div class="math notranslate nohighlight">
+\[|X_{c,k+1} - X_{c,k}| + \tfrac{1}{2}(L_{k+1} - L_k) \leq h \tan(\alpha)\]</div>
+<p>for every pair of vertically adjacent components, where <span class="math notranslate nohighlight">\(\alpha = 45°\)</span>.</p>
 </section>
 </section>
 
@@ -316,7 +173,7 @@ print(&quot;Optimization Finished.&quot;)
           </div>
           <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
         <a href="ex03_l_shape_bracket.html" class="btn btn-neutral float-left" title="L-Shape Bracket" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
-        <a href="ex05_3d_cantilever.html" class="btn btn-neutral float-right" title="Example 5: 3D Short Cantilever" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+        <a href="ex05_3d_cantilever.html" class="btn btn-neutral float-right" title="3D Cantilever" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
     </div>
 
   <hr/>
