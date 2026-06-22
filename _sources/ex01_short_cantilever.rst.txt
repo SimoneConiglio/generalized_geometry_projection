@@ -27,7 +27,7 @@ Result
    :width: 80%
    :align: center
 
-   Optimized density field after 400 MMA iterations (40 % volume fraction).
+   Optimized density field after 250 MMA iterations (40 % volume fraction, C = 74.3).
 
 Problem details
 ---------------
@@ -41,17 +41,17 @@ Problem details
 +---------------------+------------------+
 | Formulation         | Free 2D          |
 +---------------------+------------------+
-| Method              | AMNA (MNA)       |
+| Method              | GP               |
 +---------------------+------------------+
 | Components          | 18               |
 +---------------------+------------------+
-| ``r_gp`` (σ)        | 1.0              |
-+---------------------+------------------+
-| Min thickness       | 3 elements       |
+| ``r_gp`` (σ)        | 0.5              |
 +---------------------+------------------+
 | Volume fraction     | 0.40             |
 +---------------------+------------------+
 | Algorithm           | MMA              |
 +---------------------+------------------+
-| Max iterations      | 400              |
+| Max iterations      | 250              |
++---------------------+------------------+
+| Compliance          | 74.3             |
 +---------------------+------------------+

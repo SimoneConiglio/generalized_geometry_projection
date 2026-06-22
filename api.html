@@ -834,12 +834,12 @@ Python API, and YAML loader all produce a <code class="docutils literal notransl
 <dl class="simple">
 <dt>mode<span class="classifier">str</span></dt><dd><p>Formulation mode (must match a previously registered mapper).</p>
 </dd>
-<dt>**kwargs</dt><dd><p>Forwarded to the mapper constructor.</p>
+<dt><a href="#id15"><span class="problematic" id="id16">**</span></a>kwargs</dt><dd><p>Forwarded to the mapper constructor.</p>
 </dd>
 </dl>
 </section>
-<section id="id15">
-<h3>Raises<a class="headerlink" href="#id15" title="Link to this heading"></a></h3>
+<section id="id17">
+<h3>Raises<a class="headerlink" href="#id17" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>ValueError</dt><dd><p>If <em>mode</em> has not been registered.</p>
 </dd>
@@ -857,8 +857,8 @@ Python API, and YAML loader all produce a <code class="docutils literal notransl
 <dt class="sig sig-object py" id="ggp.projection.registry.register_mapper">
 <span class="sig-prename descclassname"><span class="pre">ggp.projection.registry.</span></span><span class="sig-name descname"><span class="pre">register_mapper</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">mode</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/projection/registry.html#register_mapper"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.registry.register_mapper" title="Link to this definition"></a></dt>
 <dd><p>Class decorator that registers a <code class="xref py py-class docutils literal notranslate"><span class="pre">ProjectionMapper</span></code> subclass.</p>
-<section id="id16">
-<h3>Parameters<a class="headerlink" href="#id16" title="Link to this heading"></a></h3>
+<section id="id18">
+<h3>Parameters<a class="headerlink" href="#id18" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>mode<span class="classifier">str</span></dt><dd><p>Formulation mode identifier (e.g. <code class="docutils literal notranslate"><span class="pre">&quot;Free&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;ALM&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;3D_Free&quot;</span></code>).</p>
 </dd>
@@ -881,8 +881,8 @@ Python API, and YAML loader all produce a <code class="docutils literal notransl
 <dt class="sig sig-object py" id="ggp.projection.free_2d.Free2DMapper.default_bounds">
 <span class="sig-name descname"><span class="pre">default_bounds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">domain_extents</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_components</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/free_2d.html#Free2DMapper.default_bounds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.free_2d.Free2DMapper.default_bounds" title="Link to this definition"></a></dt>
 <dd><p>Return <code class="docutils literal notranslate"><span class="pre">(lb,</span> <span class="pre">ub)</span></code> arrays for the full design-variable vector.</p>
-<section id="id17">
-<h3>Parameters<a class="headerlink" href="#id17" title="Link to this heading"></a></h3>
+<section id="id19">
+<h3>Parameters<a class="headerlink" href="#id19" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>domain_extents<span class="classifier">tuple of float</span></dt><dd><p><code class="docutils literal notranslate"><span class="pre">(Lx,</span> <span class="pre">Ly)</span></code> for 2-D, <code class="docutils literal notranslate"><span class="pre">(Lx,</span> <span class="pre">Ly,</span> <span class="pre">Lz)</span></code> for 3-D.</p>
 </dd>
@@ -890,8 +890,8 @@ Python API, and YAML loader all produce a <code class="docutils literal notransl
 </dd>
 </dl>
 </section>
-<section id="id18">
-<h3>Returns<a class="headerlink" href="#id18" title="Link to this heading"></a></h3>
+<section id="id20">
+<h3>Returns<a class="headerlink" href="#id20" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>lb, ub<span class="classifier">ndarray, ndarray</span></dt><dd><p>Lower and upper bounds, each of shape <code class="docutils literal notranslate"><span class="pre">(n_vars,)</span></code>.</p>
 </dd>
@@ -903,8 +903,8 @@ Python API, and YAML loader all produce a <code class="docutils literal notransl
 <dt class="sig sig-object py" id="ggp.projection.free_2d.Free2DMapper.forward">
 <span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_vars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eval_coords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_E</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_V</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/free_2d.html#Free2DMapper.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.free_2d.Free2DMapper.forward" title="Link to this definition"></a></dt>
 <dd><p>Compute density fields.</p>
-<section id="id19">
-<h3>Parameters<a class="headerlink" href="#id19" title="Link to this heading"></a></h3>
+<section id="id21">
+<h3>Parameters<a class="headerlink" href="#id21" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>x_vars<span class="classifier">ndarray, shape (n_vars,)</span></dt><dd><p>Flat design-variable vector (already unscaled).</p>
 </dd>
@@ -916,8 +916,8 @@ Python API, and YAML loader all produce a <code class="docutils literal notransl
 </dd>
 </dl>
 </section>
-<section id="id20">
-<h3>Returns<a class="headerlink" href="#id20" title="Link to this heading"></a></h3>
+<section id="id22">
+<h3>Returns<a class="headerlink" href="#id22" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>rho_E<span class="classifier">ndarray, shape (n_elements,)</span></dt><dd><p>Stiffness density per element.</p>
 </dd>
@@ -931,8 +931,8 @@ Python API, and YAML loader all produce a <code class="docutils literal notransl
 <dt class="sig sig-object py" id="ggp.projection.free_2d.Free2DMapper.jacobian">
 <span class="sig-name descname"><span class="pre">jacobian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_vars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eval_coords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_E</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_V</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/free_2d.html#Free2DMapper.jacobian"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.free_2d.Free2DMapper.jacobian" title="Link to this definition"></a></dt>
 <dd><p>Compute analytic Jacobians.</p>
-<section id="id21">
-<h3>Returns<a class="headerlink" href="#id21" title="Link to this heading"></a></h3>
+<section id="id23">
+<h3>Returns<a class="headerlink" href="#id23" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>dict</dt><dd><p><code class="docutils literal notranslate"><span class="pre">{&quot;rho_E&quot;:</span> <span class="pre">drho_E_dx,</span> <span class="pre">&quot;rho_V&quot;:</span> <span class="pre">drho_V_dx}</span></code> where each
 value has shape <code class="docutils literal notranslate"><span class="pre">(n_elements,</span> <span class="pre">n_vars)</span></code>.</p>
@@ -977,8 +977,8 @@ per-component 3-var mode is removed.</p>
 <dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper.default_bounds">
 <span class="sig-name descname"><span class="pre">default_bounds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">domain_extents</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_components</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper.default_bounds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper.default_bounds" title="Link to this definition"></a></dt>
 <dd><p>Return <code class="docutils literal notranslate"><span class="pre">(lb,</span> <span class="pre">ub)</span></code> arrays for the full design-variable vector.</p>
-<section id="id22">
-<h3>Parameters<a class="headerlink" href="#id22" title="Link to this heading"></a></h3>
+<section id="id24">
+<h3>Parameters<a class="headerlink" href="#id24" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>domain_extents<span class="classifier">tuple of float</span></dt><dd><p><code class="docutils literal notranslate"><span class="pre">(Lx,</span> <span class="pre">Ly)</span></code> for 2-D, <code class="docutils literal notranslate"><span class="pre">(Lx,</span> <span class="pre">Ly,</span> <span class="pre">Lz)</span></code> for 3-D.</p>
 </dd>
@@ -986,8 +986,8 @@ per-component 3-var mode is removed.</p>
 </dd>
 </dl>
 </section>
-<section id="id23">
-<h3>Returns<a class="headerlink" href="#id23" title="Link to this heading"></a></h3>
+<section id="id25">
+<h3>Returns<a class="headerlink" href="#id25" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>lb, ub<span class="classifier">ndarray, ndarray</span></dt><dd><p>Lower and upper bounds, each of shape <code class="docutils literal notranslate"><span class="pre">(n_vars,)</span></code>.</p>
 </dd>
@@ -999,8 +999,8 @@ per-component 3-var mode is removed.</p>
 <dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper.forward">
 <span class="sig-name descname"><span class="pre">forward</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_vars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eval_coords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_E</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_V</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper.forward"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper.forward" title="Link to this definition"></a></dt>
 <dd><p>Compute density fields.</p>
-<section id="id24">
-<h3>Parameters<a class="headerlink" href="#id24" title="Link to this heading"></a></h3>
+<section id="id26">
+<h3>Parameters<a class="headerlink" href="#id26" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>x_vars<span class="classifier">ndarray, shape (n_vars,)</span></dt><dd><p>Flat design-variable vector (already unscaled).</p>
 </dd>
@@ -1012,8 +1012,8 @@ per-component 3-var mode is removed.</p>
 </dd>
 </dl>
 </section>
-<section id="id25">
-<h3>Returns<a class="headerlink" href="#id25" title="Link to this heading"></a></h3>
+<section id="id27">
+<h3>Returns<a class="headerlink" href="#id27" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>rho_E<span class="classifier">ndarray, shape (n_elements,)</span></dt><dd><p>Stiffness density per element.</p>
 </dd>
@@ -1027,8 +1027,8 @@ per-component 3-var mode is removed.</p>
 <dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper.jacobian">
 <span class="sig-name descname"><span class="pre">jacobian</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">x_vars</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">eval_coords</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_E</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">power_V</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1.0</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Dict</span><span class="p"><span class="pre">[</span></span><span class="pre">str</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper.jacobian"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper.jacobian" title="Link to this definition"></a></dt>
 <dd><p>Compute analytic Jacobians.</p>
-<section id="id26">
-<h3>Returns<a class="headerlink" href="#id26" title="Link to this heading"></a></h3>
+<section id="id28">
+<h3>Returns<a class="headerlink" href="#id28" title="Link to this heading"></a></h3>
 <dl class="simple">
 <dt>dict</dt><dd><p><code class="docutils literal notranslate"><span class="pre">{&quot;rho_E&quot;:</span> <span class="pre">drho_E_dx,</span> <span class="pre">&quot;rho_V&quot;:</span> <span class="pre">drho_V_dx}</span></code> where each
 value has shape <code class="docutils literal notranslate"><span class="pre">(n_elements,</span> <span class="pre">n_vars)</span></code>.</p>
