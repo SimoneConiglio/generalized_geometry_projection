@@ -220,13 +220,12 @@ def compute_local_characteristic_np(X_mesh, Y_mesh, X, Y, L, h, T, r_gp, method=
         zeta2 = x_loc - L/2.0
         zeta3 = y_loc - h/2.0
         zeta4 = -h/2.0 - y_loc
-        zeta5 = y_loc - h/2.0
-        
+
         def W_val(z):
             val = 0.5 - (15.0 / (16.0 * sigma)) * z + (5.0 / (8.0 * sigma**3)) * (z**3) - (3.0 / (16.0 * sigma**5)) * (z**5)
             return np.where(z < -sigma, 1.0, np.where(z > sigma, 0.0, val))
-            
-        return W_val(zeta1) * W_val(zeta2) * W_val(zeta3) * W_val(zeta4) * W_val(zeta5)
+
+        return W_val(zeta1) * W_val(zeta2) * W_val(zeta3) * W_val(zeta4)
     else:
         l, u = h / 2.0 - eps_mna / 2.0, h / 2.0 + eps_mna / 2.0
         d_v = -(eps_mna**3)

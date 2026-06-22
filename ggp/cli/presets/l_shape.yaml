@@ -28,6 +28,8 @@ loads:
 formulation:
   mode: Free
   num_components: 18
+  method: AMNA
+  r_gp: 1.0
 
 objective:
   name: compliance

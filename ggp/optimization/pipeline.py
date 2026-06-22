@@ -83,13 +83,16 @@ class GGPPipeline:
 
         if mode in ("Free", "2D_Free"):
             # 6 vars per component: [Xc, Yc, L, h, Theta, Mc]
+            # Matches Matlab reference initialization: spread on a grid, h=minh (norm=0),
+            # L = (domain_width / n_comp / 2) spread, Mc = initial_d = 0.5
             x = np.empty(n)
-            x[0::6] = rng.uniform(0.1, 0.9, n // 6)   # Xc: spread across domain
-            x[1::6] = rng.uniform(0.1, 0.9, n // 6)   # Yc: spread across domain
-            x[2::6] = 0.25                              # L: medium length
-            x[3::6] = 0.02                              # h: thin bars (h_unscaled ≈ 2-3)
-            x[4::6] = rng.uniform(0.4, 0.6, n // 6)   # Theta: near-zero angle
-            x[5::6] = 0.50                              # Mc: medium density
+            nc = n // 6
+            x[0::6] = rng.uniform(0.1, 0.9, nc)   # Xc: spread across domain
+            x[1::6] = rng.uniform(0.1, 0.9, nc)   # Yc: spread across domain
+            x[2::6] = 0.25                          # L: medium length
+            x[3::6] = 0.0                           # h: minimum thickness (h=minh, norm=0)
+            x[4::6] = rng.uniform(0.4, 0.6, nc)   # Theta: near-zero angle
+            x[5::6] = 0.50                          # Mc: initial_d=0.5
             return x
 
         if mode in ("ALM", "2D_ALM"):
