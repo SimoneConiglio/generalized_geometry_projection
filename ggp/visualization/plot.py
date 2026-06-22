@@ -62,44 +62,69 @@ def save_density_plot_3d(
     eval_coords: np.ndarray,
     output_path: str | Path,
     title: str = "3D Optimized Design",
+    iso_level: float = 0.3,
 ) -> None:
-    """Save a maximum-density projection (along Z) of a 3D density field.
+    """Render a 3D isosurface of the density field via marching cubes.
 
-    Projects the 3D field onto the XY-plane by taking the maximum density
-    across all Z-layers at each (x, y) position, giving a full view of the
-    structure regardless of how sparse it is.
+    Produces a perspective-correct solid-body view matching the kind of output
+    ParaView shows for topology-optimized structures (light-shaded isosurface at
+    rho = iso_level, viewed from a south-east elevated angle).
     """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
+    from mpl_toolkits.mplot3d.art3d import Poly3DCollection
+    from skimage.measure import marching_cubes
 
     X = eval_coords[:, 0]
     Y = eval_coords[:, 1]
+    Z = eval_coords[:, 2]
+
     x_unique = np.sort(np.unique(np.round(X, 6)))
     y_unique = np.sort(np.unique(np.round(Y, 6)))
-    nelx, nely = len(x_unique), len(y_unique)
+    z_unique = np.sort(np.unique(np.round(Z, 6)))
+    nelx, nely, nelz = len(x_unique), len(y_unique), len(z_unique)
+
     xi = np.searchsorted(x_unique, np.round(X, 6))
     yi = np.searchsorted(y_unique, np.round(Y, 6))
+    zi = np.searchsorted(z_unique, np.round(Z, 6))
 
-    # Maximum projection along Z
-    Z2D = np.zeros((nely, nelx))
-    np.maximum.at(Z2D, (yi, xi), rho_E)
+    # Build (nelx, nely, nelz) density volume
+    vol = np.zeros((nelx, nely, nelz))
+    vol[xi, yi, zi] = rho_E
 
-    aspect = (Y.max() - Y.min()) / max(X.max() - X.min(), 1e-9)
-    fig_w = 10
-    fig, ax = plt.subplots(figsize=(fig_w, fig_w * aspect + 0.6))
-    ax.imshow(
-        1.0 - Z2D,
-        cmap="gray",
-        origin="lower",
-        aspect="equal",
-        extent=[X.min(), X.max(), Y.min(), Y.max()],
-        vmin=0.0,
-        vmax=1.0,
-    )
-    ax.set_title(f"{title} (max-Z projection)")
+    # Pad with a one-voxel void shell so marching cubes closes the boundary
+    vol_pad = np.pad(vol, 1, mode="constant", constant_values=0.0)
+    verts, faces, _, _ = marching_cubes(vol_pad, level=iso_level)
+
+    # Convert voxel indices back to physical coordinates (undo the padding offset)
+    dx = (x_unique[-1] - x_unique[0]) / max(nelx - 1, 1)
+    dy = (y_unique[-1] - y_unique[0]) / max(nely - 1, 1)
+    dz = (z_unique[-1] - z_unique[0]) / max(nelz - 1, 1)
+    verts_phys = np.column_stack([
+        x_unique[0] + (verts[:, 0] - 1) * dx,
+        y_unique[0] + (verts[:, 1] - 1) * dy,
+        z_unique[0] + (verts[:, 2] - 1) * dz,
+    ])
+
+    mesh = Poly3DCollection(verts_phys[faces], alpha=0.95, linewidth=0)
+    mesh.set_facecolor("#4d7db5")
+    mesh.set_edgecolor("none")
+
+    fig = plt.figure(figsize=(10, 7), facecolor="white")
+    ax = fig.add_subplot(111, projection="3d")
+    ax.add_collection3d(mesh)
+
+    ax.set_xlim(X.min(), X.max())
+    ax.set_ylim(Y.min(), Y.max())
+    ax.set_zlim(Z.min(), Z.max())
     ax.set_xlabel("x")
     ax.set_ylabel("y")
+    ax.set_zlabel("z")
+    ax.set_title(title)
+    # South-east elevated view angle (matches typical ParaView preset)
+    ax.view_init(elev=25, azim=-60)
+
     plt.tight_layout()
-    plt.savefig(str(output_path), dpi=150, bbox_inches="tight")
+    plt.savefig(str(output_path), dpi=150, bbox_inches="tight", facecolor="white")
     plt.close()

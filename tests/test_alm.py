@@ -51,3 +51,32 @@ def test_alm_mapper_map_to_density():
     V = df.FunctionSpace(mesh, "DG", 0)
     rho_f = df.project(rho, V)
     assert rho_f.vector().get_local().min() >= 0.0
+
+
+def test_overhang_constraints_nonlinear_theta():
+    """create_alm_overhang_constraints with x_vars computes theta-dependent delta."""
+    import numpy as np
+    from ggp.utils.alm_utils import create_alm_overhang_constraints
+    nY, np_val = 3, 2
+    n_tot = 2 * nY * np_val + 2 * np_val + 2
+    x_vars = np.zeros(n_tot)
+    x_vars[-1] = np.deg2rad(10.0)  # theta0 = 10°
+    A_nl, b_nl = create_alm_overhang_constraints(
+        num_layers=nY, comp_per_layer=np_val, layer_height=1.0, alpha_deg=45.0, x_vars=x_vars
+    )
+    A_lin, b_lin = create_alm_overhang_constraints(
+        num_layers=nY, comp_per_layer=np_val, layer_height=1.0, alpha_deg=45.0
+    )
+    # Nonlinear deltas differ from linear when theta0 != 0
+    assert A_nl.shape == A_lin.shape
+    assert not np.allclose(b_nl, b_lin)
+
+
+def test_bridge_length_constraints():
+    """create_bridge_length_constraints produces correct shape and values."""
+    from ggp.utils.alm_utils import create_bridge_length_constraints
+    nY, np_val, BL = 4, 3, 5.0
+    A, b = create_bridge_length_constraints(num_layers=nY, comp_per_layer=np_val, bridge_length=BL)
+    # (nY-1) interfaces * np_val components * 2 edges = 18 constraints
+    assert A.shape[0] == (nY - 1) * np_val * 2
+    assert np.all(b == BL)

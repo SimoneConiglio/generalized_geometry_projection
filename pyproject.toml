@@ -23,6 +23,7 @@ classifiers = [
 dependencies = [
     "numpy",
     "scipy",
+    "scikit-image>=0.20",
     "click>=8.0",
     "pyyaml",
 ]

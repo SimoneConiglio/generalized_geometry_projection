@@ -67,7 +67,7 @@ class Free2DMapper(ProjectionMapper):
         lb[0::6] = -1.0;          ub[0::6] = Lx + 1.0
         lb[1::6] = -1.0;          ub[1::6] = Ly + 1.0
         lb[2::6] = 0.0;           ub[2::6] = diag
-        lb[3::6] = 3.0;           ub[3::6] = diag      # minh=3 elements (matches reference)
+        lb[3::6] = 1.0;           ub[3::6] = diag      # minh=1 element (matches Matlab reference)
         lb[4::6] = -2.0 * np.pi;  ub[4::6] = 2.0 * np.pi
         lb[5::6] = 0.0;           ub[5::6] = 1.0
         return lb, ub

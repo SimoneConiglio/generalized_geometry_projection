@@ -26,9 +26,10 @@ class GGPPhysicsDiscipline(Discipline):
         p_penalty: float = 3.0,
         name: str = "GGP_Physics",
         iterative: bool = False,
+        empty_elements=None,
     ):
         super().__init__(name=name)
-        
+
         self.V_u = V_u
         self.ke_ref = ke_ref
         self.fixed_dofs = fixed_dofs
@@ -39,6 +40,8 @@ class GGPPhysicsDiscipline(Discipline):
         self.Emin = Emin
         self.p_penalty = p_penalty
         self.iterative = iterative
+        # Indices of non-design (empty) elements — forced to Emin stiffness
+        self.empty_elements = np.array(empty_elements, dtype=int) if empty_elements else np.array([], dtype=int)
         
         self.num_elements = V_u.mesh().num_cells()
         self.dm = self.V_u.dofmap()
@@ -63,7 +66,12 @@ class GGPPhysicsDiscipline(Discipline):
             
         rho_E = self.local_data["rho_E"].flatten()
         rho_V = self.local_data["rho_V"].flatten()
-        
+
+        # Non-design (empty) elements: force rho_E → 0 so E = Emin (matches Matlab E(emptyelts)=Emin)
+        if len(self.empty_elements):
+            rho_E = rho_E.copy()
+            rho_E[self.empty_elements] = 0.0
+
         # Penalize Young's Modulus
         E_vals = self.Emin + (rho_E ** self.p_penalty) * (self.E0 - self.Emin)
         
@@ -114,21 +122,29 @@ class GGPPhysicsDiscipline(Discipline):
         
         # Compliance
         compliance = np.dot(self.f_vec, u_vec)
-        
-        # Volume
-        volume = np.sum(rho_V) * (self.mesh_area / self.num_elements) / self.mesh_area
-        
+
+        # Volume fraction
+        volume = np.sum(rho_V) / self.num_elements
+
+        # Log-transform objective — matches Matlab GGP_main.m: f0val = log(c+1)
         self.local_data["compliance"] = np.array([np.log(compliance + 1.0)])
+        # Normalised, ×100-scaled volume constraint — matches Matlab: fval = (v-volfrac)/volfrac * 100
         self.local_data["volume"] = np.array([(volume - self.volfrac) / self.volfrac * 100.0])
-        
+
         # Gradients
         dE_drho = self.p_penalty * (rho_E ** (self.p_penalty - 1.0)) * (self.E0 - self.Emin)
         grad_C = np.zeros(self.num_elements)
         for i in range(self.num_elements):
             u_e = u_vec[self.cell_dofs[i]]
             grad_C[i] = -dE_drho[i] * np.dot(u_e, np.dot(self.ke_ref, u_e))
-        
+
+        # Suppress gradient from non-design elements (forced rho_E=0 → gradient is fictitious)
+        if len(self.empty_elements):
+            grad_C[self.empty_elements] = 0.0
+
+        # Log-transform gradient: d(log(C+1))/drho_E = (dC/drho_E) / (C+1)
         self.dj_drhoE = grad_C / (compliance + 1.0)
+        # Volume gradient scaled by 100/volfrac to match ×100 constraint
         self.dv_drhoV = np.ones(self.num_elements) * (100.0 / (self.volfrac * self.num_elements))
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):

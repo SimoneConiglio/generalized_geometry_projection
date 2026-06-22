@@ -28,15 +28,15 @@ For large 3D problems an iterative (PCG + GAMG) FEM solver saves memory:
 Result
 ------
 
-The image below shows the mid-plane Z-slice (Z = 15) of the optimised
-3D density field.
+The image below shows an isosurface rendering of the optimised 3D density field
+(isosurface at ρ = 0.3, viewed from a south-east elevated perspective).
 
 .. figure:: _static/3d_cantilever_optimized.png
-   :alt: Optimized 3D cantilever topology (mid-plane slice)
+   :alt: Optimized 3D cantilever topology (isosurface rendering)
    :width: 90%
    :align: center
 
-   Mid-plane density slice after 150 MMA iterations (30 % volume fraction).
+   3D isosurface of the optimised density field after 150 MMA iterations (2 % volume fraction — consistent with 3D bar cross-sections).
 
 Problem details
 ---------------
@@ -46,13 +46,13 @@ Problem details
 +=====================+==================+
 | Domain              | 60 × 30 × 30     |
 +---------------------+------------------+
-| Mesh                | 30×15×15 hexs    |
+| Mesh                | 30×15×15 tets    |
 +---------------------+------------------+
 | Formulation         | Free 3D          |
 +---------------------+------------------+
 | Components          | 20               |
 +---------------------+------------------+
-| Volume fraction     | 0.30             |
+| Volume fraction     | 0.02             |
 +---------------------+------------------+
 | Algorithm           | MMA              |
 +---------------------+------------------+

@@ -134,3 +134,34 @@ def test_registry_unknown_raises():
     from ggp.projection.registry import get_mapper
     with pytest.raises(ValueError, match="No mapper registered"):
         get_mapper("__nonexistent__")
+
+
+# ── Visualization ─────────────────────────────────────────────────────────────
+
+def test_save_density_plot_2d(tmp_path):
+    """save_density_plot_2d produces a valid PNG file."""
+    import numpy as np
+    from ggp.visualization.plot import save_density_plot_2d
+    coords = np.array([[i + 0.5, j + 0.5] for i in range(4) for j in range(3)], dtype=float)
+    rho = np.random.default_rng(0).uniform(0, 1, len(coords))
+    out = tmp_path / "test2d.png"
+    save_density_plot_2d(rho, coords, out, title="Test 2D")
+    assert out.exists() and out.stat().st_size > 1000
+
+
+def test_save_density_plot_3d(tmp_path):
+    """save_density_plot_3d produces a valid PNG via marching-cubes isosurface."""
+    import numpy as np
+    from ggp.visualization.plot import save_density_plot_3d
+    coords = np.array(
+        [[i + 0.5, j + 0.5, k + 0.5] for i in range(6) for j in range(4) for k in range(4)],
+        dtype=float,
+    )
+    rho = np.zeros(len(coords))
+    # Solid core in the middle
+    for idx, (x, y, z) in enumerate(coords):
+        if 1.5 < x < 4.5 and 0.5 < y < 3.5 and 0.5 < z < 3.5:
+            rho[idx] = 0.9
+    out = tmp_path / "test3d.png"
+    save_density_plot_3d(rho, coords, out, title="Test 3D")
+    assert out.exists() and out.stat().st_size > 1000

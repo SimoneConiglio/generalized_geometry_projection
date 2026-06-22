@@ -75,24 +75,62 @@ class GGPPipeline:
     def _make_init(mode: str, num_vars: int, **kwargs) -> np.ndarray:
         """Return a normalized [0,1] initial design vector appropriate for *mode*.
 
-        The key insight is that thin initial bars (small h) let MMA explore
-        freely, while thick blobs saturate KS and freeze gradients.
+        For Free 2D, replicates the Matlab GGP_main.m initialization:
+        paired crossed bars on a regular 3x3 grid at ±atan2(Ly,Lx) angle,
+        L = 2*sqrt((Lx/3)^2+(Ly/3)^2), h=2, Mc=0.5.
         """
         n = num_vars
-        rng = np.random.default_rng(42)  # fixed seed for reproducibility
 
         if mode in ("Free", "2D_Free"):
-            # 6 vars per component: [Xc, Yc, L, h, Theta, Mc]
-            # Matches Matlab reference initialization: spread on a grid, h=minh (norm=0),
-            # L = (domain_width / n_comp / 2) spread, Mc = initial_d = 0.5
-            x = np.empty(n)
+            # Matlab-style grid initialization (GGP_main.m lines 159-168)
+            # ncx=1, ncy=1 → 3×3 grid of (ncx+2)×(ncy+2) positions
+            Lx = kwargs.get("Lx", 60.0)
+            Ly = kwargs.get("Ly", 30.0)
+            lb = kwargs.get("lb", None)
+            ub = kwargs.get("ub", None)
             nc = n // 6
-            x[0::6] = rng.uniform(0.1, 0.9, nc)   # Xc: spread across domain
-            x[1::6] = rng.uniform(0.1, 0.9, nc)   # Yc: spread across domain
-            x[2::6] = 0.25                          # L: medium length
-            x[3::6] = 0.0                           # h: minimum thickness (h=minh, norm=0)
-            x[4::6] = rng.uniform(0.4, 0.6, nc)   # Theta: near-zero angle
-            x[5::6] = 0.50                          # Mc: initial_d=0.5
+            ncx, ncy = 1, 1
+            # Standard Matlab-style grid (same for rectangular and L-shape domains).
+            # For the L-shape, only 1 of 9 positions is in the non-design region —
+            # the other 8 (including corners like (0,Ly) at ±theta) provide structural
+            # connectivity across both arms.  The empty-element override in physics
+            # handles the non-design region correctly.
+            xp = np.linspace(0.0, Lx, ncx + 2)
+            yp = np.linspace(0.0, Ly, ncy + 2)
+            xx, yy = np.meshgrid(xp, yp)
+            grid_X = xx.flatten()
+            grid_Y = yy.flatten()
+            half = nc // 2
+            theta = np.arctan2(Ly / ncy, Lx / ncx)
+            Lc = 2.0 * np.sqrt((Lx / (ncx + 2)) ** 2 + (Ly / (ncy + 2)) ** 2)
+
+            # Paired bars: first nc//2 at +theta, remaining at -theta
+            n_grid = len(grid_X)
+            idx_pos = np.arange(half) % n_grid
+            idx_neg = np.arange(nc - half) % n_grid
+            Xc = np.concatenate([grid_X[idx_pos], grid_X[idx_neg]])
+            Yc = np.concatenate([grid_Y[idx_pos], grid_Y[idx_neg]])
+            Tc = np.concatenate([theta * np.ones(half), -theta * np.ones(nc - half)])
+
+            hc = 2.0   # initial h just above minh=1
+            Mc = 0.5   # initial_d
+
+            # Normalize to [0,1] using mapper bounds
+            x = np.empty(n)
+            if lb is not None and ub is not None:
+                x[0::6] = np.clip((Xc - lb[0::6]) / (ub[0::6] - lb[0::6]), 0.0, 1.0)
+                x[1::6] = np.clip((Yc - lb[1::6]) / (ub[1::6] - lb[1::6]), 0.0, 1.0)
+                x[2::6] = np.clip((Lc - lb[2::6]) / (ub[2::6] - lb[2::6]), 0.0, 1.0)
+                x[3::6] = np.clip((hc - lb[3::6]) / (ub[3::6] - lb[3::6]), 0.0, 1.0)
+                x[4::6] = np.clip((Tc - lb[4::6]) / (ub[4::6] - lb[4::6]), 0.0, 1.0)
+            else:
+                # Fallback: rough normalized values
+                x[0::6] = Xc / (Lx + 2)
+                x[1::6] = Yc / (Ly + 2)
+                x[2::6] = Lc / np.sqrt(Lx**2 + Ly**2)
+                x[3::6] = 0.015
+                x[4::6] = 0.5
+            x[5::6] = Mc
             return x
 
         if mode in ("ALM", "2D_ALM"):
@@ -120,20 +158,57 @@ class GGPPipeline:
 
         if mode == "3D_Free":
             # 8 vars per component: [Xc, Yc, Zc, L, h, Theta, Phi, Mc]
-            x = np.empty(n)
+            # Grid init: 3D cross-bar pairs on a regular grid (analogous to 2D)
+            Lx = kwargs.get("Lx", 60.0)
+            Ly = kwargs.get("Ly", 30.0)
+            Lz = kwargs.get("Lz", 30.0)
+            lb = kwargs.get("lb", None)
+            ub = kwargs.get("ub", None)
             nc = n // 8
-            x[0::8] = rng.uniform(0.1, 0.9, nc)        # Xc
-            x[1::8] = rng.uniform(0.1, 0.9, nc)        # Yc
-            x[2::8] = rng.uniform(0.1, 0.9, nc)        # Zc
-            x[3::8] = 0.25                              # L
-            x[4::8] = 0.02                              # h (thin)
-            x[5::8] = rng.uniform(0.4, 0.6, nc)        # Theta
-            x[6::8] = rng.uniform(0.4, 0.6, nc)        # Phi
-            x[7::8] = 0.50                              # Mc
+
+            # Build 3-D grid: sample independently along each axis so the first
+            # nc//2 positions are spread across x, y, z simultaneously (diagonal sweep).
+            half = nc // 2
+            grid_X = np.linspace(0.0, Lx, half + 1)[:-1]
+            grid_Y = np.linspace(0.0, Ly, half + 1)[:-1]
+            grid_Z = np.linspace(0.0, Lz, half + 1)[:-1]
+
+            # Diagonal bar length spanning ~1/half of each axis
+            Lc = 2.0 * np.sqrt((Lx / half) ** 2 + (Ly / half) ** 2 + (Lz / half) ** 2)
+            theta = np.arctan2(Ly / half, Lx / half)
+            phi = np.arctan2(Lz / half, np.sqrt((Lx / half) ** 2 + (Ly / half) ** 2))
+
+            Xc = np.concatenate([grid_X, grid_X[: nc - half]])
+            Yc = np.concatenate([grid_Y, grid_Y[: nc - half]])
+            Zc = np.concatenate([grid_Z, grid_Z[: nc - half]])
+            Tc = np.concatenate([theta * np.ones(half), -theta * np.ones(nc - half)])
+            Pc = np.concatenate([phi * np.ones(half), -phi * np.ones(nc - half)])
+
+            hc = 2.0
+            Mc = 0.5
+
+            x = np.empty(n)
+            if lb is not None and ub is not None:
+                x[0::8] = np.clip((Xc - lb[0::8]) / (ub[0::8] - lb[0::8]), 0.0, 1.0)
+                x[1::8] = np.clip((Yc - lb[1::8]) / (ub[1::8] - lb[1::8]), 0.0, 1.0)
+                x[2::8] = np.clip((Zc - lb[2::8]) / (ub[2::8] - lb[2::8]), 0.0, 1.0)
+                x[3::8] = np.clip((Lc - lb[3::8]) / (ub[3::8] - lb[3::8]), 0.0, 1.0)
+                x[4::8] = np.clip((hc - lb[4::8]) / (ub[4::8] - lb[4::8]), 0.0, 1.0)
+                x[5::8] = np.clip((Tc - lb[5::8]) / (ub[5::8] - lb[5::8]), 0.0, 1.0)
+                x[6::8] = np.clip((Pc - lb[6::8]) / (ub[6::8] - lb[6::8]), 0.0, 1.0)
+            else:
+                x[0::8] = Xc / Lx
+                x[1::8] = Yc / Ly
+                x[2::8] = Zc / Lz
+                x[3::8] = Lc / np.sqrt(Lx**2 + Ly**2 + Lz**2)
+                x[4::8] = 0.02
+                x[5::8] = 0.5
+                x[6::8] = 0.5
+            x[7::8] = Mc
             return x
 
         # Fallback for other modes
-        return rng.uniform(0.4, 0.6, n)
+        return np.random.default_rng(42).uniform(0.4, 0.6, n)
 
     def run(self) -> OptimisationResult:
         start_time = time.time()
@@ -153,12 +228,13 @@ class GGPPipeline:
         mesh_area = Lx * Ly * (Lz if Lz is not None else 1.0)
 
         # 3. Geometry Discipline
+        # Use pp=100 to match Matlab smooth_sat.m (sharper binary saturation)
         geom_kwargs = {
             "num_layers": self.spec.formulation.num_layers,
             "comp_per_layer": self.spec.formulation.comp_per_layer,
             "layer_height": self.spec.formulation.layer_height,
             "ka": 10.0,
-            "pp": 10.0,
+            "pp": 100.0,
             "method": self.spec.formulation.method,
             "r_gp": self.spec.formulation.r_gp,
         }
@@ -176,6 +252,11 @@ class GGPPipeline:
             fixed_dofs.extend(bc.get_boundary_values().keys())
         fixed_dofs = sorted(list(set(fixed_dofs)))
 
+        # GP method: linear stiffness (p=1, no SIMP on top of KS saturation)
+        # AMNA/MNA methods: SIMP with p=3
+        method = self.spec.formulation.method or "GP"
+        p_penalty = 1.0 if method == "GP" else 3.0
+
         phys_discipline = GGPPhysicsDiscipline(
             V_u=analysis.function_spaces["u"],
             ke_ref=analysis.ke_ref,
@@ -184,9 +265,10 @@ class GGPPipeline:
             mesh_area=mesh_area,
             volfrac=self.spec.volfrac,
             iterative=self.spec.solver.iterative,
-            p_penalty=3.0,
+            p_penalty=p_penalty,
             Emin=1e-6,
-            E0=1.0
+            E0=1.0,
+            empty_elements=analysis.empty_elements if analysis.empty_elements else None,
         )
 
         # 5. Design Space
@@ -214,6 +296,27 @@ class GGPPipeline:
             _init_kwargs = {
                 "np_val": self.spec.formulation.comp_per_layer,
                 "nY":     self.spec.formulation.num_layers,
+            }
+        elif mode in ("Free", "2D_Free"):
+            # Pass domain extents and mapper bounds for Matlab-style grid init
+            _init_kwargs = {
+                "Lx": Lx,
+                "Ly": Ly,
+                "lb": geom_discipline.lb,
+                "ub": geom_discipline.ub,
+            }
+            # Pass non-design origin for L-shape aware initialization
+            for geom in self.spec.geometries:
+                if geom.role == "non_design" and geom.type == "box":
+                    _init_kwargs["non_design_origin"] = geom.params.get("origin", None)
+                    break
+        elif mode == "3D_Free":
+            _init_kwargs = {
+                "Lx": Lx,
+                "Ly": Ly,
+                "Lz": Lz if Lz is not None else 30.0,
+                "lb": geom_discipline.lb,
+                "ub": geom_discipline.ub,
             }
         x_init = self._make_init(mode, num_vars, **_init_kwargs)
         design_space.add_variable(

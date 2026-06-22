@@ -2,7 +2,8 @@
 # Half-symmetry Messerschmidt-Bölkow-Blohm beam.
 # Left edge: x-symmetry (ux=0).  Bottom-right corner: vertical roller (uy=0).
 # Top-left corner: point load downward.
-# 18 free bars, AMNA (MNA) characteristic function, 2:1 domain.
+# 18 free bars, GP characteristic function, 2:1 domain.
+# Parameters match the Matlab GGP_main.m reference implementation.
 
 geometries:
   - type: fenics_rectangle
@@ -30,9 +31,9 @@ loads:
 formulation:
   mode: Free
   num_components: 18
-  method: AMNA
-  r_gp: 1.0
-  Ngp: 1
+  method: GP
+  r_gp: 0.5
+  Ngp: 2
 
 objective:
   name: compliance
@@ -44,11 +45,18 @@ constraints:
 
 solver:
   algorithm: MMA
-  max_iter: 400
+  max_iter: 600
   options:
-    max_optimization_step: 0.1
+    max_optimization_step: 0.01
     initial_asymptotes_distance: 0.01
-    max_asymptote_distance: 0.5
+    max_asymptote_distance: 0.01
+    min_asymptote_distance: 0.0001
+    asymptotes_distance_amplification_coefficient: 1.2
     asymptotes_distance_reduction_coefficient: 0.4
+    use_penalty_formulation: false
+    ftol_rel: 1.0e-20
+    ftol_abs: 1.0e-20
+    xtol_rel: 1.0e-20
+    xtol_abs: 1.0e-20
 
 volfrac: 0.4

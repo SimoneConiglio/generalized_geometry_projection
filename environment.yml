@@ -25,3 +25,4 @@ dependencies:
   - pandoc
   - pip:
     - gemseo-mma>=4.0.0
+    - scikit-image>=0.20
