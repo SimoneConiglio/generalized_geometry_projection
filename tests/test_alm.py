@@ -20,7 +20,8 @@ def test_alm_initial_design():
 def test_overhang_constraints_shape():
     A, b = create_alm_overhang_constraints(num_layers=10, comp_per_layer=1, layer_height=1.0, alpha_deg=45.0)
     # 9 layer interfaces * 1 comp * 2 edges = 18 constraints
-    assert A.shape == (18, 30)
+    # Columns: 2*10*1 + 2*1 + 2 = 24 (new interleaved layout)
+    assert A.shape == (18, 24)
     assert len(b) == 18
 
 def test_3d_overhang_constraints():

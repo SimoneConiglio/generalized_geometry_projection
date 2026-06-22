@@ -19,17 +19,29 @@ from gemseo.core.discipline.discipline import Discipline
 
 
 class _OverhangDiscipline(Discipline):
-    """Linear overhang constraint discipline for ALM 2-D mode.
+    """Overhang + optional bridge-length constraint discipline for ALM 2-D mode.
 
-    Outputs ``overhang = A * x_unscaled - b`` (constraint <= 0).
+    Evaluates  A * x_unscaled - b <= 0  (linear, possibly including theta0 correction).
     """
 
-    def __init__(self, num_layers, comp_per_layer, layer_height, alpha_deg, lb, ub):
+    def __init__(self, num_layers, comp_per_layer, layer_height, alpha_deg, lb, ub,
+                 bridge_length=None):
         super().__init__("OverhangDiscipline")
-        from ggp.utils.alm_utils import create_alm_overhang_constraints
-        self.A, self.b_rhs = create_alm_overhang_constraints(
+        from ggp.utils.alm_utils import (create_alm_overhang_constraints,
+                                          create_bridge_length_constraints)
+        A_oh, b_oh = create_alm_overhang_constraints(
             num_layers, comp_per_layer, layer_height, alpha_deg
         )
+        if bridge_length is not None and bridge_length > 0:
+            A_bl, b_bl = create_bridge_length_constraints(
+                num_layers, comp_per_layer, bridge_length
+            )
+            self.A     = np.vstack([A_oh, A_bl])
+            self.b_rhs = np.concatenate([b_oh, b_bl])
+        else:
+            self.A     = A_oh
+            self.b_rhs = b_oh
+
         self.lb = lb
         self.ub = ub
         n = lb.shape[0]
@@ -60,7 +72,7 @@ class GGPPipeline:
         self.spec = spec
 
     @staticmethod
-    def _make_init(mode: str, num_vars: int) -> np.ndarray:
+    def _make_init(mode: str, num_vars: int, **kwargs) -> np.ndarray:
         """Return a normalized [0,1] initial design vector appropriate for *mode*.
 
         The key insight is that thin initial bars (small h) let MMA explore
@@ -81,16 +93,25 @@ class GGPPipeline:
             return x
 
         if mode in ("ALM", "2D_ALM"):
-            # 3 vars per component: [Xc, width, Mc]
-            n_comp = n // 3
+            # Interleaved layout: [Xc_0_0, L_0_0, ..., h_0..h_{np-1}, Mc_0..Mc_{np-1}, y0, theta0]
+            # n = 2*nY*np_val + 2*np_val + 2
+            # Passed via kwargs: np_val, nY
+            np_val = kwargs.get("np_val", 1)
+            nY     = kwargs.get("nY", 1)
+            n_xl   = 2 * nY * np_val
             x = np.empty(n)
-            # Xc: spread uniformly within each layer (inferred from position)
-            comp_positions = np.tile(
-                np.linspace(0.1, 0.9, max(n_comp, 1)), 1
-            )[:n_comp]
-            x[0::3] = comp_positions                    # Xc: uniform in [0.1, 0.9]
-            x[1::3] = 0.15                              # width: thin
-            x[2::3] = 0.50                              # Mc: medium density
+            # [Xc, L] interleaved: spread Xc uniformly, thin L
+            comp_positions_norm = np.tile(np.linspace(0.1, 0.9, max(np_val, 1)), nY)
+            x[0:n_xl:2] = comp_positions_norm[:nY * np_val]  # Xc normalised
+            x[1:n_xl:2] = 0.05                                # L: thin
+            # h: mid-range (0.6 normalised → actual ~0.2+0.6*0.8 in default_bounds)
+            x[n_xl       : n_xl + np_val] = 0.8
+            # Mc: medium
+            x[n_xl + np_val : n_xl + 2*np_val] = 0.50
+            # y0, theta0: neutral
+            if n >= n_xl + 2*np_val + 2:
+                x[n_xl + 2*np_val]     = 0.5  # y0 at mid-range (normalised)
+                x[n_xl + 2*np_val + 1] = 0.5  # theta0 at mid-range (0 rotation)
             return x
 
         if mode == "3D_Free":
@@ -169,11 +190,9 @@ class GGPPipeline:
         mode = self.spec.formulation.mode
 
         if mode in ["ALM", "2D_ALM"] and self.spec.formulation.num_layers:
-            num_vars = (
-                3
-                * self.spec.formulation.comp_per_layer
-                * self.spec.formulation.num_layers
-            )
+            _np_val = self.spec.formulation.comp_per_layer
+            _nY     = self.spec.formulation.num_layers
+            num_vars = 2 * _nY * _np_val + 2 * _np_val + 2  # [Xc,L]+h+Mc+[y0,theta0]
         elif mode == "3D_ALM" and self.spec.formulation.num_layers:
             num_vars = (
                 6
@@ -186,7 +205,13 @@ class GGPPipeline:
                 * self.spec.formulation.num_components
             )
 
-        x_init = self._make_init(mode, num_vars)
+        _init_kwargs = {}
+        if mode in ["ALM", "2D_ALM"] and self.spec.formulation.num_layers:
+            _init_kwargs = {
+                "np_val": self.spec.formulation.comp_per_layer,
+                "nY":     self.spec.formulation.num_layers,
+            }
+        x_init = self._make_init(mode, num_vars, **_init_kwargs)
         design_space.add_variable(
             "x_vars", size=num_vars, lower_bound=0.0, upper_bound=1.0, value=x_init
         )
@@ -204,6 +229,7 @@ class GGPPipeline:
         if has_overhang and mode in ["ALM", "2D_ALM"] and self.spec.formulation.num_layers:
             overhang_spec = next(c for c in self.spec.constraints if c.name == "overhang")
             alpha_deg = overhang_spec.params.get("alpha_deg", 45.0)
+            bridge_len = overhang_spec.params.get("bridge_length", None)
             oh_disc = _OverhangDiscipline(
                 num_layers=self.spec.formulation.num_layers,
                 comp_per_layer=self.spec.formulation.comp_per_layer,
@@ -211,6 +237,7 @@ class GGPPipeline:
                 alpha_deg=alpha_deg,
                 lb=geom_discipline.lb,
                 ub=geom_discipline.ub,
+                bridge_length=bridge_len,
             )
             extra_disciplines.append(oh_disc)
 

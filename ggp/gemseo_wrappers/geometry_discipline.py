@@ -82,26 +82,40 @@ class GGPGeometryDiscipline(Discipline):
         xt, s0 = self.sat_params
         return smooth_saturation_np(ks_val, self.ka, self.pp, xt, s0)
 
-    def _ks_saturation_grad(self, char_funcs: np.ndarray, grads: np.ndarray) -> np.ndarray:
+    def _ks_saturation_grad(
+        self,
+        char_funcs: np.ndarray,
+        grads: np.ndarray,
+        global_col: bool = False,
+    ) -> np.ndarray:
+        """Compute dSaturation/dx_vars as a sparse (n_elements, n_vars) CSR matrix.
+
+        Parameters
+        ----------
+        char_funcs : (num_comp, n_elements)
+        grads      : (num_comp, vars_per_comp, n_elements)
+        global_col : if True, use column index j directly (continuous ALM mode where
+                     grads[i, j, :] is wrt global variable j, not i*vars_per_comp+j)
+        """
         sum_exp = np.mean(np.exp(self.ka * char_funcs), axis=0)
         ks_val = (1.0 / self.ka) * np.log(sum_exp)
-        
-        # dKS / dVi
+
         dKS_dV = np.exp(self.ka * char_funcs) / (len(char_funcs) * sum_exp)
-        
+
         xt, s0 = self.sat_params
         inner_exp = np.exp((self.pp * ks_val) / xt)
-        ds_dxs = (inner_exp / (inner_exp + 1.0)**2) / (xt * (np.exp(-self.pp) + 1.0/(inner_exp + 1.0))) / (1.0 - s0)
-        
-        # grads shape: (num_comp, num_vars_per_comp, num_elements)
-        # We need total_jac of shape (num_elements, total_vars)
+        ds_dxs = (inner_exp / (inner_exp + 1.0)**2) / (
+            xt * (np.exp(-self.pp) + 1.0 / (inner_exp + 1.0))
+        ) / (1.0 - s0)
+
         import scipy.sparse as sps
-        
-        num_comp = grads.shape[0]
+
+        num_comp    = grads.shape[0]
         vars_per_comp = grads.shape[1]
-        
+        n_cols = vars_per_comp if global_col else num_comp * vars_per_comp
+
         rows, cols, data = [], [], []
-        
+
         for i in range(num_comp):
             base_factor = ds_dxs * dKS_dV[i]
             for j in range(vars_per_comp):
@@ -110,17 +124,18 @@ class GGPGeometryDiscipline(Discipline):
                 if np.any(mask):
                     nz_idx = np.where(mask)[0]
                     rows.append(nz_idx)
-                    cols.append(np.full_like(nz_idx, i * vars_per_comp + j))
+                    col_idx = j if global_col else i * vars_per_comp + j
+                    cols.append(np.full_like(nz_idx, col_idx))
                     data.append(grad_array[mask])
-                    
+
         if rows:
             total_jac = sps.coo_matrix(
-                (np.concatenate(data), (np.concatenate(rows), np.concatenate(cols))), 
-                shape=(self.num_elements, num_comp * vars_per_comp)
+                (np.concatenate(data), (np.concatenate(rows), np.concatenate(cols))),
+                shape=(self.num_elements, n_cols),
             )
         else:
-            total_jac = sps.coo_matrix((self.num_elements, num_comp * vars_per_comp))
-            
+            total_jac = sps.coo_matrix((self.num_elements, n_cols))
+
         return total_jac.tocsr()
 
     def _run(self, input_data=None):
@@ -138,8 +153,9 @@ class GGPGeometryDiscipline(Discipline):
         # Jacobian pass
         jac_dict = self.mapper.jacobian(x_unscaled, self.eval_coords, self.gammac, self.gammav)
         
-        jac_E_unscaled = self._ks_saturation_grad(jac_dict["funcs_E"], jac_dict["grads_E"])
-        jac_V_unscaled = self._ks_saturation_grad(jac_dict["funcs_V"], jac_dict["grads_V"])
+        gc = jac_dict.get("is_continuous", False)
+        jac_E_unscaled = self._ks_saturation_grad(jac_dict["funcs_E"], jac_dict["grads_E"], global_col=gc)
+        jac_V_unscaled = self._ks_saturation_grad(jac_dict["funcs_V"], jac_dict["grads_V"], global_col=gc)
         
         # Chain rule for scaling
         import scipy.sparse as sps

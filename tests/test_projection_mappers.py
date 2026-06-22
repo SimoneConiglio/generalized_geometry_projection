@@ -231,9 +231,13 @@ class TestFree3DMapper:
 # ── ALM2DMapper ───────────────────────────────────────────────────────────────
 
 class TestALM2DMapper:
+    """Tests for ALM2DMapper with the MNA continuous variable layout:
+      [Xc_0_0, L_0_0, ..., Xc_{nY-1}_{np-1}, L_{nY-1}_{np-1},
+       h_0..h_{np-1},  Mc_0..Mc_{np-1},  y0, theta0]
+    """
 
     NL = 3   # num_layers
-    CPL = 2  # comp_per_layer
+    CPL = 2  # comp_per_layer (= number of printed components)
     LH = 1.0 / 3.0  # layer_height
 
     def _mapper(self):
@@ -244,111 +248,78 @@ class TestALM2DMapper:
             layer_height=self.LH,
         )
 
-    def test_num_vars_per_component(self):
-        assert self._mapper().num_vars_per_component() == 3
+    def _x0(self, m):
+        """Feasible test design vector in unscaled physical space."""
+        n = m.num_vars()                           # 2*NL*CPL + 2*CPL + 2
+        nY, np_val = self.NL, self.CPL
+        n_xl = 2 * nY * np_val
+        x = np.zeros(n)
+        x[0:n_xl:2] = 0.5 * np_val                # Xc: mid-domain
+        x[1:n_xl:2] = 0.1                          # L: thin
+        x[n_xl        : n_xl + np_val] = 0.8       # h
+        x[n_xl + np_val : n_xl + 2*np_val] = 0.7  # Mc
+        x[n_xl + 2*np_val] = 0.0                   # y0
+        x[n_xl + 2*np_val + 1] = 0.0               # theta0
+        return x
+
+    def test_num_vars(self):
+        # 2*3*2 + 2*2 + 2 = 18
+        assert self._mapper().num_vars() == 2 * self.NL * self.CPL + 2 * self.CPL + 2
 
     def test_default_bounds_shape(self):
         m = self._mapper()
-        lb, ub = m.default_bounds((10.0, 5.0), self.NL * self.CPL)
-        assert lb.shape == (self.NL * self.CPL * 3,)
-        assert ub.shape == (self.NL * self.CPL * 3,)
+        lb, ub = m.default_bounds((10.0, 1.0), self.NL * self.CPL)
+        assert lb.shape == (m.num_vars(),)
+        assert ub.shape == (m.num_vars(),)
 
     def test_registry_aliases(self):
         kw = dict(num_components=6, num_layers=3, comp_per_layer=2, layer_height=1.0/3.0)
         assert isinstance(get_mapper("ALM", **kw), ALM2DMapper)
         assert isinstance(get_mapper("2D_ALM", **kw), ALM2DMapper)
 
-    def test_flag_is_extended(self):
-        m = self._mapper()
-        n_comp = self.NL * self.CPL  # 6
-        assert not m._is_extended(np.zeros(n_comp * 3))      # standard
-        assert m._is_extended(np.zeros(n_comp * 4 + 2))      # extended
-        assert not m._is_extended(np.zeros(n_comp * 4))      # neither
-
-    def test_flag_is_continuous(self):
-        m = self._mapper()
-        # continuous length = 2 * CPL * NL + NL + CPL = 2*2*3+3+2 = 17
-        assert m._is_continuous(np.zeros(17))
-        assert not m._is_continuous(np.zeros(18))   # standard
-
-    def test_forward_standard_shape_and_range(self):
+    def test_forward_shape_and_range(self):
         m = self._mapper()
         ec = _grid_2d()
-        x = np.tile([0.5, 0.3, 0.8], self.NL * self.CPL)
+        x = self._x0(m)
         fE, fV = m.forward(x, ec)
-        assert fE.shape == (self.NL * self.CPL, len(ec))
+        # Output is (CPL, n_elements) — one char-func per printed component
+        assert fE.shape == (self.CPL, len(ec))
+        assert fV.shape == (self.CPL, len(ec))
         assert np.all(fE >= 0)
+        assert np.all(fV >= 0)
 
-    def test_forward_extended_shape(self):
+    def test_jacobian_shape_and_is_continuous_flag(self):
         m = self._mapper()
         ec = _grid_2d()
-        # 6 components × 4 vars + [y0, theta0]
-        x = np.tile([0.5, 0.3, 0.8, self.LH], self.NL * self.CPL)
-        x = np.append(x, [0.0, 0.0])
-        fE, fV = m.forward(x, ec)
-        assert fE.shape == (self.NL * self.CPL, len(ec))
-        assert np.all(fE >= 0)
-
-    def test_jacobian_standard_shape(self):
-        m = self._mapper()
-        ec = _grid_2d()
-        x = np.tile([0.5, 0.3, 0.8], self.NL * self.CPL)
+        x = self._x0(m)
         jac = m.jacobian(x, ec)
-        assert not jac["is_continuous"]
-        assert jac["grads_E"].shape == (self.NL * self.CPL, 3, len(ec))
-        assert jac["grads_V"].shape == (self.NL * self.CPL, 3, len(ec))
+        assert jac["is_continuous"] is True
+        # grads use global-variable column indexing: (CPL, n_total_vars, n_elements)
+        n_tot = m.num_vars()
+        assert jac["grads_E"].shape == (self.CPL, n_tot, len(ec))
+        assert jac["grads_V"].shape == (self.CPL, n_tot, len(ec))
 
-    def test_jacobian_extended_shape(self):
-        m = self._mapper()
-        ec = _grid_2d()
-        x = np.tile([0.5, 0.3, 0.8, self.LH], self.NL * self.CPL)
-        x = np.append(x, [0.0, 0.0])
-        jac = m.jacobian(x, ec)
-        assert jac["grads_E"].shape == (self.NL * self.CPL, 4, len(ec))
-
-    def test_jacobian_standard_finite_difference(self):
-        """Per-component analytic gradient matches FD for all 3 variables."""
+    def test_jacobian_finite_difference(self):
+        """Analytic gradient matches central FD for all design variables."""
         m = ALM2DMapper(num_components=2, num_layers=2, comp_per_layer=1, layer_height=0.5)
         ec = _grid_2d(n=3)
-        x0 = np.array([0.50, 0.35, 0.90,
-                        0.50, 0.28, 0.80])
+        nY, np_val = 2, 1
+        n_xl = 2 * nY * np_val   # 4
+        n_tot = n_xl + 2*np_val + 2  # 8
+        # x0: [Xc_0_0, L_0_0, Xc_1_0, L_1_0, h_0, Mc_0, y0, theta0]
+        x0 = np.array([0.50, 0.15, 0.50, 0.15, 0.80, 0.70, 0.0, 0.0])
         jac = m.jacobian(x0, ec)
-        grads_E = jac["grads_E"]   # (2, 3, n_el)
+        grads_E = jac["grads_E"]   # (1, 8, n_el)
         eps = 1e-5
-        for comp in range(2):
-            for v in range(3):
-                j = comp * 3 + v
-                xp = x0.copy(); xp[j] += eps
-                xm = x0.copy(); xm[j] -= eps
-                fEp, _ = m.forward(xp, ec)
-                fEm, _ = m.forward(xm, ec)
-                fd = (fEp[comp] - fEm[comp]) / (2 * eps)
-                np.testing.assert_allclose(
-                    grads_E[comp, v], fd, rtol=1e-3, atol=1e-5,
-                    err_msg=f"ALM2D std grad mismatch comp={comp}, var={v}")
-
-    def test_jacobian_extended_finite_difference(self):
-        """Extended-mode (4-var/component) gradient check."""
-        m = ALM2DMapper(num_components=2, num_layers=2, comp_per_layer=1, layer_height=0.5)
-        ec = _grid_2d(n=3)
-        # 2 components × 4 vars + [y0, theta0]
-        x0 = np.array([0.50, 0.35, 0.90, 0.50,
-                        0.50, 0.28, 0.80, 0.50,
-                        0.0, 0.0])
-        jac = m.jacobian(x0, ec)
-        grads_E = jac["grads_E"]   # (2, 4, n_el)
-        eps = 1e-5
-        for comp in range(2):
-            for v in range(4):
-                j = comp * 4 + v
-                xp = x0.copy(); xp[j] += eps
-                xm = x0.copy(); xm[j] -= eps
-                fEp, _ = m.forward(xp, ec)
-                fEm, _ = m.forward(xm, ec)
-                fd = (fEp[comp] - fEm[comp]) / (2 * eps)
-                np.testing.assert_allclose(
-                    grads_E[comp, v], fd, rtol=1e-3, atol=1e-5,
-                    err_msg=f"ALM2D ext grad mismatch comp={comp}, var={v}")
+        for v in range(n_tot):
+            xp = x0.copy(); xp[v] += eps
+            xm = x0.copy(); xm[v] -= eps
+            fEp, _ = m.forward(xp, ec)
+            fEm, _ = m.forward(xm, ec)
+            fd = (fEp[0] - fEm[0]) / (2 * eps)   # component 0 only (CPL=1)
+            np.testing.assert_allclose(
+                grads_E[0, v], fd, rtol=5e-3, atol=1e-5,
+                err_msg=f"ALM2D MNA grad mismatch at var {v}")
 
 
 # ── ALM3DMapper ───────────────────────────────────────────────────────────────

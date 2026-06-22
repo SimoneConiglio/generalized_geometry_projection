@@ -1,91 +1,125 @@
 import numpy as np
 
-def create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg, extended=False, x_vars=None):
+
+def _xc_idx(layer, comp, comp_per_layer):
+    """Global variable index for Xc_{layer, comp} in the interleaved layout."""
+    return 2 * (layer * comp_per_layer + comp)
+
+
+def _l_idx(layer, comp, comp_per_layer):
+    """Global variable index for L_{layer, comp} in the interleaved layout."""
+    return 2 * (layer * comp_per_layer + comp) + 1
+
+
+def create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg,
+                                    extended=False, x_vars=None):
+    """Linear overhang constraints for 2-D ALM (interleaved variable layout).
+
+    Variable layout expected:
+      [Xc_0_0, L_0_0, Xc_0_1, L_0_1, ..., Xc_{nY-1}_{np-1}, L_{nY-1}_{np-1},
+       h_0..h_{np-1},  Mc_0..Mc_{np-1},  y0, theta0]
+
+    Constraint (per layer-interface per component):
+      Right overhang: Xc_{k+1,j} + L_{k+1,j}/2 - Xc_{k,j} - L_{k,j}/2 <= delta
+      Left  overhang: Xc_{k,j}   - L_{k,j}/2   - Xc_{k+1,j} + L_{k+1,j}/2 <= delta
+    where delta = layer_height * tan(alpha_deg).
+
+    If x_vars is provided the constraint is evaluated at that point (for nonlinear
+    theta0 adjustment); otherwise pure linear A, b is returned.
     """
-    Computes the linear overhang constraints for 2D ALM.
-    If extended=True and x_vars is provided, returns nonlinear constraints and jacobian considering support inclination theta0.
-    Returns:
-        If x_vars is None: A, b (linear constraints A*x - b <= 0)
-        If x_vars is provided: cons, jac (nonlinear constraints cons <= 0)
-    """
-    if extended and x_vars is not None:
-        theta0 = x_vars[-1]
-        alpha = np.deg2rad(alpha_deg)
-        
-        delta_plus = layer_height * np.tan(alpha + theta0)
-        delta_minus = layer_height * np.tan(alpha - theta0)
-        
-        dd_plus = layer_height / (np.cos(alpha + theta0)**2)
-        dd_minus = -layer_height / (np.cos(alpha - theta0)**2)
-        
-        num_comp = num_layers * comp_per_layer
-        num_vars_per_comp = 4
-        num_vars = num_comp * num_vars_per_comp + 2
-        num_interfaces = num_layers - 1
-        num_cons = num_interfaces * comp_per_layer * 2
-        
-        cons = np.zeros(num_cons)
-        jac = np.zeros((num_cons, num_vars))
-        
-        row = 0
-        for layer in range(num_interfaces):
-            for k in range(comp_per_layer):
-                idx_k = layer * comp_per_layer + k
-                idx_kp1 = (layer + 1) * comp_per_layer + k
-                
-                xc_k, l_k = x_vars[idx_k*4], x_vars[idx_k*4+1]
-                xc_kp1, l_kp1 = x_vars[idx_kp1*4], x_vars[idx_kp1*4+1]
-                
-                # Constraint 1: Xc_{i+1} - Xc_i + 0.5*(L_{i+1} - L_i) - delta_plus <= 0
-                cons[row] = (xc_kp1 - xc_k) + 0.5*(l_kp1 - l_k) - delta_plus
-                jac[row, idx_kp1*4] = 1.0
-                jac[row, idx_k*4] = -1.0
-                jac[row, idx_kp1*4+1] = 0.5
-                jac[row, idx_k*4+1] = -0.5
-                jac[row, -1] = -dd_plus
-                row += 1
-                
-                # Constraint 2: -Xc_{i+1} + Xc_i + 0.5*(L_{i+1} - L_i) - delta_minus <= 0
-                cons[row] = -(xc_kp1 - xc_k) + 0.5*(l_kp1 - l_k) - delta_minus
-                jac[row, idx_kp1*4] = -1.0
-                jac[row, idx_k*4] = 1.0
-                jac[row, idx_kp1*4+1] = 0.5
-                jac[row, idx_k*4+1] = -0.5
-                jac[row, -1] = -dd_minus
-                row += 1
-                
-        return cons, jac
-        
-    delta = layer_height * np.tan(np.deg2rad(alpha_deg))
-    num_comp = num_layers * comp_per_layer
-    num_vars_per_comp = 4 if extended else 3
-    num_vars = num_comp * num_vars_per_comp + (2 if extended else 0)
-    num_interfaces = num_layers - 1
-    num_cons = num_interfaces * comp_per_layer * 2
-    
-    A = np.zeros((num_cons, num_vars))
-    b = np.ones(num_cons) * delta
-    
+    nY = num_layers
+    np_val = comp_per_layer
+    n_xl = 2 * nY * np_val          # size of [Xc, L] block
+    n_tot = n_xl + 2 * np_val + 2   # total vars (h, Mc, y0, theta0)
+    num_interfaces = nY - 1
+    num_cons = num_interfaces * np_val * 2
+
+    if x_vars is not None and len(x_vars) >= n_tot:
+        # Nonlinear version: adjust delta for theta0
+        theta0 = float(x_vars[n_xl + 2*np_val + 1])
+        alpha  = np.deg2rad(alpha_deg)
+        delta_r = layer_height * np.tan(np.clip(alpha + theta0, -np.pi/2 + 1e-6, np.pi/2 - 1e-6))
+        delta_l = layer_height * np.tan(np.clip(alpha - theta0, -np.pi/2 + 1e-6, np.pi/2 - 1e-6))
+        dd_r_dt = layer_height / np.cos(np.clip(alpha + theta0, -np.pi/2 + 1e-6, np.pi/2 - 1e-6))**2
+        dd_l_dt = -layer_height / np.cos(np.clip(alpha - theta0, -np.pi/2 + 1e-6, np.pi/2 - 1e-6))**2
+    else:
+        delta = layer_height * np.tan(np.deg2rad(alpha_deg))
+        delta_r = delta_l = delta
+        dd_r_dt = dd_l_dt = 0.0
+
+    A = np.zeros((num_cons, n_tot))
+    b = np.zeros(num_cons)
+
     row = 0
     for layer in range(num_interfaces):
-        for k in range(comp_per_layer):
-            idx_k = layer * comp_per_layer + k
-            idx_kp1 = (layer + 1) * comp_per_layer + k
-            
-            # Constraint 1: Xc_{k+1} - Xc_k + 0.5*L_{k+1} - 0.5*L_k <= delta
-            A[row, num_vars_per_comp * idx_k] = -1.0
-            A[row, num_vars_per_comp * idx_k + 1] = -0.5
-            A[row, num_vars_per_comp * idx_kp1] = 1.0
-            A[row, num_vars_per_comp * idx_kp1 + 1] = 0.5
+        for j in range(np_val):
+            ix_k   = _xc_idx(layer,     j, np_val)
+            il_k   = _l_idx(layer,      j, np_val)
+            ix_k1  = _xc_idx(layer + 1, j, np_val)
+            il_k1  = _l_idx(layer + 1,  j, np_val)
+
+            # Constraint 1 (right overhang): Xc_{k+1} + L_{k+1}/2 - Xc_k - L_k/2 <= delta_r
+            A[row, ix_k1] =  1.0
+            A[row, il_k1] =  0.5
+            A[row, ix_k]  = -1.0
+            A[row, il_k]  = -0.5
+            if x_vars is not None:
+                A[row, n_xl + 2*np_val + 1] = -dd_r_dt
+            b[row] = delta_r
             row += 1
-            
-            # Constraint 2: -Xc_{k+1} + Xc_k + 0.5*L_{k+1} - 0.5*L_k <= delta
-            A[row, num_vars_per_comp * idx_k] = 1.0
-            A[row, num_vars_per_comp * idx_k + 1] = -0.5
-            A[row, num_vars_per_comp * idx_kp1] = -1.0
-            A[row, num_vars_per_comp * idx_kp1 + 1] = 0.5
+
+            # Constraint 2 (left overhang): Xc_k - L_k/2 - Xc_{k+1} + L_{k+1}/2 <= delta_l
+            A[row, ix_k]  =  1.0
+            A[row, il_k]  = -0.5
+            A[row, ix_k1] = -1.0
+            A[row, il_k1] =  0.5
+            if x_vars is not None:
+                A[row, n_xl + 2*np_val + 1] = -dd_l_dt
+            b[row] = delta_l
             row += 1
-            
+
+    return A, b
+
+
+def create_bridge_length_constraints(num_layers, comp_per_layer, bridge_length):
+    """Linear bridge-length constraints for 2-D ALM.
+
+    For each layer k > 0 and each component j, the horizontal extent of the
+    upper layer relative to the base-layer centre must not exceed bridge_length:
+      Xc_{k,j} + L_{k,j}/2 - Xc_{0,j}  <= BL   (right edge vs base centre)
+      Xc_{0,j} - Xc_{k,j} + L_{k,j}/2  <= BL   (base centre vs left edge)
+
+    Returns A (num_cons, n_tot), b (num_cons,) for A @ x <= b.
+    """
+    nY = num_layers
+    np_val = comp_per_layer
+    n_xl   = 2 * nY * np_val
+    n_tot  = n_xl + 2 * np_val + 2
+    BL     = bridge_length
+
+    num_cons = (nY - 1) * np_val * 2
+    A = np.zeros((num_cons, n_tot))
+    b = np.full(num_cons, BL)
+
+    row = 0
+    for layer in range(1, nY):
+        for j in range(np_val):
+            ix_base = _xc_idx(0,     j, np_val)
+            ix_k    = _xc_idx(layer, j, np_val)
+            il_k    = _l_idx(layer,  j, np_val)
+
+            # Right: Xc_k + L_k/2 - Xc_0 <= BL
+            A[row, ix_k]    =  1.0
+            A[row, il_k]    =  0.5
+            A[row, ix_base] = -1.0
+            row += 1
+
+            # Left: Xc_0 - Xc_k + L_k/2 <= BL
+            A[row, ix_base] =  1.0
+            A[row, ix_k]    = -1.0
+            A[row, il_k]    =  0.5
+            row += 1
+
     return A, b
 
 def create_alm_3d_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg, x_vars):

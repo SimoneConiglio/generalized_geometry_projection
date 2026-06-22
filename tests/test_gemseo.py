@@ -169,16 +169,20 @@ def test_3d_free_geometry_mode():
     assert geom_3d.jac["rho_E"]["x_vars"].shape == (mesh_3d.num_cells(), 16)
 
 def test_continuous_alm_geometry_mode():
+    from ggp.gemseo_wrappers.geometry_discipline import GGPGeometryDiscipline
     mesh_2d = UnitSquareMesh(4, 4)
     num_layers = 2
     comp_per_layer = 1
     num_components = num_layers * comp_per_layer
-    geom_2d = GGPVectorizedGeometryDiscipline(mesh_2d, num_components, mode='ALM', 
-                                              num_layers=num_layers, comp_per_layer=comp_per_layer)
-    # Continuous vars: [Xc, L, h, Mc] = 2*2 + 2 + 1 = 7? Wait, 2*comp_per_layer*num_layers + num_layers + comp_per_layer = 2*1*2 + 2 + 1 = 7
-    # For nY=2, np=1: Xc (2), L (2), h (2), Mc (1) -> total 7.
-    x_vars = np.array([0.5, 0.5, 0.2, 0.2, 0.5, 0.5, 1.0])
+    layer_height = 0.5
+    geom_2d = GGPGeometryDiscipline(
+        mesh_2d, num_components, mode='ALM',
+        num_layers=num_layers, comp_per_layer=comp_per_layer, layer_height=layer_height,
+    )
+    # New layout: 2*nY*np + 2*np + 2 = 2*2*1 + 2*1 + 2 = 8 vars (normalised [0,1])
+    n_vars = 2 * num_layers * comp_per_layer + 2 * comp_per_layer + 2
+    x_vars = np.full(n_vars, 0.5)
     geom_2d.execute({"x_vars": x_vars})
     assert "rho_E" in geom_2d.local_data
     geom_2d._compute_jacobian()
-    assert geom_2d.jac["rho_E"]["x_vars"].shape == (mesh_2d.num_cells(), 7)
+    assert geom_2d.jac["rho_E"]["x_vars"].shape == (mesh_2d.num_cells(), n_vars)
