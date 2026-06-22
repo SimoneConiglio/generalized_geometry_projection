@@ -27,7 +27,7 @@ Result
    :width: 90%
    :align: center
 
-   Optimized density field after 150 MMA iterations (40 % volume fraction).
+   Optimized density field after 400 MMA iterations (40 % volume fraction).
 
 Problem details
 ---------------
@@ -35,25 +35,23 @@ Problem details
 +---------------------+------------------+
 | Parameter           | Value            |
 +=====================+==================+
-| Domain              | 60 × 60          |
+| Domain              | 60 × 30          |
 +---------------------+------------------+
-| Mesh                | 60 × 60 quads    |
+| Mesh                | 60 × 30 quads    |
 +---------------------+------------------+
-| Formulation         | ALM (MNA method) |
+| Formulation         | Free 2D          |
 +---------------------+------------------+
-| Layers (nY)         | 18               |
+| Method              | AMNA (MNA)       |
 +---------------------+------------------+
-| Columns (np)        | 5                |
+| Components          | 18               |
 +---------------------+------------------+
-| Layer height        | 3.33             |
+| ``r_gp`` (σ)        | 1.0              |
 +---------------------+------------------+
-| ``r_gp`` (R)        | 0.5              |
-+---------------------+------------------+
-| Ngp                 | 1                |
+| Min thickness       | 3 elements       |
 +---------------------+------------------+
 | Volume fraction     | 0.40             |
 +---------------------+------------------+
 | Algorithm           | MMA              |
 +---------------------+------------------+
-| Max iterations      | 150              |
+| Max iterations      | 400              |
 +---------------------+------------------+

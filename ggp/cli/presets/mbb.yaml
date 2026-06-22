@@ -1,17 +1,17 @@
 # MBB Beam Benchmark
-# Half-symmetry Messerschmidt-Bölkow-Blohm beam on a square 60×60 domain.
+# Half-symmetry Messerschmidt-Bölkow-Blohm beam.
 # Left edge: x-symmetry (ux=0).  Bottom-right corner: vertical roller (uy=0).
 # Top-left corner: point load downward.
-# Variable structure: 5 bar columns x 18 layers (ALM/MNA, matching paper reference).
+# 18 free bars, AMNA (MNA) characteristic function, 2:1 domain.
 
 geometries:
   - type: fenics_rectangle
     role: design
     params:
       Lx: 60.0
-      Ly: 60.0
+      Ly: 30.0
       nx: 60
-      ny: 60
+      ny: 30
 
 boundary_conditions:
   - region: left
@@ -28,13 +28,11 @@ loads:
     value: [0.0, -1.0]
 
 formulation:
-  mode: ALM
-  num_components: 90    # np * nY = 5 * 18 (informational)
-  num_layers: 18
-  comp_per_layer: 5
-  layer_height: 3.3333  # Ly / num_layers = 60 / 18
-  r_gp: 0.5             # sampling window radius (R = sqrt(1)/2 in Matlab reference)
-  Ngp: 1                # 1 Gauss point per direction (centroid evaluation, matching reference)
+  mode: Free
+  num_components: 18
+  method: AMNA
+  r_gp: 1.0
+  Ngp: 1
 
 objective:
   name: compliance
@@ -46,11 +44,11 @@ constraints:
 
 solver:
   algorithm: MMA
-  max_iter: 150
+  max_iter: 400
   options:
-    max_optimization_step: 0.05
-    initial_asymptotes_distance: 0.05
-    max_asymptote_distance: 0.05
-    min_asymptote_distance: 0.00001
+    max_optimization_step: 0.1
+    initial_asymptotes_distance: 0.01
+    max_asymptote_distance: 0.5
+    asymptotes_distance_reduction_coefficient: 0.4
 
 volfrac: 0.4

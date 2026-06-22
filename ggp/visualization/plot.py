@@ -34,8 +34,14 @@ def save_density_plot_2d(
     aspect = (Y.max() - Y.min()) / max(X.max() - X.min(), 1e-9)
     fig_w = 10
     fig, ax = plt.subplots(figsize=(fig_w, fig_w * aspect + 0.6))
+    # Sharpen the density field: sigmoid with beta=10 centred at 0.5
+    # This maps the smooth MNA transition band to a near-binary 0/1 image
+    # while preserving the correct material distribution topology.
+    beta = 10.0
+    Z_sharp = 1.0 / (1.0 + np.exp(-beta * (Z - 0.5)))
+
     ax.imshow(
-        1.0 - Z,
+        1.0 - Z_sharp,
         cmap="gray",
         origin="lower",
         aspect="equal",

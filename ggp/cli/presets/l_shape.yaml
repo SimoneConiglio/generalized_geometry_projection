@@ -1,7 +1,7 @@
 # L-Shape Bracket Benchmark
 # Square domain with top edge fixed and a point load on the mid-right edge.
 # Upper-right quadrant is voided (non-design / empty elements).
-# Variable structure: 5 bar columns x 18 layers (ALM/MNA method, matching paper reference).
+# 18 free bars, AMNA (MNA) characteristic function.
 
 geometries:
   - type: fenics_rectangle
@@ -27,13 +27,11 @@ loads:
     value: [0.0, -1.0]
 
 formulation:
-  mode: ALM
-  num_components: 90    # np * nY = 5 * 18 (informational)
-  num_layers: 18
-  comp_per_layer: 5
-  layer_height: 3.3333  # Ly / num_layers = 60 / 18
-  r_gp: 0.5             # sampling window radius (R = sqrt(1)/2 in Matlab reference)
-  Ngp: 1                # 1 Gauss point per direction (centroid evaluation, matching reference)
+  mode: Free
+  num_components: 18
+  method: AMNA
+  r_gp: 1.0
+  Ngp: 1
 
 objective:
   name: compliance
@@ -45,11 +43,11 @@ constraints:
 
 solver:
   algorithm: MMA
-  max_iter: 150
+  max_iter: 400
   options:
-    max_optimization_step: 0.05
-    initial_asymptotes_distance: 0.05
-    max_asymptote_distance: 0.05
-    min_asymptote_distance: 0.00001
+    max_optimization_step: 0.1
+    initial_asymptotes_distance: 0.01
+    max_asymptote_distance: 0.5
+    asymptotes_distance_reduction_coefficient: 0.4
 
 volfrac: 0.4
