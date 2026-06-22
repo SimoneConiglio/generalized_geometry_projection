@@ -771,6 +771,8 @@ window.runMermaid = runMermaid;</script>
         <span class="k">try</span><span class="p">:</span>
             <span class="n">geom_discipline</span><span class="o">.</span><span class="n">execute</span><span class="p">({</span><span class="s2">&quot;x_vars&quot;</span><span class="p">:</span> <span class="n">x_opt</span><span class="p">})</span>
             <span class="n">density_field</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">geom_discipline</span><span class="o">.</span><span class="n">local_data</span><span class="p">[</span><span class="s2">&quot;rho_E&quot;</span><span class="p">])</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+            <span class="k">if</span> <span class="n">analysis</span><span class="o">.</span><span class="n">empty_elements</span><span class="p">:</span>
+                <span class="n">density_field</span><span class="p">[</span><span class="n">analysis</span><span class="o">.</span><span class="n">empty_elements</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
         <span class="k">except</span> <span class="ne">Exception</span><span class="p">:</span>
             <span class="n">density_field</span> <span class="o">=</span> <span class="kc">None</span>
 
