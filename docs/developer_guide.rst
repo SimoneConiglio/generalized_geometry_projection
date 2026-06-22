@@ -11,48 +11,67 @@ The **Generalized Geometry Projection (GGP)** method parametrizes a design domai
 1. Primitive Mapping
 ^^^^^^^^^^^^^^^^^^^^
 
-Each component :math:`i` is defined by a set of continuous variables :math:`x_i = [X_c, Y_c, L, H, \theta]`, representing its center coordinates, length, thickness, and orientation angle. 
+Each component :math:`i` is defined by a set of continuous variables
+:math:`x_i = [X_c, Y_c, L, H, \theta, M_c]`, representing its center
+coordinates, length, thickness, orientation angle, and membership density.
 
-To determine the density contribution of a primitive at any spatial point :math:`(x, y)`, the method computes the projection in four steps:
+To determine the density contribution of a primitive at any spatial point
+:math:`(x, y)`, the evaluation proceeds in two steps.
 
 **Step 1: Local Coordinates**
-The coordinates are translated and rotated to the component's local reference frame:
+The global coordinates are translated and rotated to the component's local
+reference frame:
 
 .. math::
     \Delta x = x - X_c, \quad \Delta y = y - Y_c
+
 .. math::
-    x_{loc} = \Delta x \cos\theta + \Delta y \sin\theta
-.. math::
+    x_{loc} = \Delta x \cos\theta + \Delta y \sin\theta, \quad
     y_{loc} = -\Delta x \sin\theta + \Delta y \cos\theta
 
-**Step 2: Skeleton Distance**
-The distance :math:`\psi_i(x,y)` from the point to the component's central skeleton (a line segment of length :math:`L`) is calculated:
+**Step 2: Characteristic Function (AMNA — default)**
+
+The default method is **AMNA** (Anisotropic Moving Node Approach, called *MNA*
+in the original Matlab reference).  It models each component as an axis-aligned
+rectangle in local coordinates, using four independent quintic window
+evaluations — one per edge:
 
 .. math::
-    d_x = \max(0, |x_{loc}| - L/2)
-.. math::
-    \psi_i(x, y) = \sqrt{d_x^2 + y_{loc}^2}
+    \zeta_1 = -\tfrac{L}{2} - x_{loc}, \quad
+    \zeta_2 = x_{loc} - \tfrac{L}{2}, \quad
+    \zeta_3 = y_{loc} - \tfrac{H}{2}, \quad
+    \zeta_4 = -\tfrac{H}{2} - y_{loc}
 
-**Step 3: Signed Distance**
-The signed distance variable :math:`\zeta` evaluates whether the point is inside or outside the component's boundary (thickness :math:`H`):
-
-.. math::
-    \zeta = \psi_i(x, y) - H/2
-
-(:math:`\zeta < 0` inside, :math:`\zeta > 0` outside).
-
-**Step 4: Regularized Mapping**
-To ensure strict differentiability for gradient-based optimization, the local density :math:`\rho_i(x,y)` is mapped from :math:`\zeta` using a smoothed area-fraction function over a narrow transition band :math:`r_{gp}`:
+Each :math:`\zeta_k` measures the signed distance from the corresponding
+edge (:math:`\zeta_k < 0` means *inside* that half-space).  The quintic window
+function with bandwidth :math:`\sigma` (parameter ``r_gp``) is:
 
 .. math::
-    \rho_i(x, y) = 
-    \begin{cases} 
-    1 & \text{if } \zeta < -r_{gp} \\
-    \delta_{min} + (1 - \delta_{min}) \frac{1}{\pi} \left( \arccos(z) - z \sqrt{1 - z^2} \right) & \text{if } -r_{gp} \le \zeta \le r_{gp} \\
-    \delta_{min} & \text{if } \zeta > r_{gp} 
+    W(\zeta) =
+    \begin{cases}
+        1 & \zeta < -\sigma \\[4pt]
+        \tfrac{1}{2} - \tfrac{15}{16\sigma}\zeta
+            + \tfrac{5}{8\sigma^3}\zeta^3
+            - \tfrac{3}{16\sigma^5}\zeta^5 & |\zeta| \le \sigma \\[4pt]
+        0 & \zeta > \sigma
     \end{cases}
 
-where :math:`z = \zeta / r_{gp}` is the normalized distance inside the transition band, and :math:`\delta_{min}` is a tiny void density (e.g., :math:`10^{-6}`) to prevent global stiffness matrix singularities.
+The component characteristic value is the product of all four window
+evaluations, integrated over a small Gauss-point sampling window of radius
+:math:`r_{gp}` centred on each element:
+
+.. math::
+    \chi_i(x, y) = W(\zeta_1)\,W(\zeta_2)\,W(\zeta_3)\,W(\zeta_4)
+
+**Default settings (matching the original reference):**
+``method='AMNA'``, ``r_gp=1.0`` (one-element transition band), ``minh=3``
+(minimum bar thickness of 3 elements).
+
+**Legacy method (GP — circular capsule)**
+
+The original GP formulation uses a single distance-based transition.  It is
+still available via ``method='GP'`` in the YAML formulation block, but
+produces less crisp bar boundaries and is not recommended for new runs.
 
 2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
