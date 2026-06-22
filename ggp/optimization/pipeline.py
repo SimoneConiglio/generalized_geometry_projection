@@ -249,6 +249,8 @@ class GGPPipeline:
         try:
             geom_discipline.execute({"x_vars": x_opt})
             density_field = np.asarray(geom_discipline.local_data["rho_E"]).flatten().copy()
+            if analysis.empty_elements:
+                density_field[analysis.empty_elements] = 0.0
         except Exception:
             density_field = None
 

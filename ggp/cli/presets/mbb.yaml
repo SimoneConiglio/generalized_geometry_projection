@@ -44,7 +44,7 @@ solver:
   options:
     max_optimization_step: 0.05
     initial_asymptotes_distance: 0.05
-    max_asymptote_distance: 0.5
-    min_asymptote_distance: 0.001
+    max_asymptote_distance: 0.05
+    min_asymptote_distance: 0.00001
 
 volfrac: 0.4
