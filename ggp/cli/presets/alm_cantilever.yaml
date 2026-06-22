@@ -45,9 +45,9 @@ solver:
   algorithm: MMA
   max_iter: 150
   options:
-    max_optimization_step: 0.05
-    initial_asymptotes_distance: 0.05
-    max_asymptote_distance: 0.05
-    min_asymptote_distance: 0.00001
+    max_optimization_step: 0.01
+    initial_asymptotes_distance: 0.01
+    max_asymptote_distance: 0.01
+    min_asymptote_distance: 0.000001
 
 volfrac: 0.4

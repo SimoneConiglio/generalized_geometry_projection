@@ -44,4 +44,4 @@ solver:
     max_asymptote_distance: 0.05
     min_asymptote_distance: 0.00001
 
-volfrac: 0.3
+volfrac: 0.02
