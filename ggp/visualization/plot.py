@@ -57,28 +57,27 @@ def save_density_plot_3d(
     output_path: str | Path,
     title: str = "3D Optimized Design",
 ) -> None:
-    """Save a mid-plane Z-slice of a 3D density field as a grayscale image."""
+    """Save a maximum-density projection (along Z) of a 3D density field.
+
+    Projects the 3D field onto the XY-plane by taking the maximum density
+    across all Z-layers at each (x, y) position, giving a full view of the
+    structure regardless of how sparse it is.
+    """
     import matplotlib
     matplotlib.use("Agg")
     import matplotlib.pyplot as plt
 
-    Z_coords = eval_coords[:, 2]
-    z_unique = np.sort(np.unique(np.round(Z_coords, 6)))
-    z_mid = z_unique[len(z_unique) // 2]
-    mask = np.abs(np.round(Z_coords, 6) - z_mid) < 1e-6
-
-    coords_slice = eval_coords[mask, :2]
-    rho_slice = rho_E[mask]
-
-    X = coords_slice[:, 0]
-    Y = coords_slice[:, 1]
+    X = eval_coords[:, 0]
+    Y = eval_coords[:, 1]
     x_unique = np.sort(np.unique(np.round(X, 6)))
     y_unique = np.sort(np.unique(np.round(Y, 6)))
     nelx, nely = len(x_unique), len(y_unique)
     xi = np.searchsorted(x_unique, np.round(X, 6))
     yi = np.searchsorted(y_unique, np.round(Y, 6))
+
+    # Maximum projection along Z
     Z2D = np.zeros((nely, nelx))
-    Z2D[yi, xi] = rho_slice
+    np.maximum.at(Z2D, (yi, xi), rho_E)
 
     aspect = (Y.max() - Y.min()) / max(X.max() - X.min(), 1e-9)
     fig_w = 10
@@ -92,7 +91,7 @@ def save_density_plot_3d(
         vmin=0.0,
         vmax=1.0,
     )
-    ax.set_title(f"{title} (Z = {z_mid:.1f} slice)")
+    ax.set_title(f"{title} (max-Z projection)")
     ax.set_xlabel("x")
     ax.set_ylabel("y")
     plt.tight_layout()
