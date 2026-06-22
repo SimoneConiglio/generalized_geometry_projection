@@ -2,9 +2,9 @@ ALM Cantilever
 ==============
 
 A cantilever optimised under Additive Layer Manufacturing (ALM) constraints.
-Components are arranged in horizontal layers; linear overhang constraints
-enforce a 45° self-support angle between adjacent layers, restricting the
-optimiser to shapes that can be printed without support material.
+The MNA continuous formulation arranges design variables in :math:`N_y = 10`
+horizontal layers, each with :math:`N_p = 5` printed columns.  Linear
+overhang constraints enforce a 45° self-support angle between adjacent layers.
 
 Running
 -------
@@ -32,32 +32,65 @@ Result
 Problem details
 ---------------
 
-+---------------------+------------------+
-| Parameter           | Value            |
-+=====================+==================+
-| Domain              | 60 × 30          |
-+---------------------+------------------+
-| Mesh                | 60 × 30 quads    |
-+---------------------+------------------+
-| Formulation         | ALM 2D           |
-+---------------------+------------------+
-| Layers              | 10               |
-+---------------------+------------------+
-| Components / layer  | 5                |
-+---------------------+------------------+
-| Volume fraction     | 0.40             |
-+---------------------+------------------+
-| Overhang angle      | 45°              |
-+---------------------+------------------+
-| Algorithm           | MMA              |
-+---------------------+------------------+
-| Max iterations      | 150              |
-+---------------------+------------------+
+.. list-table::
+   :header-rows: 1
+   :widths: 30 70
 
-The overhang constraint is linear in the design variables and enforces:
+   * - Parameter
+     - Value
+   * - Domain
+     - 60 × 30
+   * - Mesh
+     - 60 × 30 quads
+   * - Formulation
+     - ALM 2D (MNA continuous)
+   * - Layers :math:`N_y`
+     - 10
+   * - Columns :math:`N_p`
+     - 5
+   * - Design variables
+     - :math:`2 \times 10 \times 5 + 2 \times 5 + 2 = 112`
+   * - Volume fraction
+     - 0.40
+   * - Overhang angle
+     - 45°
+   * - Algorithm
+     - MMA
+   * - Max iterations
+     - 150
+
+Variable Structure
+------------------
+
+Each design variable vector has the layout:
 
 .. math::
 
-   |X_{c,k+1} - X_{c,k}| + \tfrac{1}{2}(L_{k+1} - L_k) \leq h \tan(\alpha)
+   \mathbf{x} = [\underbrace{X_{c,0,0},\,L_{0,0},\;\ldots\;,X_{c,9,4},\,L_{9,4}}_{2 N_y N_p},\;
+                 \underbrace{h_0,\ldots,h_4}_{N_p},\;
+                 \underbrace{M_{c,0},\ldots,M_{c,4}}_{N_p},\;
+                 y_0,\;\theta_0]
 
-for every pair of vertically adjacent components, where :math:`\alpha = 45°`.
+- :math:`h_j` — normalised total print height of column :math:`j`
+- :math:`M_{c,j}` — membership density for the full column
+- :math:`y_0`, :math:`\theta_0` — global printing-plane offset and rotation (both 0 here)
+
+Overhang constraint (per layer interface, per column):
+
+.. math::
+
+   X_{c,k+1,j} + \tfrac{L_{k+1,j}}{2} - X_{c,k,j} - \tfrac{L_{k,j}}{2} &\le \Delta h \tan(45°)
+
+   X_{c,k,j} - \tfrac{L_{k,j}}{2} - X_{c,k+1,j} + \tfrac{L_{k+1,j}}{2} &\le \Delta h \tan(45°)
+
+To add a bridge-length constraint (limiting lateral drift from the base layer):
+
+.. code-block:: yaml
+
+   constraints:
+     - name: overhang
+       type: ineq
+       bound: 0.0
+       params:
+         alpha_deg: 45.0
+         bridge_length: 12.5

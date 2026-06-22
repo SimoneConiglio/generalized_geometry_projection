@@ -1,91 +1,172 @@
 Additive Manufacturing Constraints
 ==================================
 
-The ``ggp`` framework extends the standard Generalized Geometry Projection (GGP) method to support **Additive Layer Manufacturing (ALM)** constraints. This ensures that the generated topology is printable without internal support structures.
+The ``ggp`` framework supports **Additive Layer Manufacturing (ALM)** constraints
+through the MNA (Moving Node Approach) continuous formulation.  This ensures that
+the generated topology is self-supporting, i.e. printable without internal
+support structures.
 
-This implementation follows the AMNA (Adapted Moving Node Approach) formulation from:
+The implementation is based on:
 
     Bhat, K.V., Capasso, G., Coniglio, S., Morlier, J., Gogu, C.
     *On some applications of Generalized Geometric Projection to optimal 3D printing*.
     Computers & Graphics (2021).
 
-Layer-by-Layer Parameterization
--------------------------------
+Variable Layout
+---------------
 
-In standard GGP, components can change their orientation (:math:`\theta`) and vertical position (:math:`y_c`) freely. In the ALM formulation (provided by ``GGP2DALMMapper``), components are restricted to horizontal tracks of a fixed height (matching the layer height).
+Each run of ``ALM2DMapper`` creates a single flat vector of design variables:
 
-Each component :math:`j` in layer :math:`i` is defined by only three variables:
-:math:`x_{i,j} = [X_{c,i,j}, w_{i,j}, M_{i,j}]`
+.. code-block:: text
+
+    [Xc_0_0, L_0_0,  Xc_0_1, L_0_1,  …,  Xc_{nY-1}_{np-1}, L_{nY-1}_{np-1},
+     h_0, h_1, …, h_{np-1},
+     Mc_0, Mc_1, …, Mc_{np-1},
+     y0, theta0]
 
 where:
 
-- :math:`X_{c}` is the horizontal center.
-- :math:`w` is the track width (length of the segment).
-- :math:`M` is the track mass variable.
+- :math:`N_y` = number of layers, :math:`N_p` = components per layer (printed columns)
+- :math:`X_{c,k,j}`, :math:`L_{k,j}` — x-centre and width of component :math:`j` in layer :math:`k` (interleaved pairs, F-major ordering so that :math:`j` is the "column" index)
+- :math:`h_j \in [0.2,\,1]` — normalised total print height of column :math:`j`; the physical height cutoff is :math:`L_y \cdot h_j`
+- :math:`M_{c,j} \in [0,\,1]` — membership density for the whole printed component :math:`j` (shared across all layers)
+- :math:`y_0` — y-translation of the printing plane (shifts the build origin)
+- :math:`\theta_0` — rotation of the printing plane (tilts the build direction)
 
-AMNA Box Formulation (Paper Eq. 40-41)
----------------------------------------
+Total variables: :math:`2 N_y N_p + 2 N_p + 2`.
 
-The characteristic function for each layer segment uses a **product of five regularized Heaviside functions**, one for each boundary of the rectangular layer primitive:
-
-.. math::
-    \rho^{el}_i = \prod_{k=1}^{5} W(\zeta_k)
-
-where the :math:`\zeta` variables represent signed distances from a Gauss point to each boundary edge:
-
-.. math::
-    \zeta_1 = -L/2 - x_{loc}, \quad
-    \zeta_2 = x_{loc} - L/2, \quad
-    \zeta_3 = y_{loc} - h/2, \quad
-    \zeta_4 = -h/2 - y_{loc}, \quad
-    \zeta_5 = y_{loc} - h/2
-
-and the smoothed Heaviside function :math:`W(\zeta)` is the 5th-order polynomial:
-
-.. math::
-    W(\zeta) = \frac{1}{2} - \frac{15}{16\sigma}\zeta + \frac{5}{8\sigma^3}\zeta^3 - \frac{3}{16\sigma^5}\zeta^5
-
-This produces a **flat box/block** density field for each layer, rather than the rounded bar shape used in the Free GGP formulation (GP method). The transition width :math:`\sigma` controls the sharpness of the boundary.
-
-Overhang Angle Constraints
---------------------------
-
-To be printable without supports, each layer must be sufficiently supported by the layer beneath it. For a layer height :math:`\Delta h` and a maximum allowable overhang angle :math:`\alpha` (typically 45°), the following linear constraints are enforced between layer :math:`i` and layer :math:`i+1` (Paper Eq. 42-45):
-
-.. math::
-    (x_{c, i+1} + \frac{w_{i+1}}{2}) - (x_{c, i} + \frac{w_i}{2}) \le \Delta h \cdot \tan(\alpha)
-
-    (x_{c, i} - \frac{w_i}{2}) - (x_{c, i+1} - \frac{w_{i+1}}{2}) \le \Delta h \cdot \tan(\alpha)
-
-Implementation in GEMSEO
+Printing Plane Transform
 ------------------------
 
-These constraints are linear with respect to the design variables. In the provided examples, they are wrapped in an ``ALMConstraintsDiscipline`` and passed to the GEMSEO optimizer (MMA), which handles them alongside the volume and compliance objectives.
+When :math:`y_0 \neq 0` or :math:`\theta_0 \neq 0`, the evaluation coordinates
+:math:`(x, y)` are mapped to print-space before the characteristic function is
+evaluated:
 
-See the :ref:`alm_example` for a complete implementation.
+.. math::
 
-Current Limitations
--------------------
+    x_p = x \cos\theta_0 - y \sin\theta_0
 
-Compared to the full paper formulation, the following features are **not yet implemented**:
+    y_p = y_0 + x \sin\theta_0 + y \cos\theta_0
+
+This allows non-horizontal build directions, e.g. inclined printing at angle
+:math:`\theta_0`.
+
+MNA Characteristic Function
+----------------------------
+
+For each evaluation point :math:`(x_p, y_p)` and each printed component
+:math:`j`, the framework:
+
+1. Finds the layer index :math:`k_e = \lfloor y_p / \Delta h \rfloor` (clamped to
+   :math:`[0, N_y - 2]`).
+2. Computes linearly interpolated left/right boundaries between layer :math:`k_e`
+   and :math:`k_e + 1`:
+
+   .. math::
+
+       l_y = (X_{k_e} - L_{k_e}/2) + \alpha \bigl[(X_{k_e+1} - L_{k_e+1}/2) - (X_{k_e} - L_{k_e}/2)\bigr]
+
+       u_y = (X_{k_e} + L_{k_e}/2) + \alpha \bigl[(X_{k_e+1} + L_{k_e+1}/2) - (X_{k_e} + L_{k_e}/2)\bigr]
+
+   where :math:`\alpha = (y_p - Y_{k_e}) / (Y_{k_e+1} - Y_{k_e})` is the local
+   interpolation factor.
+
+3. Evaluates three signed-distance tests:
+
+   .. math::
+
+       \zeta_1 = -x_p + l_y, \quad \zeta_2 = x_p - u_y, \quad \zeta_3 = y_p - L_y h_j
+
+4. Computes the characteristic function via the quintic MNA window:
+
+   .. math::
+
+       W(\zeta) = \frac{1}{2} - \frac{15}{16\sigma}\zeta + \frac{5}{8\sigma^3}\zeta^3 - \frac{3}{16\sigma^5}\zeta^5
+       \quad \text{for } |\zeta| \le \sigma
+
+   .. math::
+
+       W_j = W(\zeta_1) \cdot W(\zeta_2) \cdot W(\zeta_3)
+
+   The height test :math:`\zeta_3` cuts off the component above its total
+   print height :math:`L_y h_j`.
+
+5. Returns the density contribution: :math:`\rho_j^{el} = M_{c,j}^p \cdot W_j`.
+
+Overhang Angle Constraints
+---------------------------
+
+Linear constraints enforce that each layer is supported by the one below.
+For layer interface :math:`k \to k+1` and component :math:`j`:
+
+.. math::
+
+    (X_{c,k+1,j} + L_{k+1,j}/2) - (X_{c,k,j} + L_{k,j}/2) &\le \Delta h \tan\alpha
+
+    (X_{c,k,j} - L_{k,j}/2) - (X_{c,k+1,j} - L_{k+1,j}/2) &\le \Delta h \tan\alpha
+
+where :math:`\alpha` is the maximum allowable overhang angle (default 45°).
+When :math:`\theta_0 \neq 0`, :math:`\alpha` is corrected to
+:math:`\alpha \pm \theta_0` for the two constraint directions.
+
+These are activated by adding an ``overhang`` constraint entry to the preset YAML:
+
+.. code-block:: yaml
+
+    constraints:
+      - name: overhang
+        type: ineq
+        bound: 0.0
+        params:
+          alpha_deg: 45.0
+
+Bridge Length Constraints
+--------------------------
+
+To limit the lateral drift of a component across layers relative to its base,
+bridge-length constraints bound the horizontal extent of each upper layer
+relative to the base-layer (layer 0) x-centre:
+
+.. math::
+
+    X_{c,k,j} + L_{k,j}/2 - X_{c,0,j} &\le BL
+
+    X_{c,0,j} - X_{c,k,j} + L_{k,j}/2 &\le BL
+
+Enable by adding ``bridge_length`` to the overhang constraint params:
+
+.. code-block:: yaml
+
+    constraints:
+      - name: overhang
+        type: ineq
+        bound: 0.0
+        params:
+          alpha_deg: 45.0
+          bridge_length: 12.5   # in the same units as Lx
+
+Feature Summary
+---------------
 
 .. list-table::
    :header-rows: 1
-   :widths: 30 70
+   :widths: 45 55
 
-   * - Paper Feature
+   * - Feature
      - Status
-   * - AMNA box formulation (Eq. 40-41)
+   * - MNA continuous mapping
      - ✅ Implemented
-   * - Overhang angle constraints (Eq. 42-45)
+   * - Per-column print height :math:`h_j`
      - ✅ Implemented
-   * - Bridge length constraints (Eq. 46)
-     - ✅ Implemented (3D only)
-   * - Design space rotation :math:`\theta_0`
-     - ❌ Not implemented — the build direction is fixed (bottom-to-top)
-   * - Design space translation :math:`y_0`
-     - ❌ Not implemented — the build origin is fixed
-   * - Per-component print height :math:`h_i`
-     - ❌ Not implemented — all layers share a fixed height
-   * - KS constraint aggregation (Eq. 47)
-     - ✅ Implemented via ``ks_aggregation`` in ``math_utils``
+   * - Per-column membership :math:`M_{c,j}`
+     - ✅ Implemented (shared across layers)
+   * - Overhang angle constraints
+     - ✅ Implemented
+   * - Bridge length constraints (2D)
+     - ✅ Implemented
+   * - Printing plane y-offset :math:`y_0`
+     - ✅ Implemented
+   * - Printing plane rotation :math:`\theta_0`
+     - ✅ Implemented
+   * - 3D bridge length constraints
+     - ✅ Implemented (``ALM3DMapper``)

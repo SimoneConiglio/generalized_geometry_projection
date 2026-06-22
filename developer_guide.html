@@ -588,17 +588,28 @@ To ensure strict differentiability for gradient-based optimization, the local de
 </section>
 <section id="continuous-additive-layer-manufacturing-alm-mapping">
 <h3>3. Continuous Additive Layer Manufacturing (ALM) Mapping<a class="headerlink" href="#continuous-additive-layer-manufacturing-alm-mapping" title="Link to this heading"></a></h3>
-<p>To rigorously enforce Additive Manufacturing overhang constraints natively through the geometry parameterization, the framework employs a continuous layer mapping formulation (matching the original ALM paper).</p>
-<p>Instead of deploying floating primitives, the ALM formulation constructs a cohesive part made of <span class="math notranslate nohighlight">\(N_y\)</span> stacked horizontal layers (or trapezoidal segments).
-The design variables represent continuous nodal coordinates exactly at the layer interfaces:</p>
+<p>The ALM formulation constructs a cohesive part made of <span class="math notranslate nohighlight">\(N_y\)</span> stacked
+horizontal layers (or trapezoidal segments).  The design variable vector has
+the following <strong>interleaved</strong> layout (matching the GGP_ALM Matlab reference):</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[Xc_0_0, L_0_0,  Xc_0_1, L_0_1,  …,  Xc_{Ny-1}_{Np-1}, L_{Ny-1}_{Np-1},
+ h_0, …, h_{Np-1},
+ Mc_0, …, Mc_{Np-1},
+ y0, theta0]
+</pre></div>
+</div>
 <ul class="simple">
-<li><p><strong>Horizontal Coordinates</strong> <span class="math notranslate nohighlight">\(X_k \in \mathbb{R}^{N_y \times N_p}\)</span></p></li>
-<li><p><strong>Layer Widths</strong> <span class="math notranslate nohighlight">\(L_k \in \mathbb{R}^{N_y \times N_p}\)</span></p></li>
-<li><p><strong>Layer Heights</strong> <span class="math notranslate nohighlight">\(h \in \mathbb{R}^{N_y}\)</span></p></li>
-<li><p><strong>Component Densities</strong> <span class="math notranslate nohighlight">\(m \in \mathbb{R}^{N_p}\)</span></p></li>
+<li><p><span class="math notranslate nohighlight">\(X_{c,k,j}\)</span>, <span class="math notranslate nohighlight">\(L_{k,j}\)</span> — x-centre and width of column <span class="math notranslate nohighlight">\(j\)</span> in layer <span class="math notranslate nohighlight">\(k\)</span></p></li>
+<li><p><span class="math notranslate nohighlight">\(h_j \in [0.2,1]\)</span> — normalised total print height per column (<span class="math notranslate nohighlight">\(N_p\)</span> values)</p></li>
+<li><p><span class="math notranslate nohighlight">\(M_{c,j}\)</span> — membership density per column, shared across all layers</p></li>
+<li><p><span class="math notranslate nohighlight">\(y_0\)</span>, <span class="math notranslate nohighlight">\(\theta_0\)</span> — global printing-plane offset and rotation</p></li>
 </ul>
-<p>The total number of optimization parameters is exactly <span class="math notranslate nohighlight">\((2 \times N_y \times N_p) + N_y + N_p\)</span>.</p>
-<p>The continuous mapping analytically interpolates between the top boundary <span class="math notranslate nohighlight">\((X_{k+1}, L_{k+1}, y_{k+1})\)</span> and bottom boundary <span class="math notranslate nohighlight">\((X_k, L_k, y_k)\)</span> of each layer <span class="math notranslate nohighlight">\(k\)</span> to construct continuous trapezoidal blocks. The constraints on these <span class="math notranslate nohighlight">\(X_k\)</span> coordinates mathematically guarantee maximum overhang angle requirements between consecutive layers without needing heuristic density filters.</p>
+<p>Total variables: <span class="math notranslate nohighlight">\(2 N_y N_p + 2 N_p + 2\)</span>.</p>
+<p>The characteristic function uses the quintic MNA window and a height cutoff
+<span class="math notranslate nohighlight">\(\zeta_3 = y_p - L_y h_j\)</span> to terminate each column at its total print
+height.  Left/right boundary tests are linearly interpolated between adjacent
+layer interfaces to produce smooth trapezoidal segments.  Overhang and
+bridge-length constraints are linear in the <span class="math notranslate nohighlight">\((X_c, L)\)</span> variables; see
+<a class="reference internal" href="alm_guide.html"><span class="doc">Additive Manufacturing Constraints</span></a> for full details.</p>
 </section>
 </section>
 <section id="finite-element-solver">

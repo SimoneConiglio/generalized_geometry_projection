@@ -67,19 +67,30 @@ Because the KS function can exceed 1.0 (causing issues for physics solvers), we 
 3. Continuous Additive Layer Manufacturing (ALM) Mapping
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
-To rigorously enforce Additive Manufacturing overhang constraints natively through the geometry parameterization, the framework employs a continuous layer mapping formulation (matching the original ALM paper).
+The ALM formulation constructs a cohesive part made of :math:`N_y` stacked
+horizontal layers (or trapezoidal segments).  The design variable vector has
+the following **interleaved** layout (matching the GGP\_ALM Matlab reference):
 
-Instead of deploying floating primitives, the ALM formulation constructs a cohesive part made of :math:`N_y` stacked horizontal layers (or trapezoidal segments).
-The design variables represent continuous nodal coordinates exactly at the layer interfaces:
+.. code-block:: text
 
-- **Horizontal Coordinates** :math:`X_k \in \mathbb{R}^{N_y \times N_p}`
-- **Layer Widths** :math:`L_k \in \mathbb{R}^{N_y \times N_p}`
-- **Layer Heights** :math:`h \in \mathbb{R}^{N_y}`
-- **Component Densities** :math:`m \in \mathbb{R}^{N_p}`
+    [Xc_0_0, L_0_0,  Xc_0_1, L_0_1,  …,  Xc_{Ny-1}_{Np-1}, L_{Ny-1}_{Np-1},
+     h_0, …, h_{Np-1},
+     Mc_0, …, Mc_{Np-1},
+     y0, theta0]
 
-The total number of optimization parameters is exactly :math:`(2 \times N_y \times N_p) + N_y + N_p`.
+- :math:`X_{c,k,j}`, :math:`L_{k,j}` — x-centre and width of column :math:`j` in layer :math:`k`
+- :math:`h_j \in [0.2,1]` — normalised total print height per column (:math:`N_p` values)
+- :math:`M_{c,j}` — membership density per column, shared across all layers
+- :math:`y_0`, :math:`\theta_0` — global printing-plane offset and rotation
 
-The continuous mapping analytically interpolates between the top boundary :math:`(X_{k+1}, L_{k+1}, y_{k+1})` and bottom boundary :math:`(X_k, L_k, y_k)` of each layer :math:`k` to construct continuous trapezoidal blocks. The constraints on these :math:`X_k` coordinates mathematically guarantee maximum overhang angle requirements between consecutive layers without needing heuristic density filters.
+Total variables: :math:`2 N_y N_p + 2 N_p + 2`.
+
+The characteristic function uses the quintic MNA window and a height cutoff
+:math:`\zeta_3 = y_p - L_y h_j` to terminate each column at its total print
+height.  Left/right boundary tests are linearly interpolated between adjacent
+layer interfaces to produce smooth trapezoidal segments.  Overhang and
+bridge-length constraints are linear in the :math:`(X_c, L)` variables; see
+:doc:`alm_guide` for full details.
 
 Finite Element Solver
 ---------------------

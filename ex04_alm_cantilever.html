@@ -63,6 +63,7 @@
 <li class="toctree-l3"><a class="reference internal" href="#running">Running</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#result">Result</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#problem-details">Problem details</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#variable-structure">Variable Structure</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="ex05_3d_cantilever.html">3D Cantilever</a></li>
@@ -100,9 +101,9 @@
   <section id="alm-cantilever">
 <h1>ALM Cantilever<a class="headerlink" href="#alm-cantilever" title="Link to this heading"></a></h1>
 <p>A cantilever optimised under Additive Layer Manufacturing (ALM) constraints.
-Components are arranged in horizontal layers; linear overhang constraints
-enforce a 45° self-support angle between adjacent layers, restricting the
-optimiser to shapes that can be printed without support material.</p>
+The MNA continuous formulation arranges design variables in <span class="math notranslate nohighlight">\(N_y = 10\)</span>
+horizontal layers, each with <span class="math notranslate nohighlight">\(N_p = 5\)</span> printed columns.  Linear
+overhang constraints enforce a 45° self-support angle between adjacent layers.</p>
 <section id="running">
 <h2>Running<a class="headerlink" href="#running" title="Link to this heading"></a></h2>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>alm_cantilever
@@ -126,6 +127,10 @@ optimiser to shapes that can be printed without support material.</p>
 <section id="problem-details">
 <h2>Problem details<a class="headerlink" href="#problem-details" title="Link to this heading"></a></h2>
 <table class="docutils align-default">
+<colgroup>
+<col style="width: 30.0%" />
+<col style="width: 70.0%" />
+</colgroup>
 <thead>
 <tr class="row-odd"><th class="head"><p>Parameter</p></th>
 <th class="head"><p>Value</p></th>
@@ -139,32 +144,58 @@ optimiser to shapes that can be printed without support material.</p>
 <td><p>60 × 30 quads</p></td>
 </tr>
 <tr class="row-even"><td><p>Formulation</p></td>
-<td><p>ALM 2D</p></td>
+<td><p>ALM 2D (MNA continuous)</p></td>
 </tr>
-<tr class="row-odd"><td><p>Layers</p></td>
+<tr class="row-odd"><td><p>Layers <span class="math notranslate nohighlight">\(N_y\)</span></p></td>
 <td><p>10</p></td>
 </tr>
-<tr class="row-even"><td><p>Components / layer</p></td>
+<tr class="row-even"><td><p>Columns <span class="math notranslate nohighlight">\(N_p\)</span></p></td>
 <td><p>5</p></td>
 </tr>
-<tr class="row-odd"><td><p>Volume fraction</p></td>
+<tr class="row-odd"><td><p>Design variables</p></td>
+<td><p><span class="math notranslate nohighlight">\(2 \times 10 \times 5 + 2 \times 5 + 2 = 112\)</span></p></td>
+</tr>
+<tr class="row-even"><td><p>Volume fraction</p></td>
 <td><p>0.40</p></td>
 </tr>
-<tr class="row-even"><td><p>Overhang angle</p></td>
+<tr class="row-odd"><td><p>Overhang angle</p></td>
 <td><p>45°</p></td>
 </tr>
-<tr class="row-odd"><td><p>Algorithm</p></td>
+<tr class="row-even"><td><p>Algorithm</p></td>
 <td><p>MMA</p></td>
 </tr>
-<tr class="row-even"><td><p>Max iterations</p></td>
+<tr class="row-odd"><td><p>Max iterations</p></td>
 <td><p>150</p></td>
 </tr>
 </tbody>
 </table>
-<p>The overhang constraint is linear in the design variables and enforces:</p>
+</section>
+<section id="variable-structure">
+<h2>Variable Structure<a class="headerlink" href="#variable-structure" title="Link to this heading"></a></h2>
+<p>Each design variable vector has the layout:</p>
 <div class="math notranslate nohighlight">
-\[|X_{c,k+1} - X_{c,k}| + \tfrac{1}{2}(L_{k+1} - L_k) \leq h \tan(\alpha)\]</div>
-<p>for every pair of vertically adjacent components, where <span class="math notranslate nohighlight">\(\alpha = 45°\)</span>.</p>
+\[\mathbf{x} = [\underbrace{X_{c,0,0},\,L_{0,0},\;\ldots\;,X_{c,9,4},\,L_{9,4}}_{2 N_y N_p},\;
+              \underbrace{h_0,\ldots,h_4}_{N_p},\;
+              \underbrace{M_{c,0},\ldots,M_{c,4}}_{N_p},\;
+              y_0,\;\theta_0]\]</div>
+<ul class="simple">
+<li><p><span class="math notranslate nohighlight">\(h_j\)</span> — normalised total print height of column <span class="math notranslate nohighlight">\(j\)</span></p></li>
+<li><p><span class="math notranslate nohighlight">\(M_{c,j}\)</span> — membership density for the full column</p></li>
+<li><p><span class="math notranslate nohighlight">\(y_0\)</span>, <span class="math notranslate nohighlight">\(\theta_0\)</span> — global printing-plane offset and rotation (both 0 here)</p></li>
+</ul>
+<p>Overhang constraint (per layer interface, per column):</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}X_{c,k+1,j} + \tfrac{L_{k+1,j}}{2} - X_{c,k,j} - \tfrac{L_{k,j}}{2} &amp;\le \Delta h \tan(45°)\\X_{c,k,j} - \tfrac{L_{k,j}}{2} - X_{c,k+1,j} + \tfrac{L_{k+1,j}}{2} &amp;\le \Delta h \tan(45°)\end{aligned}\end{align} \]</div>
+<p>To add a bridge-length constraint (limiting lateral drift from the base layer):</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">constraints</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">overhang</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ineq</span>
+<span class="w">    </span><span class="nt">bound</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.0</span>
+<span class="w">    </span><span class="nt">params</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">alpha_deg</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">45.0</span>
+<span class="w">      </span><span class="nt">bridge_length</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12.5</span>
+</pre></div>
+</div>
 </section>
 </section>
 

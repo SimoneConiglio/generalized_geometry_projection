@@ -54,11 +54,12 @@
 <li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
 <li class="toctree-l1"><a class="reference internal" href="3d_optimization.html">3D Topology Optimization Framework</a></li>
 <li class="toctree-l1 current"><a class="current reference internal" href="#">Additive Manufacturing Constraints</a><ul>
-<li class="toctree-l2"><a class="reference internal" href="#layer-by-layer-parameterization">Layer-by-Layer Parameterization</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#amna-box-formulation-paper-eq-40-41">AMNA Box Formulation (Paper Eq. 40-41)</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#variable-layout">Variable Layout</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#printing-plane-transform">Printing Plane Transform</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#mna-characteristic-function">MNA Characteristic Function</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#overhang-angle-constraints">Overhang Angle Constraints</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#implementation-in-gemseo">Implementation in GEMSEO</a></li>
-<li class="toctree-l2"><a class="reference internal" href="#current-limitations">Current Limitations</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#bridge-length-constraints">Bridge Length Constraints</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#feature-summary">Feature Summary</a></li>
 </ul>
 </li>
 <li class="toctree-l1"><a class="reference internal" href="scp_uno_guide.html">Sequential Convex Programming (SCP) Framework</a></li>
@@ -92,87 +93,149 @@
              
   <section id="additive-manufacturing-constraints">
 <h1>Additive Manufacturing Constraints<a class="headerlink" href="#additive-manufacturing-constraints" title="Link to this heading"></a></h1>
-<p>The <code class="docutils literal notranslate"><span class="pre">ggp</span></code> framework extends the standard Generalized Geometry Projection (GGP) method to support <strong>Additive Layer Manufacturing (ALM)</strong> constraints. This ensures that the generated topology is printable without internal support structures.</p>
-<p>This implementation follows the AMNA (Adapted Moving Node Approach) formulation from:</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">ggp</span></code> framework supports <strong>Additive Layer Manufacturing (ALM)</strong> constraints
+through the MNA (Moving Node Approach) continuous formulation.  This ensures that
+the generated topology is self-supporting, i.e. printable without internal
+support structures.</p>
+<p>The implementation is based on:</p>
 <blockquote>
 <div><p>Bhat, K.V., Capasso, G., Coniglio, S., Morlier, J., Gogu, C.
 <em>On some applications of Generalized Geometric Projection to optimal 3D printing</em>.
 Computers &amp; Graphics (2021).</p>
 </div></blockquote>
-<section id="layer-by-layer-parameterization">
-<h2>Layer-by-Layer Parameterization<a class="headerlink" href="#layer-by-layer-parameterization" title="Link to this heading"></a></h2>
-<p>In standard GGP, components can change their orientation (<span class="math notranslate nohighlight">\(\theta\)</span>) and vertical position (<span class="math notranslate nohighlight">\(y_c\)</span>) freely. In the ALM formulation (provided by <code class="docutils literal notranslate"><span class="pre">GGP2DALMMapper</span></code>), components are restricted to horizontal tracks of a fixed height (matching the layer height).</p>
-<p>Each component <span class="math notranslate nohighlight">\(j\)</span> in layer <span class="math notranslate nohighlight">\(i\)</span> is defined by only three variables:
-<span class="math notranslate nohighlight">\(x_{i,j} = [X_{c,i,j}, w_{i,j}, M_{i,j}]\)</span></p>
+<section id="variable-layout">
+<h2>Variable Layout<a class="headerlink" href="#variable-layout" title="Link to this heading"></a></h2>
+<p>Each run of <code class="docutils literal notranslate"><span class="pre">ALM2DMapper</span></code> creates a single flat vector of design variables:</p>
+<div class="highlight-text notranslate"><div class="highlight"><pre><span></span>[Xc_0_0, L_0_0,  Xc_0_1, L_0_1,  …,  Xc_{nY-1}_{np-1}, L_{nY-1}_{np-1},
+ h_0, h_1, …, h_{np-1},
+ Mc_0, Mc_1, …, Mc_{np-1},
+ y0, theta0]
+</pre></div>
+</div>
 <p>where:</p>
 <ul class="simple">
-<li><p><span class="math notranslate nohighlight">\(X_{c}\)</span> is the horizontal center.</p></li>
-<li><p><span class="math notranslate nohighlight">\(w\)</span> is the track width (length of the segment).</p></li>
-<li><p><span class="math notranslate nohighlight">\(M\)</span> is the track mass variable.</p></li>
+<li><p><span class="math notranslate nohighlight">\(N_y\)</span> = number of layers, <span class="math notranslate nohighlight">\(N_p\)</span> = components per layer (printed columns)</p></li>
+<li><p><span class="math notranslate nohighlight">\(X_{c,k,j}\)</span>, <span class="math notranslate nohighlight">\(L_{k,j}\)</span> — x-centre and width of component <span class="math notranslate nohighlight">\(j\)</span> in layer <span class="math notranslate nohighlight">\(k\)</span> (interleaved pairs, F-major ordering so that <span class="math notranslate nohighlight">\(j\)</span> is the “column” index)</p></li>
+<li><p><span class="math notranslate nohighlight">\(h_j \in [0.2,\,1]\)</span> — normalised total print height of column <span class="math notranslate nohighlight">\(j\)</span>; the physical height cutoff is <span class="math notranslate nohighlight">\(L_y \cdot h_j\)</span></p></li>
+<li><p><span class="math notranslate nohighlight">\(M_{c,j} \in [0,\,1]\)</span> — membership density for the whole printed component <span class="math notranslate nohighlight">\(j\)</span> (shared across all layers)</p></li>
+<li><p><span class="math notranslate nohighlight">\(y_0\)</span> — y-translation of the printing plane (shifts the build origin)</p></li>
+<li><p><span class="math notranslate nohighlight">\(\theta_0\)</span> — rotation of the printing plane (tilts the build direction)</p></li>
 </ul>
+<p>Total variables: <span class="math notranslate nohighlight">\(2 N_y N_p + 2 N_p + 2\)</span>.</p>
 </section>
-<section id="amna-box-formulation-paper-eq-40-41">
-<h2>AMNA Box Formulation (Paper Eq. 40-41)<a class="headerlink" href="#amna-box-formulation-paper-eq-40-41" title="Link to this heading"></a></h2>
-<p>The characteristic function for each layer segment uses a <strong>product of five regularized Heaviside functions</strong>, one for each boundary of the rectangular layer primitive:</p>
+<section id="printing-plane-transform">
+<h2>Printing Plane Transform<a class="headerlink" href="#printing-plane-transform" title="Link to this heading"></a></h2>
+<p>When <span class="math notranslate nohighlight">\(y_0 \neq 0\)</span> or <span class="math notranslate nohighlight">\(\theta_0 \neq 0\)</span>, the evaluation coordinates
+<span class="math notranslate nohighlight">\((x, y)\)</span> are mapped to print-space before the characteristic function is
+evaluated:</p>
 <div class="math notranslate nohighlight">
-\[\rho^{el}_i = \prod_{k=1}^{5} W(\zeta_k)\]</div>
-<p>where the <span class="math notranslate nohighlight">\(\zeta\)</span> variables represent signed distances from a Gauss point to each boundary edge:</p>
+\[ \begin{align}\begin{aligned}x_p = x \cos\theta_0 - y \sin\theta_0\\y_p = y_0 + x \sin\theta_0 + y \cos\theta_0\end{aligned}\end{align} \]</div>
+<p>This allows non-horizontal build directions, e.g. inclined printing at angle
+<span class="math notranslate nohighlight">\(\theta_0\)</span>.</p>
+</section>
+<section id="mna-characteristic-function">
+<h2>MNA Characteristic Function<a class="headerlink" href="#mna-characteristic-function" title="Link to this heading"></a></h2>
+<p>For each evaluation point <span class="math notranslate nohighlight">\((x_p, y_p)\)</span> and each printed component
+<span class="math notranslate nohighlight">\(j\)</span>, the framework:</p>
+<ol class="arabic">
+<li><p>Finds the layer index <span class="math notranslate nohighlight">\(k_e = \lfloor y_p / \Delta h \rfloor\)</span> (clamped to
+<span class="math notranslate nohighlight">\([0, N_y - 2]\)</span>).</p></li>
+<li><p>Computes linearly interpolated left/right boundaries between layer <span class="math notranslate nohighlight">\(k_e\)</span>
+and <span class="math notranslate nohighlight">\(k_e + 1\)</span>:</p>
 <div class="math notranslate nohighlight">
-\[\zeta_1 = -L/2 - x_{loc}, \quad
-\zeta_2 = x_{loc} - L/2, \quad
-\zeta_3 = y_{loc} - h/2, \quad
-\zeta_4 = -h/2 - y_{loc}, \quad
-\zeta_5 = y_{loc} - h/2\]</div>
-<p>and the smoothed Heaviside function <span class="math notranslate nohighlight">\(W(\zeta)\)</span> is the 5th-order polynomial:</p>
+\[ \begin{align}\begin{aligned}l_y = (X_{k_e} - L_{k_e}/2) + \alpha \bigl[(X_{k_e+1} - L_{k_e+1}/2) - (X_{k_e} - L_{k_e}/2)\bigr]\\u_y = (X_{k_e} + L_{k_e}/2) + \alpha \bigl[(X_{k_e+1} + L_{k_e+1}/2) - (X_{k_e} + L_{k_e}/2)\bigr]\end{aligned}\end{align} \]</div>
+<p>where <span class="math notranslate nohighlight">\(\alpha = (y_p - Y_{k_e}) / (Y_{k_e+1} - Y_{k_e})\)</span> is the local
+interpolation factor.</p>
+</li>
+<li><p>Evaluates three signed-distance tests:</p>
 <div class="math notranslate nohighlight">
-\[W(\zeta) = \frac{1}{2} - \frac{15}{16\sigma}\zeta + \frac{5}{8\sigma^3}\zeta^3 - \frac{3}{16\sigma^5}\zeta^5\]</div>
-<p>This produces a <strong>flat box/block</strong> density field for each layer, rather than the rounded bar shape used in the Free GGP formulation (GP method). The transition width <span class="math notranslate nohighlight">\(\sigma\)</span> controls the sharpness of the boundary.</p>
+\[\zeta_1 = -x_p + l_y, \quad \zeta_2 = x_p - u_y, \quad \zeta_3 = y_p - L_y h_j\]</div>
+</li>
+<li><p>Computes the characteristic function via the quintic MNA window:</p>
+<div class="math notranslate nohighlight">
+\[W(\zeta) = \frac{1}{2} - \frac{15}{16\sigma}\zeta + \frac{5}{8\sigma^3}\zeta^3 - \frac{3}{16\sigma^5}\zeta^5
+\quad \text{for } |\zeta| \le \sigma\]</div>
+<div class="math notranslate nohighlight">
+\[W_j = W(\zeta_1) \cdot W(\zeta_2) \cdot W(\zeta_3)\]</div>
+<p>The height test <span class="math notranslate nohighlight">\(\zeta_3\)</span> cuts off the component above its total
+print height <span class="math notranslate nohighlight">\(L_y h_j\)</span>.</p>
+</li>
+<li><p>Returns the density contribution: <span class="math notranslate nohighlight">\(\rho_j^{el} = M_{c,j}^p \cdot W_j\)</span>.</p></li>
+</ol>
 </section>
 <section id="overhang-angle-constraints">
 <h2>Overhang Angle Constraints<a class="headerlink" href="#overhang-angle-constraints" title="Link to this heading"></a></h2>
-<p>To be printable without supports, each layer must be sufficiently supported by the layer beneath it. For a layer height <span class="math notranslate nohighlight">\(\Delta h\)</span> and a maximum allowable overhang angle <span class="math notranslate nohighlight">\(\alpha\)</span> (typically 45°), the following linear constraints are enforced between layer <span class="math notranslate nohighlight">\(i\)</span> and layer <span class="math notranslate nohighlight">\(i+1\)</span> (Paper Eq. 42-45):</p>
+<p>Linear constraints enforce that each layer is supported by the one below.
+For layer interface <span class="math notranslate nohighlight">\(k \to k+1\)</span> and component <span class="math notranslate nohighlight">\(j\)</span>:</p>
 <div class="math notranslate nohighlight">
-\[ \begin{align}\begin{aligned}(x_{c, i+1} + \frac{w_{i+1}}{2}) - (x_{c, i} + \frac{w_i}{2}) \le \Delta h \cdot \tan(\alpha)\\(x_{c, i} - \frac{w_i}{2}) - (x_{c, i+1} - \frac{w_{i+1}}{2}) \le \Delta h \cdot \tan(\alpha)\end{aligned}\end{align} \]</div>
+\[ \begin{align}\begin{aligned}(X_{c,k+1,j} + L_{k+1,j}/2) - (X_{c,k,j} + L_{k,j}/2) &amp;\le \Delta h \tan\alpha\\(X_{c,k,j} - L_{k,j}/2) - (X_{c,k+1,j} - L_{k+1,j}/2) &amp;\le \Delta h \tan\alpha\end{aligned}\end{align} \]</div>
+<p>where <span class="math notranslate nohighlight">\(\alpha\)</span> is the maximum allowable overhang angle (default 45°).
+When <span class="math notranslate nohighlight">\(\theta_0 \neq 0\)</span>, <span class="math notranslate nohighlight">\(\alpha\)</span> is corrected to
+<span class="math notranslate nohighlight">\(\alpha \pm \theta_0\)</span> for the two constraint directions.</p>
+<p>These are activated by adding an <code class="docutils literal notranslate"><span class="pre">overhang</span></code> constraint entry to the preset YAML:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">constraints</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">overhang</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ineq</span>
+<span class="w">    </span><span class="nt">bound</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.0</span>
+<span class="w">    </span><span class="nt">params</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">alpha_deg</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">45.0</span>
+</pre></div>
+</div>
 </section>
-<section id="implementation-in-gemseo">
-<h2>Implementation in GEMSEO<a class="headerlink" href="#implementation-in-gemseo" title="Link to this heading"></a></h2>
-<p>These constraints are linear with respect to the design variables. In the provided examples, they are wrapped in an <code class="docutils literal notranslate"><span class="pre">ALMConstraintsDiscipline</span></code> and passed to the GEMSEO optimizer (MMA), which handles them alongside the volume and compliance objectives.</p>
-<p>See the <span class="xref std std-ref">alm_example</span> for a complete implementation.</p>
+<section id="bridge-length-constraints">
+<h2>Bridge Length Constraints<a class="headerlink" href="#bridge-length-constraints" title="Link to this heading"></a></h2>
+<p>To limit the lateral drift of a component across layers relative to its base,
+bridge-length constraints bound the horizontal extent of each upper layer
+relative to the base-layer (layer 0) x-centre:</p>
+<div class="math notranslate nohighlight">
+\[ \begin{align}\begin{aligned}X_{c,k,j} + L_{k,j}/2 - X_{c,0,j} &amp;\le BL\\X_{c,0,j} - X_{c,k,j} + L_{k,j}/2 &amp;\le BL\end{aligned}\end{align} \]</div>
+<p>Enable by adding <code class="docutils literal notranslate"><span class="pre">bridge_length</span></code> to the overhang constraint params:</p>
+<div class="highlight-yaml notranslate"><div class="highlight"><pre><span></span><span class="nt">constraints</span><span class="p">:</span>
+<span class="w">  </span><span class="p p-Indicator">-</span><span class="w"> </span><span class="nt">name</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">overhang</span>
+<span class="w">    </span><span class="nt">type</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">ineq</span>
+<span class="w">    </span><span class="nt">bound</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.0</span>
+<span class="w">    </span><span class="nt">params</span><span class="p">:</span>
+<span class="w">      </span><span class="nt">alpha_deg</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">45.0</span>
+<span class="w">      </span><span class="nt">bridge_length</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">12.5</span><span class="w">   </span><span class="c1"># in the same units as Lx</span>
+</pre></div>
+</div>
 </section>
-<section id="current-limitations">
-<h2>Current Limitations<a class="headerlink" href="#current-limitations" title="Link to this heading"></a></h2>
-<p>Compared to the full paper formulation, the following features are <strong>not yet implemented</strong>:</p>
+<section id="feature-summary">
+<h2>Feature Summary<a class="headerlink" href="#feature-summary" title="Link to this heading"></a></h2>
 <table class="docutils align-default">
 <colgroup>
-<col style="width: 30.0%" />
-<col style="width: 70.0%" />
+<col style="width: 45.0%" />
+<col style="width: 55.0%" />
 </colgroup>
 <thead>
-<tr class="row-odd"><th class="head"><p>Paper Feature</p></th>
+<tr class="row-odd"><th class="head"><p>Feature</p></th>
 <th class="head"><p>Status</p></th>
 </tr>
 </thead>
 <tbody>
-<tr class="row-even"><td><p>AMNA box formulation (Eq. 40-41)</p></td>
+<tr class="row-even"><td><p>MNA continuous mapping</p></td>
 <td><p>✅ Implemented</p></td>
 </tr>
-<tr class="row-odd"><td><p>Overhang angle constraints (Eq. 42-45)</p></td>
+<tr class="row-odd"><td><p>Per-column print height <span class="math notranslate nohighlight">\(h_j\)</span></p></td>
 <td><p>✅ Implemented</p></td>
 </tr>
-<tr class="row-even"><td><p>Bridge length constraints (Eq. 46)</p></td>
-<td><p>✅ Implemented (3D only)</p></td>
+<tr class="row-even"><td><p>Per-column membership <span class="math notranslate nohighlight">\(M_{c,j}\)</span></p></td>
+<td><p>✅ Implemented (shared across layers)</p></td>
 </tr>
-<tr class="row-odd"><td><p>Design space rotation <span class="math notranslate nohighlight">\(\theta_0\)</span></p></td>
-<td><p>❌ Not implemented — the build direction is fixed (bottom-to-top)</p></td>
+<tr class="row-odd"><td><p>Overhang angle constraints</p></td>
+<td><p>✅ Implemented</p></td>
 </tr>
-<tr class="row-even"><td><p>Design space translation <span class="math notranslate nohighlight">\(y_0\)</span></p></td>
-<td><p>❌ Not implemented — the build origin is fixed</p></td>
+<tr class="row-even"><td><p>Bridge length constraints (2D)</p></td>
+<td><p>✅ Implemented</p></td>
 </tr>
-<tr class="row-odd"><td><p>Per-component print height <span class="math notranslate nohighlight">\(h_i\)</span></p></td>
-<td><p>❌ Not implemented — all layers share a fixed height</p></td>
+<tr class="row-odd"><td><p>Printing plane y-offset <span class="math notranslate nohighlight">\(y_0\)</span></p></td>
+<td><p>✅ Implemented</p></td>
 </tr>
-<tr class="row-even"><td><p>KS constraint aggregation (Eq. 47)</p></td>
-<td><p>✅ Implemented via <code class="docutils literal notranslate"><span class="pre">ks_aggregation</span></code> in <code class="docutils literal notranslate"><span class="pre">math_utils</span></code></p></td>
+<tr class="row-even"><td><p>Printing plane rotation <span class="math notranslate nohighlight">\(\theta_0\)</span></p></td>
+<td><p>✅ Implemented</p></td>
+</tr>
+<tr class="row-odd"><td><p>3D bridge length constraints</p></td>
+<td><p>✅ Implemented (<code class="docutils literal notranslate"><span class="pre">ALM3DMapper</span></code>)</p></td>
 </tr>
 </tbody>
 </table>
