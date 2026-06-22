@@ -1,14 +1,19 @@
 import numpy as np
 
 
-def _xc_idx(layer, comp, comp_per_layer):
-    """Global variable index for Xc_{layer, comp} in the interleaved layout."""
-    return 2 * (layer * comp_per_layer + comp)
+def _xc_idx(layer, comp, num_layers):
+    """Global variable index for Xc_{layer, comp} in the F-order interleaved layout.
+
+    The mapper reshapes Xc with order='F' to (nY, np_val), so the flat index of
+    element [layer, comp] is comp*nY + layer, giving global x_vars index
+    2*(comp*num_layers + layer).
+    """
+    return 2 * (comp * num_layers + layer)
 
 
-def _l_idx(layer, comp, comp_per_layer):
-    """Global variable index for L_{layer, comp} in the interleaved layout."""
-    return 2 * (layer * comp_per_layer + comp) + 1
+def _l_idx(layer, comp, num_layers):
+    """Global variable index for L_{layer, comp} in the F-order interleaved layout."""
+    return 2 * (comp * num_layers + layer) + 1
 
 
 def create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, alpha_deg,
@@ -53,10 +58,10 @@ def create_alm_overhang_constraints(num_layers, comp_per_layer, layer_height, al
     row = 0
     for layer in range(num_interfaces):
         for j in range(np_val):
-            ix_k   = _xc_idx(layer,     j, np_val)
-            il_k   = _l_idx(layer,      j, np_val)
-            ix_k1  = _xc_idx(layer + 1, j, np_val)
-            il_k1  = _l_idx(layer + 1,  j, np_val)
+            ix_k   = _xc_idx(layer,     j, nY)
+            il_k   = _l_idx(layer,      j, nY)
+            ix_k1  = _xc_idx(layer + 1, j, nY)
+            il_k1  = _l_idx(layer + 1,  j, nY)
 
             # Constraint 1 (right overhang): Xc_{k+1} + L_{k+1}/2 - Xc_k - L_k/2 <= delta_r
             A[row, ix_k1] =  1.0
@@ -104,9 +109,9 @@ def create_bridge_length_constraints(num_layers, comp_per_layer, bridge_length):
     row = 0
     for layer in range(1, nY):
         for j in range(np_val):
-            ix_base = _xc_idx(0,     j, np_val)
-            ix_k    = _xc_idx(layer, j, np_val)
-            il_k    = _l_idx(layer,  j, np_val)
+            ix_base = _xc_idx(0,     j, nY)
+            ix_k    = _xc_idx(layer, j, nY)
+            il_k    = _l_idx(layer,  j, nY)
 
             # Right: Xc_k + L_k/2 - Xc_0 <= BL
             A[row, ix_k]    =  1.0

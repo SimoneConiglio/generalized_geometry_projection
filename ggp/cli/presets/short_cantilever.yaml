@@ -39,7 +39,7 @@ constraints:
 
 solver:
   algorithm: MMA
-  max_iter: 600
+  max_iter: 250
   options:
     max_optimization_step: 0.01
     initial_asymptotes_distance: 0.01

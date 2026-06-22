@@ -28,15 +28,18 @@ For large 3D problems an iterative (PCG + GAMG) FEM solver saves memory:
 Result
 ------
 
-The image below shows an isosurface rendering of the optimised 3D density field
-(isosurface at ρ = 0.3, viewed from a south-east elevated perspective).
+The figure below shows four views of the optimised 3D density field (isosurface
+at ρ = 0.5, i.e. solid material only): isometric, front (XY plane), top (XZ
+plane), and side (YZ plane).  The green face marks the fixed boundary condition;
+the red dot and arrow mark the applied point load at the mid-right face.
 
 .. figure:: _static/3d_cantilever_optimized.png
-   :alt: Optimized 3D cantilever topology (isosurface rendering)
-   :width: 90%
+   :alt: Optimized 3D cantilever topology — 4-panel isosurface views
+   :width: 100%
    :align: center
 
-   3D isosurface of the optimised density field after 150 MMA iterations (2 % volume fraction — consistent with 3D bar cross-sections).
+   Four-view isosurface (ρ > 0.5) of the optimised 3D density field after 150
+   MMA iterations (10 % volume fraction).
 
 Problem details
 ---------------
@@ -52,7 +55,7 @@ Problem details
 +---------------------+------------------+
 | Components          | 20               |
 +---------------------+------------------+
-| Volume fraction     | 0.02             |
+| Volume fraction     | 0.10             |
 +---------------------+------------------+
 | Algorithm           | MMA              |
 +---------------------+------------------+

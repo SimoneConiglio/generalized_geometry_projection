@@ -58,11 +58,19 @@ class _OverhangDiscipline(Discipline):
             self.local_data.update(input_data)
         x = self.local_data["x_vars"].flatten()
         x_unscaled = self.lb + x * (self.ub - self.lb)
-        self.local_data["overhang"] = self.A @ x_unscaled - self.b_rhs
+        # Normalize each constraint by its rhs (delta or BL > 0) so values are O(1).
+        # This matches the Matlab ALM_constraint.m form g = (A x)/b - 1, which is
+        # what makes KS aggregation with rho=40 numerically well-behaved (raw
+        # physical residuals span tens of units → exp(40*res) overflows).
+        self.local_data["overhang"] = (self.A @ x_unscaled) / self.b_rhs - 1.0
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
         scale = self.ub - self.lb
-        self.jac = {"overhang": {"x_vars": self.A * scale[np.newaxis, :]}}
+        self.jac = {
+            "overhang": {
+                "x_vars": (self.A * scale[np.newaxis, :]) / self.b_rhs[:, np.newaxis]
+            }
+        }
 
 
 class GGPPipeline:
@@ -135,25 +143,37 @@ class GGPPipeline:
 
         if mode in ("ALM", "2D_ALM"):
             # Interleaved layout: [Xc_0_0, L_0_0, ..., h_0..h_{np-1}, Mc_0..Mc_{np-1}, y0, theta0]
-            # Matches Matlab reference: Xc on a regular grid, L = nelx/2/np (≈ midpoint),
-            # h = 1 (full column height), Mc = initial_d = 0.5.
-            np_val = kwargs.get("np_val", 1)
-            nY     = kwargs.get("nY", 1)
-            n_xl   = 2 * nY * np_val
+            np_val     = kwargs.get("np_val", 1)
+            nY         = kwargs.get("nY", 1)
+            layer_h    = kwargs.get("layer_height", 3.0)
+            alpha_deg  = kwargs.get("alpha_deg", 45.0)
+            n_xl       = 2 * nY * np_val
             x = np.empty(n)
-            # [Xc, L] interleaved (F-order: layer k is inner loop, column j is outer).
-            # np.repeat gives [c0]*nY, [c1]*nY, ..., [c_{np-1}]*nY — correct F-order layout.
-            col_positions_norm = np.linspace(1.0/(np_val+1), np_val/(np_val+1), np_val)
-            x[0:n_xl:2] = np.repeat(col_positions_norm, nY)  # Xc: F-order grid per layer
-            x[1:n_xl:2] = 0.333                               # L: ~1/3 of range ≈ Matlab Lc=nelx/2/np
-            # h = 1 (normalised to upper bound → full print height, matching Matlab h=ones)
-            x[n_xl       : n_xl + np_val] = 1.0
-            # Mc = initial_d = 0.5
-            x[n_xl + np_val : n_xl + 2*np_val] = 0.50
-            # y0, theta0: neutral (0.5 maps to 0 for symmetric bounds)
+
+            # Staircase initialization: each column is a maximum-overhang ascending
+            # staircase so that the rightmost column reaches x=Lx at mid-height
+            # (the load layer), giving non-zero gradient from iteration 1.
+            # Physical Xc bounds: lb=-1, ub=Lx+1 (range = Lx+2).
+            Lx         = kwargs.get("Lx", 60.0)
+            xc_range   = Lx + 2.0                          # ub - lb = (Lx+1) - (-1)
+            delta_norm = np.tan(np.deg2rad(alpha_deg)) * layer_h / xc_range
+            load_layer  = nY // 2
+            P_bot_right = (Lx + 1.0) / xc_range - load_layer * delta_norm
+            P_bot_left  = (0.0 + 1.0) / xc_range
+            P_bottom = np.linspace(P_bot_left, P_bot_right, np_val)
+
+            # Assign Xc[k, j] = P_bottom[j] + k * delta_norm (clamped to [0,1])
+            # F-order: x_vars index of Xc[k,j] = 2*(j*nY + k)
+            for j in range(np_val):
+                for k in range(nY):
+                    x[2*(j*nY + k)]     = float(np.clip(P_bottom[j] + k*delta_norm, 0.0, 1.0))
+                    x[2*(j*nY + k) + 1] = 0.333   # L normalized ≈ 6 physical
+
+            x[n_xl       : n_xl + np_val] = 1.0   # h = 1 (full height)
+            x[n_xl + np_val : n_xl + 2*np_val] = 0.50  # Mc = 0.5
             if n >= n_xl + 2*np_val + 2:
-                x[n_xl + 2*np_val]     = 0.5  # y0 = 0
-                x[n_xl + 2*np_val + 1] = 0.5  # theta0 = 0
+                x[n_xl + 2*np_val]     = 0.5   # y0 = 0
+                x[n_xl + 2*np_val + 1] = 0.5   # theta0 = 0
             return x
 
         if mode == "3D_Free":
@@ -293,9 +313,14 @@ class GGPPipeline:
 
         _init_kwargs = {}
         if mode in ["ALM", "2D_ALM"] and self.spec.formulation.num_layers:
+            _oh = next((c for c in self.spec.constraints if c.name == "overhang"), None)
+            _alpha = _oh.params.get("alpha_deg", 45.0) if _oh else 45.0
             _init_kwargs = {
-                "np_val": self.spec.formulation.comp_per_layer,
-                "nY":     self.spec.formulation.num_layers,
+                "np_val":       self.spec.formulation.comp_per_layer,
+                "nY":           self.spec.formulation.num_layers,
+                "layer_height": self.spec.formulation.layer_height,
+                "alpha_deg":    _alpha,
+                "Lx":           Lx,
             }
         elif mode in ("Free", "2D_Free"):
             # Pass domain extents and mapper bounds for Matlab-style grid init
@@ -367,6 +392,16 @@ class GGPPipeline:
                 scenario.add_constraint(
                     "overhang", constraint_type="ineq", positive=False, value=0.0
                 )
+
+        # NOTE on overhang aggregation: the Matlab reference (ALM_constraint.m)
+        # aggregates all overhang sub-constraints into a single KS scalar (ka=40).
+        # GEMSEO offers this natively via
+        #   problem.constraints.aggregate(idx, method="upper_bound_KS", rho=ka)
+        # but upper_bound_KS is conservative (over-estimates the max), which shrinks
+        # the feasible polytope and raises compliance (~262 vs ~195). We therefore
+        # keep the (nY-1)*np*2 individual linear inequalities, which give MMA the
+        # exact feasible region. The constraint values are still normalised to O(1)
+        # in _OverhangDiscipline, matching the Matlab g = (A x)/b - 1 form.
 
         algo_options = self.spec.solver.options.copy()
         if "max_iter" not in algo_options:

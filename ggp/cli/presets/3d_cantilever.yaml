@@ -1,8 +1,7 @@
 # 3D Short Cantilever Benchmark
 # Cantilever beam in 3D: fixed on the left face, point load at mid-right face.
 # Uses the Free 3D GGP formulation (8 variables per component).
-# volfrac=0.02: 3D bar cross-sections scale as h^2, so volfrac_3D ~ volfrac_2D^2 ~ 0.4^2 ~ 0.16
-# or equivalently volfrac_2D * (bar_width/Lz) ~ 0.4 * 2/30 ~ 0.02 for thin GGP bars.
+# volfrac=0.1: 10 % volume fraction gives well-connected 3D bar structure.
 
 geometries:
   - type: fenics_box
@@ -53,4 +52,4 @@ solver:
     xtol_rel: 1.0e-20
     xtol_abs: 1.0e-20
 
-volfrac: 0.02
+volfrac: 0.1
