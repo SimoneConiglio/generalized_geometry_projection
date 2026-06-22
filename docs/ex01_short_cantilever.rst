@@ -1,10 +1,10 @@
 Short Cantilever
 ================
 
-A standard GGP benchmark: a 60 × 30 beam clamped on the left face with a
-downward point load at the mid-right edge.  The Free formulation uses 18
-overlapping bar-shaped components whose shapes and positions are optimised
-to minimise compliance at a 40 % volume fraction.
+A GGP benchmark: a 60 × 60 beam clamped on the left face with a downward
+point load at the mid-right edge.  Five vertical bar columns (18 layers each)
+optimise their x-position and width per layer using the MNA characteristic
+function — the same variable structure as the Matlab reference code.
 
 Running
 -------
@@ -24,7 +24,7 @@ Result
 
 .. figure:: _static/short_cantilever_optimized.png
    :alt: Optimized short cantilever topology
-   :width: 90%
+   :width: 80%
    :align: center
 
    Optimized density field after 150 MMA iterations (40 % volume fraction).
@@ -35,19 +35,21 @@ Problem details
 +---------------------+------------------+
 | Parameter           | Value            |
 +=====================+==================+
-| Domain              | 60 × 30          |
+| Domain              | 60 × 60          |
 +---------------------+------------------+
-| Mesh                | 60 × 30 quads    |
+| Mesh                | 60 × 60 quads    |
 +---------------------+------------------+
-| Formulation         | Free 2D          |
+| Formulation         | ALM (MNA method) |
 +---------------------+------------------+
-| Method              | AMNA (MNA)       |
+| Layers (nY)         | 18               |
 +---------------------+------------------+
-| Components          | 18               |
+| Columns (np)        | 5                |
 +---------------------+------------------+
-| ``r_gp`` (σ)        | 1.0              |
+| Layer height        | 3.33             |
 +---------------------+------------------+
-| Min thickness       | 3 elements       |
+| ``r_gp`` (R)        | 0.5              |
++---------------------+------------------+
+| Ngp                 | 1                |
 +---------------------+------------------+
 | Volume fraction     | 0.40             |
 +---------------------+------------------+

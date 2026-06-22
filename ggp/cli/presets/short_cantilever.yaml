@@ -1,15 +1,16 @@
 # Short Cantilever Benchmark
-# Standard GGP topology optimisation benchmark with a cantilever beam
-# fixed on the left edge and a point load at the mid-right.
+# GGP reference benchmark: square 60×60 domain, clamped left, point load at mid-right.
+# Variable structure: 5 bar columns x 18 layers (ALM/MNA, matching paper reference).
+# Square domain matches Matlab reference (nelx=nely=52 scaled to 60×60).
 
 geometries:
   - type: fenics_rectangle
     role: design
     params:
       Lx: 60.0
-      Ly: 30.0
+      Ly: 60.0
       nx: 60
-      ny: 30
+      ny: 60
 
 boundary_conditions:
   - region: left
@@ -21,10 +22,13 @@ loads:
     value: [0.0, -1.0]
 
 formulation:
-  mode: Free
-  num_components: 18
-  method: AMNA
-  r_gp: 1.0
+  mode: ALM
+  num_components: 90    # np * nY = 5 * 18 (informational)
+  num_layers: 18
+  comp_per_layer: 5
+  layer_height: 3.3333  # Ly / num_layers = 60 / 18
+  r_gp: 0.5             # sampling window radius (R = sqrt(1)/2 in Matlab reference)
+  Ngp: 1                # 1 Gauss point per direction (centroid evaluation, matching reference)
 
 objective:
   name: compliance

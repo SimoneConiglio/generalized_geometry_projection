@@ -62,13 +62,13 @@ class ALM2DMapper(ProjectionMapper):
         self.gpc_wts = (wts[:, np.newaxis] * wts[np.newaxis, :]).flatten()
         self.gpc_wts_sum = np.sum(self.gpc_wts)
 
-        # Fixed y-centres of each component in each layer (not design variables)
+        # Fixed y-centres of each layer: Yk[k,j] = k * layer_height  (matches Matlab linspace(0,nely,nY))
         nY = self.num_layers
         np_val = self.comp_per_layer
         self._Yk = np.tile(
-            np.arange(nY) * layer_height + 0.5 * layer_height,
+            np.arange(nY) * layer_height,
             (np_val, 1)
-        ).T  # shape (nY, np_val), Yk[k,j] = (k+0.5)*layer_height
+        ).T  # shape (nY, np_val), Yk[k,j] = k * layer_height
 
     # ------------------------------------------------------------------
     # Interface
@@ -96,8 +96,11 @@ class ALM2DMapper(ProjectionMapper):
         ub = np.zeros(n_tot)
 
         # [Xc, L] interleaved
-        lb[0:n_xl:2] = -1.0;          ub[0:n_xl:2] = Lx + 1.0   # Xc
-        lb[1:n_xl:2] = 0.0;           ub[1:n_xl:2] = Lx          # L (width)
+        # L bounds match Matlab reference: minh=3 to Lx/np (one column width max)
+        minh = 3.0
+        max_L = Lx / max(self.comp_per_layer, 1)
+        lb[0:n_xl:2] = -1.0;   ub[0:n_xl:2] = Lx + 1.0   # Xc
+        lb[1:n_xl:2] = minh;   ub[1:n_xl:2] = max_L       # L
 
         # h: normalised height [0.2, 1.0]
         lb[n_xl       : n_xl + np_val] = 0.2
@@ -242,9 +245,9 @@ class ALM2DMapper(ProjectionMapper):
             funcs_E[j, :] = W_el[j, :] * m_pE
             funcs_V[j, :] = W_el[j, :] * m_pV
 
-            # [Xc, L] block — interleaved, F-order: Xk[k,j] at global index 2*(k*np_val+j)
+            # [Xc, L] block — F-order layout: Xk[k,j] lives at global index 2*(j*nY + k)
             for k in range(nY):
-                idx_xc = 2 * (k * np_val + j)
+                idx_xc = 2 * (j * nY + k)
                 idx_l  = idx_xc + 1
                 grads_E[j, idx_xc, :] = dXc_el[j, k, :] * m_pE
                 grads_E[j, idx_l,  :] = dL_el[j, k, :]  * m_pE

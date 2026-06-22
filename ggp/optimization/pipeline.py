@@ -97,24 +97,25 @@ class GGPPipeline:
 
         if mode in ("ALM", "2D_ALM"):
             # Interleaved layout: [Xc_0_0, L_0_0, ..., h_0..h_{np-1}, Mc_0..Mc_{np-1}, y0, theta0]
-            # n = 2*nY*np_val + 2*np_val + 2
-            # Passed via kwargs: np_val, nY
+            # Matches Matlab reference: Xc on a regular grid, L = nelx/2/np (≈ midpoint),
+            # h = 1 (full column height), Mc = initial_d = 0.5.
             np_val = kwargs.get("np_val", 1)
             nY     = kwargs.get("nY", 1)
             n_xl   = 2 * nY * np_val
             x = np.empty(n)
-            # [Xc, L] interleaved: spread Xc uniformly, thin L
-            comp_positions_norm = np.tile(np.linspace(0.1, 0.9, max(np_val, 1)), nY)
-            x[0:n_xl:2] = comp_positions_norm[:nY * np_val]  # Xc normalised
-            x[1:n_xl:2] = 0.05                                # L: thin
-            # h: mid-range (0.6 normalised → actual ~0.2+0.6*0.8 in default_bounds)
-            x[n_xl       : n_xl + np_val] = 0.8
-            # Mc: medium
+            # [Xc, L] interleaved (F-order: layer k is inner loop, column j is outer).
+            # np.repeat gives [c0]*nY, [c1]*nY, ..., [c_{np-1}]*nY — correct F-order layout.
+            col_positions_norm = np.linspace(1.0/(np_val+1), np_val/(np_val+1), np_val)
+            x[0:n_xl:2] = np.repeat(col_positions_norm, nY)  # Xc: F-order grid per layer
+            x[1:n_xl:2] = 0.333                               # L: ~1/3 of range ≈ Matlab Lc=nelx/2/np
+            # h = 1 (normalised to upper bound → full print height, matching Matlab h=ones)
+            x[n_xl       : n_xl + np_val] = 1.0
+            # Mc = initial_d = 0.5
             x[n_xl + np_val : n_xl + 2*np_val] = 0.50
-            # y0, theta0: neutral
+            # y0, theta0: neutral (0.5 maps to 0 for symmetric bounds)
             if n >= n_xl + 2*np_val + 2:
-                x[n_xl + 2*np_val]     = 0.5  # y0 at mid-range (normalised)
-                x[n_xl + 2*np_val + 1] = 0.5  # theta0 at mid-range (0 rotation)
+                x[n_xl + 2*np_val]     = 0.5  # y0 = 0
+                x[n_xl + 2*np_val + 1] = 0.5  # theta0 = 0
             return x
 
         if mode == "3D_Free":
