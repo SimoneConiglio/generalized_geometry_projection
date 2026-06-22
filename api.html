@@ -162,6 +162,7 @@
 <li class="toctree-l4"><a class="reference internal" href="#ggp.projection.alm_2d.ALM2DMapper.default_bounds"><code class="docutils literal notranslate"><span class="pre">ALM2DMapper.default_bounds()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#ggp.projection.alm_2d.ALM2DMapper.forward"><code class="docutils literal notranslate"><span class="pre">ALM2DMapper.forward()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#ggp.projection.alm_2d.ALM2DMapper.jacobian"><code class="docutils literal notranslate"><span class="pre">ALM2DMapper.jacobian()</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.projection.alm_2d.ALM2DMapper.num_vars"><code class="docutils literal notranslate"><span class="pre">ALM2DMapper.num_vars()</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#ggp.projection.alm_2d.ALM2DMapper.num_vars_per_component"><code class="docutils literal notranslate"><span class="pre">ALM2DMapper.num_vars_per_component()</span></code></a></li>
 </ul>
 </li>
@@ -949,15 +950,29 @@ value has shape <code class="docutils literal notranslate"><span class="pre">(n_
 </dd></dl>
 
 <p id="module-ggp.projection.alm_2d">Additive Layer Manufacturing (ALM) 2-D geometry projection mapper.</p>
-<p>Maps components layer-by-layer.
-Standard mode: 3 variables per component: [Xc, width, Mc].
-Extended mode: 4 variables per component + [y0, theta0].</p>
+<dl>
+<dt>Correct variable layout (interleaved, matching GGP_ALM_Matlab reference):</dt><dd><dl class="simple">
+<dt>[Xc_0_0, L_0_0, Xc_0_1, L_0_1, …, Xc_{nY-1}_{np-1}, L_{nY-1}_{np-1},</dt><dd><p>h_0, …, h_{np-1},
+Mc_0, …, Mc_{np-1},
+y0, theta0]</p>
+</dd>
+</dl>
+<ul class="simple">
+<li><p>2·nY·np vars:  [Xc, L] interleaved, per layer per component (F-order reshape → Xk[k,j])</p></li>
+<li><p>np vars:       h[j] — normalised total height per printed component (0→1, cutoff = Ly·h)</p></li>
+<li><p>np vars:       Mc[j] — membership density per printed component</p></li>
+<li><p>2 vars:        y0, theta0 — global printing-plane y-offset and rotation angle</p></li>
+</ul>
+</dd>
+</dl>
 <dl class="py class">
 <dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.projection.alm_2d.</span></span><span class="sig-name descname"><span class="pre">ALM2DMapper</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">num_components</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">comp_per_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_height</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_gp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'GP'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ngp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper" title="Link to this definition"></a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.projection.alm_2d.</span></span><span class="sig-name descname"><span class="pre">ALM2DMapper</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">num_components</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_layers</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">comp_per_layer</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">layer_height</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">r_gp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">0.5</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">method</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'MNA'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">Ngp</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">2</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">ProjectionMapper</span></code></p>
-<p>ALM 2-D projection mapper.</p>
-<p>Components are arranged in layers.</p>
+<p>ALM 2-D projection mapper using the MNA continuous formulation.</p>
+<p>All design variables follow the interleaved layout described in the module
+docstring.  The mapper always operates in continuous (MNA) mode — the old
+per-component 3-var mode is removed.</p>
 <dl class="py method">
 <dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper.default_bounds">
 <span class="sig-name descname"><span class="pre">default_bounds</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">domain_extents</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">float</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="p"><span class="pre">...</span></span><span class="p"><span class="pre">]</span></span></span></em>, <em class="sig-param"><span class="n"><span class="pre">num_components</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">Tuple</span><span class="p"><span class="pre">[</span></span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="pre">numpy.ndarray</span><span class="p"><span class="pre">]</span></span></span></span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper.default_bounds"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper.default_bounds" title="Link to this definition"></a></dt>
@@ -1023,9 +1038,15 @@ value has shape <code class="docutils literal notranslate"><span class="pre">(n_
 </dd></dl>
 
 <dl class="py method">
+<dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper.num_vars">
+<span class="sig-name descname"><span class="pre">num_vars</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper.num_vars"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper.num_vars" title="Link to this definition"></a></dt>
+<dd><p>Total number of design variables.</p>
+</dd></dl>
+
+<dl class="py method">
 <dt class="sig sig-object py" id="ggp.projection.alm_2d.ALM2DMapper.num_vars_per_component">
 <span class="sig-name descname"><span class="pre">num_vars_per_component</span></span><span class="sig-paren">(</span><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">int</span></span></span><a class="reference internal" href="_modules/ggp/projection/alm_2d.html#ALM2DMapper.num_vars_per_component"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.projection.alm_2d.ALM2DMapper.num_vars_per_component" title="Link to this definition"></a></dt>
-<dd><p>Number of design variables per geometric primitive.</p>
+<dd><p>Legacy; returns total vars (not per-component — layout is not uniform).</p>
 </dd></dl>
 
 </dd></dl>
