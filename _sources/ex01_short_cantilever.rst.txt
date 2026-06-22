@@ -1,10 +1,10 @@
 Short Cantilever
 ================
 
-A standard GGP benchmark: a 60 × 30 beam clamped on the left face with a
-downward point load at the mid-right edge.  The Free formulation uses 18
-overlapping bar-shaped components whose shapes and positions are optimised
-to minimise compliance at a 40 % volume fraction.
+A GGP benchmark: a 60 × 30 beam clamped on the left face with a downward
+point load at the mid-right edge.  Eighteen free bars optimise their
+position, orientation, length, thickness, and membership density using the
+AMNA (MNA) characteristic function.
 
 Running
 -------
@@ -24,10 +24,10 @@ Result
 
 .. figure:: _static/short_cantilever_optimized.png
    :alt: Optimized short cantilever topology
-   :width: 90%
+   :width: 80%
    :align: center
 
-   Optimized density field after 150 MMA iterations (40 % volume fraction).
+   Optimized density field after 400 MMA iterations (40 % volume fraction).
 
 Problem details
 ---------------
@@ -41,11 +41,17 @@ Problem details
 +---------------------+------------------+
 | Formulation         | Free 2D          |
 +---------------------+------------------+
+| Method              | AMNA (MNA)       |
++---------------------+------------------+
 | Components          | 18               |
++---------------------+------------------+
+| ``r_gp`` (σ)        | 1.0              |
++---------------------+------------------+
+| Min thickness       | 3 elements       |
 +---------------------+------------------+
 | Volume fraction     | 0.40             |
 +---------------------+------------------+
 | Algorithm           | MMA              |
 +---------------------+------------------+
-| Max iterations      | 150              |
+| Max iterations      | 400              |
 +---------------------+------------------+

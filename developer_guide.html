@@ -547,37 +547,53 @@ window.runMermaid = runMermaid;</script>
 <p>The <strong>Generalized Geometry Projection (GGP)</strong> method parametrizes a design domain using explicit geometric primitives (e.g., rectangles, ellipses) rather than a dense grid of pixel densities. This framework implements the 2D Free formulation based on the original work by Coniglio et al.</p>
 <section id="primitive-mapping">
 <h3>1. Primitive Mapping<a class="headerlink" href="#primitive-mapping" title="Link to this heading"></a></h3>
-<p>Each component <span class="math notranslate nohighlight">\(i\)</span> is defined by a set of continuous variables <span class="math notranslate nohighlight">\(x_i = [X_c, Y_c, L, H, \theta]\)</span>, representing its center coordinates, length, thickness, and orientation angle.</p>
-<p>To determine the density contribution of a primitive at any spatial point <span class="math notranslate nohighlight">\((x, y)\)</span>, the method computes the projection in four steps:</p>
+<p>Each component <span class="math notranslate nohighlight">\(i\)</span> is defined by a set of continuous variables
+<span class="math notranslate nohighlight">\(x_i = [X_c, Y_c, L, H, \theta, M_c]\)</span>, representing its center
+coordinates, length, thickness, orientation angle, and membership density.</p>
+<p>To determine the density contribution of a primitive at any spatial point
+<span class="math notranslate nohighlight">\((x, y)\)</span>, the evaluation proceeds in two steps.</p>
 <p><strong>Step 1: Local Coordinates</strong>
-The coordinates are translated and rotated to the component’s local reference frame:</p>
+The global coordinates are translated and rotated to the component’s local
+reference frame:</p>
 <div class="math notranslate nohighlight">
 \[\Delta x = x - X_c, \quad \Delta y = y - Y_c\]</div>
 <div class="math notranslate nohighlight">
-\[x_{loc} = \Delta x \cos\theta + \Delta y \sin\theta\]</div>
+\[x_{loc} = \Delta x \cos\theta + \Delta y \sin\theta, \quad
+y_{loc} = -\Delta x \sin\theta + \Delta y \cos\theta\]</div>
+<p><strong>Step 2: Characteristic Function (AMNA — default)</strong></p>
+<p>The default method is <strong>AMNA</strong> (Anisotropic Moving Node Approach, called <em>MNA</em>
+in the original Matlab reference).  It models each component as an axis-aligned
+rectangle in local coordinates, using four independent quintic window
+evaluations — one per edge:</p>
 <div class="math notranslate nohighlight">
-\[y_{loc} = -\Delta x \sin\theta + \Delta y \cos\theta\]</div>
-<p><strong>Step 2: Skeleton Distance</strong>
-The distance <span class="math notranslate nohighlight">\(\psi_i(x,y)\)</span> from the point to the component’s central skeleton (a line segment of length <span class="math notranslate nohighlight">\(L\)</span>) is calculated:</p>
+\[\zeta_1 = -\tfrac{L}{2} - x_{loc}, \quad
+\zeta_2 = x_{loc} - \tfrac{L}{2}, \quad
+\zeta_3 = y_{loc} - \tfrac{H}{2}, \quad
+\zeta_4 = -\tfrac{H}{2} - y_{loc}\]</div>
+<p>Each <span class="math notranslate nohighlight">\(\zeta_k\)</span> measures the signed distance from the corresponding
+edge (<span class="math notranslate nohighlight">\(\zeta_k &lt; 0\)</span> means <em>inside</em> that half-space).  The quintic window
+function with bandwidth <span class="math notranslate nohighlight">\(\sigma\)</span> (parameter <code class="docutils literal notranslate"><span class="pre">r_gp</span></code>) is:</p>
 <div class="math notranslate nohighlight">
-\[d_x = \max(0, |x_{loc}| - L/2)\]</div>
-<div class="math notranslate nohighlight">
-\[\psi_i(x, y) = \sqrt{d_x^2 + y_{loc}^2}\]</div>
-<p><strong>Step 3: Signed Distance</strong>
-The signed distance variable <span class="math notranslate nohighlight">\(\zeta\)</span> evaluates whether the point is inside or outside the component’s boundary (thickness <span class="math notranslate nohighlight">\(H\)</span>):</p>
-<div class="math notranslate nohighlight">
-\[\zeta = \psi_i(x, y) - H/2\]</div>
-<p>(<span class="math notranslate nohighlight">\(\zeta &lt; 0\)</span> inside, <span class="math notranslate nohighlight">\(\zeta &gt; 0\)</span> outside).</p>
-<p><strong>Step 4: Regularized Mapping</strong>
-To ensure strict differentiability for gradient-based optimization, the local density <span class="math notranslate nohighlight">\(\rho_i(x,y)\)</span> is mapped from <span class="math notranslate nohighlight">\(\zeta\)</span> using a smoothed area-fraction function over a narrow transition band <span class="math notranslate nohighlight">\(r_{gp}\)</span>:</p>
-<div class="math notranslate nohighlight">
-\[\begin{split}\rho_i(x, y) =
+\[\begin{split}W(\zeta) =
 \begin{cases}
-1 &amp; \text{if } \zeta &lt; -r_{gp} \\
-\delta_{min} + (1 - \delta_{min}) \frac{1}{\pi} \left( \arccos(z) - z \sqrt{1 - z^2} \right) &amp; \text{if } -r_{gp} \le \zeta \le r_{gp} \\
-\delta_{min} &amp; \text{if } \zeta &gt; r_{gp}
+    1 &amp; \zeta &lt; -\sigma \\[4pt]
+    \tfrac{1}{2} - \tfrac{15}{16\sigma}\zeta
+        + \tfrac{5}{8\sigma^3}\zeta^3
+        - \tfrac{3}{16\sigma^5}\zeta^5 &amp; |\zeta| \le \sigma \\[4pt]
+    0 &amp; \zeta &gt; \sigma
 \end{cases}\end{split}\]</div>
-<p>where <span class="math notranslate nohighlight">\(z = \zeta / r_{gp}\)</span> is the normalized distance inside the transition band, and <span class="math notranslate nohighlight">\(\delta_{min}\)</span> is a tiny void density (e.g., <span class="math notranslate nohighlight">\(10^{-6}\)</span>) to prevent global stiffness matrix singularities.</p>
+<p>The component characteristic value is the product of all four window
+evaluations, integrated over a small Gauss-point sampling window of radius
+<span class="math notranslate nohighlight">\(r_{gp}\)</span> centred on each element:</p>
+<div class="math notranslate nohighlight">
+\[\chi_i(x, y) = W(\zeta_1)\,W(\zeta_2)\,W(\zeta_3)\,W(\zeta_4)\]</div>
+<p><strong>Default settings (matching the original reference):</strong>
+<code class="docutils literal notranslate"><span class="pre">method='AMNA'</span></code>, <code class="docutils literal notranslate"><span class="pre">r_gp=1.0</span></code> (one-element transition band), <code class="docutils literal notranslate"><span class="pre">minh=3</span></code>
+(minimum bar thickness of 3 elements).</p>
+<p><strong>Legacy method (GP — circular capsule)</strong></p>
+<p>The original GP formulation uses a single distance-based transition.  It is
+still available via <code class="docutils literal notranslate"><span class="pre">method='GP'</span></code> in the YAML formulation block, but
+produces less crisp bar boundaries and is not recommended for new runs.</p>
 </section>
 <section id="saturated-kreisselmeier-steinhauser-ks-aggregation">
 <h3>2. Saturated Kreisselmeier-Steinhauser (KS) Aggregation<a class="headerlink" href="#saturated-kreisselmeier-steinhauser-ks-aggregation" title="Link to this heading"></a></h3>

@@ -98,10 +98,10 @@
              
   <section id="short-cantilever">
 <h1>Short Cantilever<a class="headerlink" href="#short-cantilever" title="Link to this heading"></a></h1>
-<p>A standard GGP benchmark: a 60 × 30 beam clamped on the left face with a
-downward point load at the mid-right edge.  The Free formulation uses 18
-overlapping bar-shaped components whose shapes and positions are optimised
-to minimise compliance at a 40 % volume fraction.</p>
+<p>A GGP benchmark: a 60 × 30 beam clamped on the left face with a downward
+point load at the mid-right edge.  Eighteen free bars optimise their
+position, orientation, length, thickness, and membership density using the
+AMNA (MNA) characteristic function.</p>
 <section id="running">
 <h2>Running<a class="headerlink" href="#running" title="Link to this heading"></a></h2>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>short_cantilever
@@ -115,10 +115,10 @@ to minimise compliance at a 40 % volume fraction.</p>
 <section id="result">
 <h2>Result<a class="headerlink" href="#result" title="Link to this heading"></a></h2>
 <figure class="align-center" id="id1">
-<a class="reference internal image-reference" href="_images/short_cantilever_optimized.png"><img alt="Optimized short cantilever topology" src="_images/short_cantilever_optimized.png" style="width: 90%;" />
+<a class="reference internal image-reference" href="_images/short_cantilever_optimized.png"><img alt="Optimized short cantilever topology" src="_images/short_cantilever_optimized.png" style="width: 80%;" />
 </a>
 <figcaption>
-<p><span class="caption-text">Optimized density field after 150 MMA iterations (40 % volume fraction).</span><a class="headerlink" href="#id1" title="Link to this image"></a></p>
+<p><span class="caption-text">Optimized density field after 400 MMA iterations (40 % volume fraction).</span><a class="headerlink" href="#id1" title="Link to this image"></a></p>
 </figcaption>
 </figure>
 </section>
@@ -140,17 +140,26 @@ to minimise compliance at a 40 % volume fraction.</p>
 <tr class="row-even"><td><p>Formulation</p></td>
 <td><p>Free 2D</p></td>
 </tr>
-<tr class="row-odd"><td><p>Components</p></td>
+<tr class="row-odd"><td><p>Method</p></td>
+<td><p>AMNA (MNA)</p></td>
+</tr>
+<tr class="row-even"><td><p>Components</p></td>
 <td><p>18</p></td>
 </tr>
-<tr class="row-even"><td><p>Volume fraction</p></td>
+<tr class="row-odd"><td><p><code class="docutils literal notranslate"><span class="pre">r_gp</span></code> (σ)</p></td>
+<td><p>1.0</p></td>
+</tr>
+<tr class="row-even"><td><p>Min thickness</p></td>
+<td><p>3 elements</p></td>
+</tr>
+<tr class="row-odd"><td><p>Volume fraction</p></td>
 <td><p>0.40</p></td>
 </tr>
-<tr class="row-odd"><td><p>Algorithm</p></td>
+<tr class="row-even"><td><p>Algorithm</p></td>
 <td><p>MMA</p></td>
 </tr>
-<tr class="row-even"><td><p>Max iterations</p></td>
-<td><p>150</p></td>
+<tr class="row-odd"><td><p>Max iterations</p></td>
+<td><p>400</p></td>
 </tr>
 </tbody>
 </table>
