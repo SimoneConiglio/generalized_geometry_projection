@@ -172,8 +172,14 @@ class GGPPipeline:
             x[n_xl       : n_xl + np_val] = 1.0   # h = 1 (full height)
             x[n_xl + np_val : n_xl + 2*np_val] = 0.50  # Mc = 0.5
             if n >= n_xl + 2*np_val + 2:
-                x[n_xl + 2*np_val]     = 0.5   # y0 = 0
-                x[n_xl + 2*np_val + 1] = 0.5   # theta0 = 0
+                x[n_xl + 2*np_val]     = 0.5    # y0 = 0
+                # theta0 = 0 (normalised 0.5 of the [-pi/2, pi/2] range). theta0=0 is
+                # the optimal build orientation for the cantilever: jointly-optimized
+                # compliance was tested at theta0 = 0 / -56 / -90 deg -> C = 86 / 108 /
+                # 131, i.e. it worsens monotonically as the plane rotates away from 0
+                # (vertical layers let the bars form the efficient horizontal load path;
+                # beam-axis layering at +/-90 is less efficient).
+                x[n_xl + 2*np_val + 1] = 0.5    # theta0 = 0
             return x
 
         if mode == "3D_Free":
@@ -276,14 +282,16 @@ class GGPPipeline:
         # AMNA/MNA methods: SIMP with p=3
         method = self.spec.formulation.method or "GP"
         p_penalty = 1.0 if method == "GP" else 3.0
-        # Emin: the reference GP branch (model_updateM.py) computes E = rho*E0 with
-        # NO Emin floor (void E -> ~0 via the smooth-saturation residual). GGP-Topo's
-        # SIMP form adds Emin, which spuriously raises void E by Emin and, because the
-        # initial design is mostly void, shifts compliance ~1.5% and steers the
+        # Emin: the reference Free GP branch (model_updateM.py) computes E = rho*E0
+        # with NO Emin floor (void E -> ~0 via the smooth-saturation residual).
+        # GGP-Topo's SIMP form adds Emin, which spuriously raises void E and, because
+        # the initial design is mostly void, shifts compliance ~1.5% and steers the
         # optimizer to a different (asymmetric) optimum. Match the reference: no Emin
-        # floor for GP (saturation keeps K non-singular); keep Emin for MNA/AMNA,
-        # whose model_updateM branch does add Emin.
-        e_min = 0.0 if method == "GP" else 1e-6
+        # floor for the Free GP case. NB: ALM modes also default to method="GP" but
+        # their reference uses MNA *with* Emin (and Emin=0 makes the ALM FE singular
+        # -> NaN), so the no-floor case is restricted to non-ALM modes.
+        _is_alm = "ALM" in (self.spec.formulation.mode or "")
+        e_min = 0.0 if (method == "GP" and not _is_alm) else 1e-6
 
         phys_discipline = GGPPhysicsDiscipline(
             V_u=analysis.function_spaces["u"],

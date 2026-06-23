@@ -114,9 +114,13 @@ class ALM2DMapper(ProjectionMapper):
         lb[n_xl + 2*np_val] = -Ly / 2.0
         ub[n_xl + 2*np_val] =  Ly / 2.0
 
-        # theta0: rotation angle [-pi/4, pi/4]
-        lb[n_xl + 2*np_val + 1] = -np.pi / 4.0
-        ub[n_xl + 2*np_val + 1] =  np.pi / 4.0
+        # theta0: print-plane rotation angle, full physical range [-pi/2, pi/2]
+        # (widened from the previous +/-pi/4). NB: for the cantilever the optimum is
+        # theta0=0 (vertical layers); jointly-optimized compliance worsens as the plane
+        # rotates away from 0 (tested 0/-56/-90 deg -> C 86/108/131). The wider range is
+        # kept so the build orientation is unconstrained for other load cases.
+        lb[n_xl + 2*np_val + 1] = -np.pi / 2.0
+        ub[n_xl + 2*np_val + 1] =  np.pi / 2.0
 
         return lb, ub
 
