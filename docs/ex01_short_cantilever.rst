@@ -27,7 +27,7 @@ Result
    :width: 80%
    :align: center
 
-   Optimized density field after 250 MMA iterations (40 % volume fraction, C = 74.3).
+   Optimized density field after 320 MMA iterations (40 % volume fraction, C = 75.1).
 
 Problem details
 ---------------
@@ -37,7 +37,7 @@ Problem details
 +=====================+==================+
 | Domain              | 60 × 30          |
 +---------------------+------------------+
-| Mesh                | 60 × 30 quads    |
+| Mesh                | 120 × 60 quads   |
 +---------------------+------------------+
 | Formulation         | Free 2D          |
 +---------------------+------------------+
@@ -51,7 +51,7 @@ Problem details
 +---------------------+------------------+
 | Algorithm           | MMA              |
 +---------------------+------------------+
-| Max iterations      | 250              |
+| Max iterations      | 320              |
 +---------------------+------------------+
-| Compliance          | 74.3             |
+| Compliance          | 75.1             |
 +---------------------+------------------+
