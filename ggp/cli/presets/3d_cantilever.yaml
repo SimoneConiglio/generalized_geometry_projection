@@ -53,3 +53,9 @@ solver:
     xtol_abs: 1.0e-20
 
 volfrac: 0.1
+
+# Initial guess: seed components from a coarse tet mesh
+# of the design domain (one bar per mesh edge); cell_size drives the count.
+init:
+  pattern: tet3d
+  cell_size: 30

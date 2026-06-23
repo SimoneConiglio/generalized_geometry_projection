@@ -59,3 +59,9 @@ solver:
     xtol_abs: 1.0e-20
 
 volfrac: 0.4
+
+# Initial guess: seed components from a coarse triangulation
+# of the design domain (one bar per mesh edge); cell_size drives the count.
+init:
+  pattern: tri2d
+  cell_size: 15
