@@ -290,8 +290,16 @@ class GGPPipeline:
         # floor for the Free GP case. NB: ALM modes also default to method="GP" but
         # their reference uses MNA *with* Emin (and Emin=0 makes the ALM FE singular
         # -> NaN), so the no-floor case is restricted to non-ALM modes.
+        #
+        # A forced non-design void region (empty_elements) is the same singular
+        # trap: those elements are pinned to rho=0, so with Emin=0 every node in
+        # the void interior gets an all-zero stiffness row and the global matrix is
+        # exactly singular (e.g. the L-shape bracket). Keep the Emin floor whenever
+        # void elements are present so the void carries a vanishing-but-nonzero
+        # stiffness and the FE system stays solvable.
         _is_alm = "ALM" in (self.spec.formulation.mode or "")
-        e_min = 0.0 if (method == "GP" and not _is_alm) else 1e-6
+        _has_void = bool(analysis.empty_elements)
+        e_min = 0.0 if (method == "GP" and not _is_alm and not _has_void) else 1e-6
 
         phys_discipline = GGPPhysicsDiscipline(
             V_u=analysis.function_spaces["u"],
