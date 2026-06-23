@@ -692,8 +692,14 @@ window.runMermaid = runMermaid;</script>
             <span class="n">x</span><span class="p">[</span><span class="n">n_xl</span>       <span class="p">:</span> <span class="n">n_xl</span> <span class="o">+</span> <span class="n">np_val</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>   <span class="c1"># h = 1 (full height)</span>
             <span class="n">x</span><span class="p">[</span><span class="n">n_xl</span> <span class="o">+</span> <span class="n">np_val</span> <span class="p">:</span> <span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.50</span>  <span class="c1"># Mc = 0.5</span>
             <span class="k">if</span> <span class="n">n</span> <span class="o">&gt;=</span> <span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span> <span class="o">+</span> <span class="mi">2</span><span class="p">:</span>
-                <span class="n">x</span><span class="p">[</span><span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span><span class="p">]</span>     <span class="o">=</span> <span class="mf">0.5</span>   <span class="c1"># y0 = 0</span>
-                <span class="n">x</span><span class="p">[</span><span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.5</span>   <span class="c1"># theta0 = 0</span>
+                <span class="n">x</span><span class="p">[</span><span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span><span class="p">]</span>     <span class="o">=</span> <span class="mf">0.5</span>    <span class="c1"># y0 = 0</span>
+                <span class="c1"># theta0 = 0 (normalised 0.5 of the [-pi/2, pi/2] range). theta0=0 is</span>
+                <span class="c1"># the optimal build orientation for the cantilever: jointly-optimized</span>
+                <span class="c1"># compliance was tested at theta0 = 0 / -56 / -90 deg -&gt; C = 86 / 108 /</span>
+                <span class="c1"># 131, i.e. it worsens monotonically as the plane rotates away from 0</span>
+                <span class="c1"># (vertical layers let the bars form the efficient horizontal load path;</span>
+                <span class="c1"># beam-axis layering at +/-90 is less efficient).</span>
+                <span class="n">x</span><span class="p">[</span><span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.5</span>    <span class="c1"># theta0 = 0</span>
             <span class="k">return</span> <span class="n">x</span>
 
         <span class="k">if</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;3D_Free&quot;</span><span class="p">:</span>
@@ -798,14 +804,16 @@ window.runMermaid = runMermaid;</script>
         <span class="c1"># AMNA/MNA methods: SIMP with p=3</span>
         <span class="n">method</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">method</span> <span class="ow">or</span> <span class="s2">&quot;GP&quot;</span>
         <span class="n">p_penalty</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;GP&quot;</span> <span class="k">else</span> <span class="mf">3.0</span>
-        <span class="c1"># Emin: the reference GP branch (model_updateM.py) computes E = rho*E0 with</span>
-        <span class="c1"># NO Emin floor (void E -&gt; ~0 via the smooth-saturation residual). GGP-Topo&#39;s</span>
-        <span class="c1"># SIMP form adds Emin, which spuriously raises void E by Emin and, because the</span>
-        <span class="c1"># initial design is mostly void, shifts compliance ~1.5% and steers the</span>
+        <span class="c1"># Emin: the reference Free GP branch (model_updateM.py) computes E = rho*E0</span>
+        <span class="c1"># with NO Emin floor (void E -&gt; ~0 via the smooth-saturation residual).</span>
+        <span class="c1"># GGP-Topo&#39;s SIMP form adds Emin, which spuriously raises void E and, because</span>
+        <span class="c1"># the initial design is mostly void, shifts compliance ~1.5% and steers the</span>
         <span class="c1"># optimizer to a different (asymmetric) optimum. Match the reference: no Emin</span>
-        <span class="c1"># floor for GP (saturation keeps K non-singular); keep Emin for MNA/AMNA,</span>
-        <span class="c1"># whose model_updateM branch does add Emin.</span>
-        <span class="n">e_min</span> <span class="o">=</span> <span class="mf">0.0</span> <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;GP&quot;</span> <span class="k">else</span> <span class="mf">1e-6</span>
+        <span class="c1"># floor for the Free GP case. NB: ALM modes also default to method=&quot;GP&quot; but</span>
+        <span class="c1"># their reference uses MNA *with* Emin (and Emin=0 makes the ALM FE singular</span>
+        <span class="c1"># -&gt; NaN), so the no-floor case is restricted to non-ALM modes.</span>
+        <span class="n">_is_alm</span> <span class="o">=</span> <span class="s2">&quot;ALM&quot;</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">mode</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">e_min</span> <span class="o">=</span> <span class="mf">0.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;GP&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_is_alm</span><span class="p">)</span> <span class="k">else</span> <span class="mf">1e-6</span>
 
         <span class="n">phys_discipline</span> <span class="o">=</span> <span class="n">GGPPhysicsDiscipline</span><span class="p">(</span>
             <span class="n">V_u</span><span class="o">=</span><span class="n">analysis</span><span class="o">.</span><span class="n">function_spaces</span><span class="p">[</span><span class="s2">&quot;u&quot;</span><span class="p">],</span>

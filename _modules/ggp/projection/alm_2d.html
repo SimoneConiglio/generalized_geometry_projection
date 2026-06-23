@@ -642,9 +642,13 @@ window.runMermaid = runMermaid;</script>
         <span class="n">lb</span><span class="p">[</span><span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">Ly</span> <span class="o">/</span> <span class="mf">2.0</span>
         <span class="n">ub</span><span class="p">[</span><span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span><span class="p">]</span> <span class="o">=</span>  <span class="n">Ly</span> <span class="o">/</span> <span class="mf">2.0</span>
 
-        <span class="c1"># theta0: rotation angle [-pi/4, pi/4]</span>
-        <span class="n">lb</span><span class="p">[</span><span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">4.0</span>
-        <span class="n">ub</span><span class="p">[</span><span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span>  <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">4.0</span>
+        <span class="c1"># theta0: print-plane rotation angle, full physical range [-pi/2, pi/2]</span>
+        <span class="c1"># (widened from the previous +/-pi/4). NB: for the cantilever the optimum is</span>
+        <span class="c1"># theta0=0 (vertical layers); jointly-optimized compliance worsens as the plane</span>
+        <span class="c1"># rotates away from 0 (tested 0/-56/-90 deg -&gt; C 86/108/131). The wider range is</span>
+        <span class="c1"># kept so the build orientation is unconstrained for other load cases.</span>
+        <span class="n">lb</span><span class="p">[</span><span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span> <span class="o">-</span><span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">2.0</span>
+        <span class="n">ub</span><span class="p">[</span><span class="n">n_xl</span> <span class="o">+</span> <span class="mi">2</span><span class="o">*</span><span class="n">np_val</span> <span class="o">+</span> <span class="mi">1</span><span class="p">]</span> <span class="o">=</span>  <span class="n">np</span><span class="o">.</span><span class="n">pi</span> <span class="o">/</span> <span class="mf">2.0</span>
 
         <span class="k">return</span> <span class="n">lb</span><span class="p">,</span> <span class="n">ub</span></div>
 
