@@ -45,12 +45,16 @@ solver:
   algorithm: MMA
   max_iter: 300
   options:
+    # Wide asymptotes matching the reference GGP-Matlab/mmasub.py (asyinit=0.5,
+    # asydecr=0.7, clamp [0.01, 10], move=0.01). Tight asymptotes make the MMA
+    # subproblem stiff and the structure fails to reach the load (C~206); the
+    # reference wide asymptotes give a proper load-bearing truss (C~86).
     max_optimization_step: 0.01
-    initial_asymptotes_distance: 0.01
-    max_asymptote_distance: 0.01
-    min_asymptote_distance: 0.0001
+    initial_asymptotes_distance: 0.5
+    max_asymptote_distance: 10.0
+    min_asymptote_distance: 0.01
     asymptotes_distance_amplification_coefficient: 1.2
-    asymptotes_distance_reduction_coefficient: 0.4
+    asymptotes_distance_reduction_coefficient: 0.7
     use_penalty_formulation: true
     ftol_rel: 1.0e-20
     ftol_abs: 1.0e-20

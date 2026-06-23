@@ -276,6 +276,14 @@ class GGPPipeline:
         # AMNA/MNA methods: SIMP with p=3
         method = self.spec.formulation.method or "GP"
         p_penalty = 1.0 if method == "GP" else 3.0
+        # Emin: the reference GP branch (model_updateM.py) computes E = rho*E0 with
+        # NO Emin floor (void E -> ~0 via the smooth-saturation residual). GGP-Topo's
+        # SIMP form adds Emin, which spuriously raises void E by Emin and, because the
+        # initial design is mostly void, shifts compliance ~1.5% and steers the
+        # optimizer to a different (asymmetric) optimum. Match the reference: no Emin
+        # floor for GP (saturation keeps K non-singular); keep Emin for MNA/AMNA,
+        # whose model_updateM branch does add Emin.
+        e_min = 0.0 if method == "GP" else 1e-6
 
         phys_discipline = GGPPhysicsDiscipline(
             V_u=analysis.function_spaces["u"],
@@ -286,7 +294,7 @@ class GGPPipeline:
             volfrac=self.spec.volfrac,
             iterative=self.spec.solver.iterative,
             p_penalty=p_penalty,
-            Emin=1e-6,
+            Emin=e_min,
             E0=1.0,
             empty_elements=analysis.empty_elements if analysis.empty_elements else None,
         )
