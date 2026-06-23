@@ -204,6 +204,43 @@ class MaterialSpec:
     nu: float = 0.3
 
 
+# ── Initial guess ─────────────────────────────────────────────────────────────
+
+@dataclass(frozen=True)
+class InitGuessSpec:
+    """Initial-guess (component seeding) configuration.
+
+    Parameters
+    ----------
+    pattern : str, optional
+        Seeding strategy.  ``None`` selects a dimension-aware default
+        (``"tri2d"`` for 2-D Free, ``"tet3d"`` for 3-D Free, legacy staircase
+        for ALM).  ``"grid"`` reproduces the legacy crossed-bar grid.  Any
+        registered mesh pattern name (``"tri2d"``, ``"quad_star"``, ``"tet3d"``,
+        ``"hex_star"``) tessellates the domain and seeds one bar per edge.
+    cell_size : float, optional
+        Tessellation cell size for mesh patterns.  Drives the component count.
+        ``None`` selects a dimension-aware default.
+    thickness : float, optional
+        Fixed initial bar thickness.  ``None`` fits the thickness so the seeded
+        design starts near ``volfrac`` (see ``fit_volfrac``).
+    membership : float
+        Initial membership / density of each seeded bar.
+    fit_volfrac : bool
+        If ``True`` (and ``thickness`` is ``None``), bisect the thickness so the
+        projected initial volume fraction matches the target ``volfrac``.
+    params : dict
+        Extra pattern-specific parameters.
+    """
+    pattern: Optional[str] = None
+    cell_size: Optional[float] = None
+    thickness: Optional[float] = None
+    membership: float = 1.0
+    fit_volfrac: bool = True
+    params: Dict[str, Any] = field(default_factory=dict)
+
+
+
 # ── Top-level ProblemSpec ─────────────────────────────────────────────────────
 
 @dataclass(frozen=True)
@@ -245,3 +282,4 @@ class ProblemSpec:
     solver: SolverSpec = field(default_factory=SolverSpec)
     volfrac: float = 0.4
     material: MaterialSpec = field(default_factory=MaterialSpec)
+    init: InitGuessSpec = field(default_factory=InitGuessSpec)

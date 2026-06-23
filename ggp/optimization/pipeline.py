@@ -81,160 +81,62 @@ class GGPPipeline:
 
     @staticmethod
     def _make_init(mode: str, num_vars: int, **kwargs) -> np.ndarray:
-        """Return a normalized [0,1] initial design vector appropriate for *mode*.
+        """Return a normalized [0,1] initial design vector for the legacy seeds.
 
-        For Free 2D, replicates the Matlab GGP_main.m initialization:
-        paired crossed bars on a regular 3x3 grid at ±atan2(Ly,Lx) angle,
-        L = 2*sqrt((Lx/3)^2+(Ly/3)^2), h=2, Mc=0.5.
+        Delegates to the verbatim grid / ALM initial guesses in
+        :mod:`ggp.initialization.legacy`.  Mesh / unit-cell patterns are handled
+        separately in :meth:`run` via the initialization registry.
         """
+        from ggp.initialization.legacy import (
+            make_alm_init,
+            make_grid_init_2d,
+            make_grid_init_3d,
+        )
+
         n = num_vars
-
         if mode in ("Free", "2D_Free"):
-            # Matlab-style grid initialization (GGP_main.m lines 159-168)
-            # ncx=1, ncy=1 → 3×3 grid of (ncx+2)×(ncy+2) positions
-            Lx = kwargs.get("Lx", 60.0)
-            Ly = kwargs.get("Ly", 30.0)
-            lb = kwargs.get("lb", None)
-            ub = kwargs.get("ub", None)
-            nc = n // 6
-            ncx, ncy = 1, 1
-            # Standard Matlab-style grid (same for rectangular and L-shape domains).
-            # For the L-shape, only 1 of 9 positions is in the non-design region —
-            # the other 8 (including corners like (0,Ly) at ±theta) provide structural
-            # connectivity across both arms.  The empty-element override in physics
-            # handles the non-design region correctly.
-            xp = np.linspace(0.0, Lx, ncx + 2)
-            yp = np.linspace(0.0, Ly, ncy + 2)
-            xx, yy = np.meshgrid(xp, yp)
-            grid_X = xx.flatten()
-            grid_Y = yy.flatten()
-            half = nc // 2
-            theta = np.arctan2(Ly / ncy, Lx / ncx)
-            Lc = 2.0 * np.sqrt((Lx / (ncx + 2)) ** 2 + (Ly / (ncy + 2)) ** 2)
-
-            # Paired bars: first nc//2 at +theta, remaining at -theta
-            n_grid = len(grid_X)
-            idx_pos = np.arange(half) % n_grid
-            idx_neg = np.arange(nc - half) % n_grid
-            Xc = np.concatenate([grid_X[idx_pos], grid_X[idx_neg]])
-            Yc = np.concatenate([grid_Y[idx_pos], grid_Y[idx_neg]])
-            Tc = np.concatenate([theta * np.ones(half), -theta * np.ones(nc - half)])
-
-            hc = 2.0   # initial h just above minh=1
-            Mc = 0.5   # initial_d
-
-            # Normalize to [0,1] using mapper bounds
-            x = np.empty(n)
-            if lb is not None and ub is not None:
-                x[0::6] = np.clip((Xc - lb[0::6]) / (ub[0::6] - lb[0::6]), 0.0, 1.0)
-                x[1::6] = np.clip((Yc - lb[1::6]) / (ub[1::6] - lb[1::6]), 0.0, 1.0)
-                x[2::6] = np.clip((Lc - lb[2::6]) / (ub[2::6] - lb[2::6]), 0.0, 1.0)
-                x[3::6] = np.clip((hc - lb[3::6]) / (ub[3::6] - lb[3::6]), 0.0, 1.0)
-                x[4::6] = np.clip((Tc - lb[4::6]) / (ub[4::6] - lb[4::6]), 0.0, 1.0)
-            else:
-                # Fallback: rough normalized values
-                x[0::6] = Xc / (Lx + 2)
-                x[1::6] = Yc / (Ly + 2)
-                x[2::6] = Lc / np.sqrt(Lx**2 + Ly**2)
-                x[3::6] = 0.015
-                x[4::6] = 0.5
-            x[5::6] = Mc
-            return x
-
+            return make_grid_init_2d(n, **kwargs)
         if mode in ("ALM", "2D_ALM"):
-            # Interleaved layout: [Xc_0_0, L_0_0, ..., h_0..h_{np-1}, Mc_0..Mc_{np-1}, y0, theta0]
-            np_val     = kwargs.get("np_val", 1)
-            nY         = kwargs.get("nY", 1)
-            layer_h    = kwargs.get("layer_height", 3.0)
-            alpha_deg  = kwargs.get("alpha_deg", 45.0)
-            n_xl       = 2 * nY * np_val
-            x = np.empty(n)
-
-            # Staircase initialization: each column is a maximum-overhang ascending
-            # staircase so that the rightmost column reaches x=Lx at mid-height
-            # (the load layer), giving non-zero gradient from iteration 1.
-            # Physical Xc bounds: lb=-1, ub=Lx+1 (range = Lx+2).
-            Lx         = kwargs.get("Lx", 60.0)
-            xc_range   = Lx + 2.0                          # ub - lb = (Lx+1) - (-1)
-            delta_norm = np.tan(np.deg2rad(alpha_deg)) * layer_h / xc_range
-            load_layer  = nY // 2
-            P_bot_right = (Lx + 1.0) / xc_range - load_layer * delta_norm
-            P_bot_left  = (0.0 + 1.0) / xc_range
-            P_bottom = np.linspace(P_bot_left, P_bot_right, np_val)
-
-            # Assign Xc[k, j] = P_bottom[j] + k * delta_norm (clamped to [0,1])
-            # F-order: x_vars index of Xc[k,j] = 2*(j*nY + k)
-            for j in range(np_val):
-                for k in range(nY):
-                    x[2*(j*nY + k)]     = float(np.clip(P_bottom[j] + k*delta_norm, 0.0, 1.0))
-                    x[2*(j*nY + k) + 1] = 0.333   # L normalized ≈ 6 physical
-
-            x[n_xl       : n_xl + np_val] = 1.0   # h = 1 (full height)
-            x[n_xl + np_val : n_xl + 2*np_val] = 0.50  # Mc = 0.5
-            if n >= n_xl + 2*np_val + 2:
-                x[n_xl + 2*np_val]     = 0.5    # y0 = 0
-                # theta0 = 0 (normalised 0.5 of the [-pi/2, pi/2] range). theta0=0 is
-                # the optimal build orientation for the cantilever: jointly-optimized
-                # compliance was tested at theta0 = 0 / -56 / -90 deg -> C = 86 / 108 /
-                # 131, i.e. it worsens monotonically as the plane rotates away from 0
-                # (vertical layers let the bars form the efficient horizontal load path;
-                # beam-axis layering at +/-90 is less efficient).
-                x[n_xl + 2*np_val + 1] = 0.5    # theta0 = 0
-            return x
-
+            return make_alm_init(n, **kwargs)
         if mode == "3D_Free":
-            # 8 vars per component: [Xc, Yc, Zc, L, h, Theta, Phi, Mc]
-            # Grid init: 3D cross-bar pairs on a regular grid (analogous to 2D)
-            Lx = kwargs.get("Lx", 60.0)
-            Ly = kwargs.get("Ly", 30.0)
-            Lz = kwargs.get("Lz", 30.0)
-            lb = kwargs.get("lb", None)
-            ub = kwargs.get("ub", None)
-            nc = n // 8
-
-            # Build 3-D grid: sample independently along each axis so the first
-            # nc//2 positions are spread across x, y, z simultaneously (diagonal sweep).
-            half = nc // 2
-            grid_X = np.linspace(0.0, Lx, half + 1)[:-1]
-            grid_Y = np.linspace(0.0, Ly, half + 1)[:-1]
-            grid_Z = np.linspace(0.0, Lz, half + 1)[:-1]
-
-            # Diagonal bar length spanning ~1/half of each axis
-            Lc = 2.0 * np.sqrt((Lx / half) ** 2 + (Ly / half) ** 2 + (Lz / half) ** 2)
-            theta = np.arctan2(Ly / half, Lx / half)
-            phi = np.arctan2(Lz / half, np.sqrt((Lx / half) ** 2 + (Ly / half) ** 2))
-
-            Xc = np.concatenate([grid_X, grid_X[: nc - half]])
-            Yc = np.concatenate([grid_Y, grid_Y[: nc - half]])
-            Zc = np.concatenate([grid_Z, grid_Z[: nc - half]])
-            Tc = np.concatenate([theta * np.ones(half), -theta * np.ones(nc - half)])
-            Pc = np.concatenate([phi * np.ones(half), -phi * np.ones(nc - half)])
-
-            hc = 2.0
-            Mc = 0.5
-
-            x = np.empty(n)
-            if lb is not None and ub is not None:
-                x[0::8] = np.clip((Xc - lb[0::8]) / (ub[0::8] - lb[0::8]), 0.0, 1.0)
-                x[1::8] = np.clip((Yc - lb[1::8]) / (ub[1::8] - lb[1::8]), 0.0, 1.0)
-                x[2::8] = np.clip((Zc - lb[2::8]) / (ub[2::8] - lb[2::8]), 0.0, 1.0)
-                x[3::8] = np.clip((Lc - lb[3::8]) / (ub[3::8] - lb[3::8]), 0.0, 1.0)
-                x[4::8] = np.clip((hc - lb[4::8]) / (ub[4::8] - lb[4::8]), 0.0, 1.0)
-                x[5::8] = np.clip((Tc - lb[5::8]) / (ub[5::8] - lb[5::8]), 0.0, 1.0)
-                x[6::8] = np.clip((Pc - lb[6::8]) / (ub[6::8] - lb[6::8]), 0.0, 1.0)
-            else:
-                x[0::8] = Xc / Lx
-                x[1::8] = Yc / Ly
-                x[2::8] = Zc / Lz
-                x[3::8] = Lc / np.sqrt(Lx**2 + Ly**2 + Lz**2)
-                x[4::8] = 0.02
-                x[5::8] = 0.5
-                x[6::8] = 0.5
-            x[7::8] = Mc
-            return x
-
+            return make_grid_init_3d(n, **kwargs)
         # Fallback for other modes
         return np.random.default_rng(42).uniform(0.4, 0.6, n)
+
+    def _domain_box(self, Lx: float, Ly: float, Lz):
+        """Build a :class:`DomainBox` (extents + non-design void regions)."""
+        from ggp.initialization import DomainBox
+
+        non_design = []
+        for g in self.spec.geometries:
+            if g.role == "non_design" and g.type == "box":
+                origin = np.asarray(g.params.get("origin", [0.0, 0.0]), dtype=float)
+                far = [Lx, Ly] if Lz is None else [Lx, Ly, Lz]
+                extent = np.asarray(g.params.get("extent", far), dtype=float)
+                non_design.append((origin, extent))
+        return DomainBox(Lx=Lx, Ly=Ly, Lz=Lz, non_design=non_design)
+
+    def _resolve_init_pattern(self, dim: int):
+        """Resolve the configured init pattern to (name, is_mesh_pattern).
+
+        ALM always uses its legacy staircase.  For Free modes the default is the
+        dimension-aware mesh pattern (``tri2d`` in 2-D, ``tet3d`` in 3-D);
+        ``grid`` selects the legacy crossed-bar seed.
+        """
+        from ggp.initialization import is_pattern, list_patterns
+
+        if "ALM" in (self.spec.formulation.mode or ""):
+            return ("alm", False)
+        name = self.spec.init.pattern
+        if name is None:
+            name = "tri2d" if dim == 2 else "tet3d"
+        if name == "grid":
+            return ("grid", False)
+        if is_pattern(name):
+            return (name, True)
+        raise ValueError(
+            f"Unknown init pattern '{name}'. Use 'grid' or one of {list_patterns()}."
+        )
 
     def run(self) -> OptimisationResult:
         start_time = time.time()
@@ -253,6 +155,35 @@ class GGPPipeline:
         Lz = domain.metadata.get("Lz", None)
         mesh_area = Lx * Ly * (Lz if Lz is not None else 1.0)
 
+        # 2b. Initial-guess skeleton (mesh / unit-cell patterns).
+        # For a mesh pattern the tessellation edge count drives num_components, so
+        # the skeleton must be built before the geometry discipline.  ALM and the
+        # legacy "grid" pattern keep the spec's num_components.
+        dim = 3 if Lz is not None else 2
+        box = self._domain_box(Lx, Ly, Lz)
+        init_pattern, init_is_mesh = self._resolve_init_pattern(dim)
+        init_skeleton = None
+        num_components = self.spec.formulation.num_components
+        if init_is_mesh:
+            from ggp.initialization import get_pattern
+
+            cell_size = self.spec.init.cell_size
+            if cell_size is None:
+                # dimension-aware default: half the smallest extent in 2-D
+                # (matches the canonical ~15 for a 60x30 domain), the smallest
+                # extent in 3-D (3-D edge density is much higher).
+                cell_size = min(box.extents) / 2.0 if dim == 2 else min(box.extents)
+            init_skeleton = get_pattern(init_pattern).generate(
+                box, cell_size=cell_size, **self.spec.init.params
+            ).filter_edges_in_domain(box)
+            num_components = init_skeleton.num_edges
+            if num_components != self.spec.formulation.num_components:
+                print(
+                    f"  [init] pattern '{init_pattern}' (cell_size={cell_size:g}) "
+                    f"-> {num_components} components "
+                    f"(overriding num_components={self.spec.formulation.num_components})"
+                )
+
         # 3. Geometry Discipline
         # Use pp=100 to match Matlab smooth_sat.m (sharper binary saturation)
         geom_kwargs = {
@@ -267,7 +198,7 @@ class GGPPipeline:
 
         geom_discipline = GGPGeometryDiscipline(
             mesh=analysis.mesh,
-            num_components=self.spec.formulation.num_components,
+            num_components=num_components,
             mode=self.spec.formulation.mode,
             **{k: v for k, v in geom_kwargs.items() if v is not None}
         )
@@ -327,7 +258,7 @@ class GGPPipeline:
         else:
             num_vars = (
                 geom_discipline.mapper.num_vars_per_component()
-                * self.spec.formulation.num_components
+                * num_components
             )
 
         _init_kwargs = {}
@@ -362,7 +293,36 @@ class GGPPipeline:
                 "lb": geom_discipline.lb,
                 "ub": geom_discipline.ub,
             }
-        x_init = self._make_init(mode, num_vars, **_init_kwargs)
+        if init_is_mesh:
+            # Mesh / unit-cell pattern: encode one bar per skeleton edge, fitting
+            # the bar thickness so the seeded design starts near the target volume
+            # fraction (avoids the near-empty legacy 3-D seed).
+            from ggp.initialization import encode_skeleton, fit_thickness_to_volfrac
+
+            lb = np.asarray(geom_discipline.lb)
+            ub = np.asarray(geom_discipline.ub)
+            membership = self.spec.init.membership
+            thickness = self.spec.init.thickness
+            if thickness is None and self.spec.init.fit_volfrac:
+                def _evaluate(xv):
+                    geom_discipline.execute({"x_vars": xv})
+                    return np.asarray(geom_discipline.local_data["rho_E"]).flatten()
+
+                h_idx = 3 if dim == 2 else 4  # mapper 'h' (thickness) variable
+                thickness = fit_thickness_to_volfrac(
+                    init_skeleton, lb, ub,
+                    membership=membership,
+                    evaluate=_evaluate,
+                    target_volfrac=self.spec.volfrac,
+                    h_bounds=(float(lb[h_idx]), float(ub[h_idx])),
+                )
+            elif thickness is None:
+                thickness = 2.0
+            x_init = encode_skeleton(
+                init_skeleton, lb, ub, thickness=thickness, membership=membership
+            )
+        else:
+            x_init = self._make_init(mode, num_vars, **_init_kwargs)
         design_space.add_variable(
             "x_vars", size=num_vars, lower_bound=0.0, upper_bound=1.0, value=x_init
         )

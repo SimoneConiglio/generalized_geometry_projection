@@ -68,6 +68,14 @@ def cli():
 @click.option("--iterative", is_flag=True, default=False, help="Use PETSc iterative solver.")
 @click.option("--use-line-search", is_flag=True, default=False, help="Enable line search (SLP/CONLIN).")
 @click.option(
+    "--init-pattern", type=str, default=None,
+    help="Initial-guess pattern: grid, tri2d, quad_star, tet3d, hex_star.",
+)
+@click.option(
+    "--init-cell-size", type=float, default=None,
+    help="Cell size for mesh init patterns (drives the component count).",
+)
+@click.option(
     "--output-dir", "-o", "output_dir",
     type=click.Path(path_type=Path),
     default=None,
@@ -81,6 +89,8 @@ def optimize(
     volfrac: Optional[float],
     iterative: bool,
     use_line_search: bool,
+    init_pattern: Optional[str],
+    init_cell_size: Optional[float],
     output_dir: Optional[Path],
 ):
     """Run a topology optimisation from a YAML config or built-in preset.
@@ -118,6 +128,15 @@ def optimize(
     if volfrac is not None:
         from dataclasses import replace
         spec = replace(spec, volfrac=volfrac)
+
+    if init_pattern is not None or init_cell_size is not None:
+        from dataclasses import replace
+        init_overrides = {}
+        if init_pattern is not None:
+            init_overrides["pattern"] = init_pattern
+        if init_cell_size is not None:
+            init_overrides["cell_size"] = init_cell_size
+        spec = replace(spec, init=replace(spec.init, **init_overrides))
 
     # Display summary
     click.echo(click.style("\n═══════════════════════════════════════════════", fg="cyan", bold=True))
@@ -166,11 +185,12 @@ def optimize(
 @cli.command()
 @click.option("--presets", is_flag=True, help="List available built-in presets.")
 @click.option("--mappers", is_flag=True, help="List available projection mappers.")
+@click.option("--patterns", is_flag=True, help="List available initial-guess patterns.")
 @click.option("--backends", is_flag=True, help="List available analysis backends.")
-def info(presets: bool, mappers: bool, backends: bool):
-    """Show available presets, mappers, and analysis backends."""
-    if not (presets or mappers or backends):
-        presets = mappers = backends = True
+def info(presets: bool, mappers: bool, patterns: bool, backends: bool):
+    """Show available presets, mappers, init patterns, and analysis backends."""
+    if not (presets or mappers or patterns or backends):
+        presets = mappers = patterns = backends = True
 
     if presets:
         click.echo(click.style("\nAvailable Presets:", fg="green", bold=True))
@@ -189,6 +209,13 @@ def info(presets: bool, mappers: bool, backends: bool):
             click.echo("  • Free (3D)")
             click.echo("  • ALM (2D)")
             click.echo("  • ALM (3D)")
+
+    if patterns:
+        click.echo(click.style("\nAvailable Initial-Guess Patterns:", fg="green", bold=True))
+        from ggp.initialization import list_patterns
+        click.echo("  • grid  (legacy crossed-bar seed)")
+        for name in list_patterns():
+            click.echo(f"  • {name}")
 
     if backends:
         click.echo(click.style("\nAvailable Analysis Backends:", fg="green", bold=True))
