@@ -78,3 +78,6 @@ performance_history.json
 # Project specific
 GGP-Matlab/
 Optimization_history_*/
+
+# Cached density fields saved next to the regenerated doc figures
+docs/_static/*.npz

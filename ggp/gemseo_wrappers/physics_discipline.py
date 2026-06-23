@@ -97,7 +97,22 @@ class GGPPhysicsDiscipline(Discipline):
             diag_idx = np.where(col_indices == dof)[0]
             if len(diag_idx) > 0:
                 K_global.data[dof_start + diag_idx[0]] = 1.0
-        
+
+        # Pin isolated material-free DOFs. With Emin=0 (the GP method) a node whose
+        # every incident element is void (E=0) — e.g. the interior of a forced
+        # non-design region such as the L-shape bracket's empty quadrant — has an
+        # all-zero stiffness row and column, which makes K singular (spsolve -> NaN).
+        # Such DOFs carry neither load nor stiffness, so pin them to zero with an
+        # identity row. This keeps the system solvable without floating the void on a
+        # fake Emin stiffness, so the load-carrying structure is modelled exactly.
+        diag = K_global.diagonal()
+        isolated_dofs = np.where(diag == 0.0)[0]
+        if isolated_dofs.size:
+            K_global = K_global + sps.csr_matrix(
+                (np.ones(isolated_dofs.size), (isolated_dofs, isolated_dofs)),
+                shape=K_global.shape,
+            )
+
         # Solve K U = F
         if self.iterative:
             from petsc4py import PETSc
