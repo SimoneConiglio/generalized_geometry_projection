@@ -214,10 +214,11 @@ class InitGuessSpec:
     ----------
     pattern : str, optional
         Seeding strategy.  ``None`` selects a dimension-aware default
-        (``"tri2d"`` for 2-D Free, ``"tet3d"`` for 3-D Free, legacy staircase
-        for ALM).  ``"grid"`` reproduces the legacy crossed-bar grid.  Any
-        registered mesh pattern name (``"tri2d"``, ``"quad_star"``, ``"tet3d"``,
-        ``"hex_star"``) tessellates the domain and seeds one bar per edge.
+        (``"quad_star"`` for 2-D Free, ``"hex_star"`` for 3-D Free, legacy
+        staircase for ALM).  ``"grid"`` reproduces the legacy crossed-bar grid.
+        Any registered mesh pattern name (``"tri2d"``, ``"quad_star"``,
+        ``"tet3d"``, ``"hex_star"``) tessellates the domain and seeds one bar
+        per edge.
     cell_size : float, optional
         Tessellation cell size for mesh patterns.  Drives the component count.
         ``None`` selects a dimension-aware default.

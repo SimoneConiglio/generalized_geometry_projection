@@ -76,6 +76,11 @@ def cli():
     help="Cell size for mesh init patterns (drives the component count).",
 )
 @click.option(
+    "--render-refine", type=int, default=2,
+    help="Refine the FE mesh by this factor when rendering the saved figure "
+         "(continuous diagonal bars). 1 = use the FE mesh as-is.",
+)
+@click.option(
     "--output-dir", "-o", "output_dir",
     type=click.Path(path_type=Path),
     default=None,
@@ -91,6 +96,7 @@ def optimize(
     use_line_search: bool,
     init_pattern: Optional[str],
     init_cell_size: Optional[float],
+    render_refine: int,
     output_dir: Optional[Path],
 ):
     """Run a topology optimisation from a YAML config or built-in preset.
@@ -172,10 +178,19 @@ def optimize(
         name = preset_name if preset_name else (config_path.stem if config_path else "result")
         plot_path = output_dir / f"{name}_optimized.png"
         from ggp.visualization.plot import save_density_plot_2d, save_density_plot_3d
+
+        rho, coords = result.density_field, result.eval_coords
+        # Re-evaluate on a finer grid so diagonal bars render continuously
+        # (the FE element size can be comparable to a bar's thickness, which
+        # aliases the isosurface — purely a sampling artefact).
+        if render_refine and render_refine > 1 and result.design_variables is not None:
+            from ggp.visualization.render import refined_density
+            rho, coords = refined_density(spec, result.design_variables, refine=render_refine)
+
         if result.dim == 3:
-            save_density_plot_3d(result.density_field, result.eval_coords, plot_path, title=name)
+            save_density_plot_3d(rho, coords, plot_path, title=name)
         else:
-            save_density_plot_2d(result.density_field, result.eval_coords, plot_path, title=name)
+            save_density_plot_2d(rho, coords, plot_path, title=name)
         click.echo(click.style(f"  Density plot : {plot_path}", fg="cyan"))
         click.echo()
 

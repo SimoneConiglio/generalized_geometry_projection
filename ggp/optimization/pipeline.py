@@ -129,7 +129,7 @@ class GGPPipeline:
             return ("alm", False)
         name = self.spec.init.pattern
         if name is None:
-            name = "tri2d" if dim == 2 else "tet3d"
+            name = "quad_star" if dim == 2 else "hex_star"
         if name == "grid":
             return ("grid", False)
         if is_pattern(name):

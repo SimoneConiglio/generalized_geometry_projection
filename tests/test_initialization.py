@@ -157,8 +157,8 @@ def _spec(mode="Free", lz=False, pattern=None):
 
 
 def test_default_pattern_is_dimension_aware():
-    assert GGPPipeline(_spec(mode="Free"))._resolve_init_pattern(2) == ("tri2d", True)
-    assert GGPPipeline(_spec(mode="3D_Free"))._resolve_init_pattern(3) == ("tet3d", True)
+    assert GGPPipeline(_spec(mode="Free"))._resolve_init_pattern(2) == ("quad_star", True)
+    assert GGPPipeline(_spec(mode="3D_Free"))._resolve_init_pattern(3) == ("hex_star", True)
 
 
 def test_grid_and_alm_are_not_mesh_patterns():
@@ -182,6 +182,27 @@ def test_make_init_grid_delegates_to_legacy():
     np.testing.assert_array_equal(
         GGPPipeline._make_init("3D_Free", n3, **kw3), make_grid_init_3d(n3, **kw3)
     )
+
+
+def test_refined_density_decouples_render_from_fe_mesh():
+    """refined_density re-evaluates the geometry on a finer grid (clean bars)."""
+    from ggp.problem.spec import (
+        ProblemSpec, GeometrySpec, BoundaryCondition, Load, FormulationSpec,
+    )
+    from ggp.visualization.render import refined_density
+
+    spec = ProblemSpec(
+        geometries=[GeometrySpec(type="fenics_rectangle",
+                                 params={"Lx": 60, "Ly": 30, "nx": 6, "ny": 3})],
+        boundary_conditions=[BoundaryCondition(region="left")],
+        loads=[Load(region="mid_right")],
+        formulation=FormulationSpec(mode="Free"),
+    )
+    x = np.full(4 * 6, 0.5)            # 4 components x 6 vars
+    rho, coords = refined_density(spec, x, refine=2)
+    assert coords.shape[0] == (6 * 2) * (3 * 2)   # refined nx*ny element centres
+    assert rho.shape[0] == coords.shape[0]
+    assert np.all((rho >= 0) & (rho <= 1))
 
 
 def test_grid_init_2d_is_stable():

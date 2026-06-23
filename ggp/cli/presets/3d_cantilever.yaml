@@ -54,8 +54,8 @@ solver:
 
 volfrac: 0.1
 
-# Initial guess: seed components from a coarse tet mesh
-# of the design domain (one bar per mesh edge); cell_size drives the count.
+# Initial guess: seed components from a coarse hex lattice (each hex -> 24 tets via face/body centres);
+# one bar per skeleton edge, cell_size drives the component count.
 init:
-  pattern: tet3d
+  pattern: hex_star
   cell_size: 30

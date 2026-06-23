@@ -64,8 +64,8 @@ solver:
 
 volfrac: 0.4
 
-# Initial guess: seed components from a coarse triangulation
-# of the design domain (one bar per mesh edge); cell_size drives the count.
+# Initial guess: seed components from a coarse quad lattice (each quad -> 4 triangles via its centre);
+# one bar per skeleton edge, cell_size drives the component count.
 init:
-  pattern: tri2d
+  pattern: quad_star
   cell_size: 15
