@@ -798,6 +798,14 @@ window.runMermaid = runMermaid;</script>
         <span class="c1"># AMNA/MNA methods: SIMP with p=3</span>
         <span class="n">method</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">method</span> <span class="ow">or</span> <span class="s2">&quot;GP&quot;</span>
         <span class="n">p_penalty</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;GP&quot;</span> <span class="k">else</span> <span class="mf">3.0</span>
+        <span class="c1"># Emin: the reference GP branch (model_updateM.py) computes E = rho*E0 with</span>
+        <span class="c1"># NO Emin floor (void E -&gt; ~0 via the smooth-saturation residual). GGP-Topo&#39;s</span>
+        <span class="c1"># SIMP form adds Emin, which spuriously raises void E by Emin and, because the</span>
+        <span class="c1"># initial design is mostly void, shifts compliance ~1.5% and steers the</span>
+        <span class="c1"># optimizer to a different (asymmetric) optimum. Match the reference: no Emin</span>
+        <span class="c1"># floor for GP (saturation keeps K non-singular); keep Emin for MNA/AMNA,</span>
+        <span class="c1"># whose model_updateM branch does add Emin.</span>
+        <span class="n">e_min</span> <span class="o">=</span> <span class="mf">0.0</span> <span class="k">if</span> <span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;GP&quot;</span> <span class="k">else</span> <span class="mf">1e-6</span>
 
         <span class="n">phys_discipline</span> <span class="o">=</span> <span class="n">GGPPhysicsDiscipline</span><span class="p">(</span>
             <span class="n">V_u</span><span class="o">=</span><span class="n">analysis</span><span class="o">.</span><span class="n">function_spaces</span><span class="p">[</span><span class="s2">&quot;u&quot;</span><span class="p">],</span>
@@ -808,7 +816,7 @@ window.runMermaid = runMermaid;</script>
             <span class="n">volfrac</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">volfrac</span><span class="p">,</span>
             <span class="n">iterative</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">iterative</span><span class="p">,</span>
             <span class="n">p_penalty</span><span class="o">=</span><span class="n">p_penalty</span><span class="p">,</span>
-            <span class="n">Emin</span><span class="o">=</span><span class="mf">1e-6</span><span class="p">,</span>
+            <span class="n">Emin</span><span class="o">=</span><span class="n">e_min</span><span class="p">,</span>
             <span class="n">E0</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
             <span class="n">empty_elements</span><span class="o">=</span><span class="n">analysis</span><span class="o">.</span><span class="n">empty_elements</span> <span class="k">if</span> <span class="n">analysis</span><span class="o">.</span><span class="n">empty_elements</span> <span class="k">else</span> <span class="kc">None</span><span class="p">,</span>
         <span class="p">)</span>
