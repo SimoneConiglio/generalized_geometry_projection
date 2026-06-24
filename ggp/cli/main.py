@@ -68,6 +68,19 @@ def cli():
 @click.option("--iterative", is_flag=True, default=False, help="Use PETSc iterative solver.")
 @click.option("--use-line-search", is_flag=True, default=False, help="Enable line search (SLP/CONLIN).")
 @click.option(
+    "--init-pattern", type=str, default=None,
+    help="Initial-guess pattern: grid, tri2d, quad_star, tet3d, hex_star.",
+)
+@click.option(
+    "--init-cell-size", type=float, default=None,
+    help="Cell size for mesh init patterns (drives the component count).",
+)
+@click.option(
+    "--render-refine", type=int, default=2,
+    help="Refine the FE mesh by this factor when rendering the saved figure "
+         "(continuous diagonal bars). 1 = use the FE mesh as-is.",
+)
+@click.option(
     "--output-dir", "-o", "output_dir",
     type=click.Path(path_type=Path),
     default=None,
@@ -81,6 +94,9 @@ def optimize(
     volfrac: Optional[float],
     iterative: bool,
     use_line_search: bool,
+    init_pattern: Optional[str],
+    init_cell_size: Optional[float],
+    render_refine: int,
     output_dir: Optional[Path],
 ):
     """Run a topology optimisation from a YAML config or built-in preset.
@@ -119,6 +135,15 @@ def optimize(
         from dataclasses import replace
         spec = replace(spec, volfrac=volfrac)
 
+    if init_pattern is not None or init_cell_size is not None:
+        from dataclasses import replace
+        init_overrides = {}
+        if init_pattern is not None:
+            init_overrides["pattern"] = init_pattern
+        if init_cell_size is not None:
+            init_overrides["cell_size"] = init_cell_size
+        spec = replace(spec, init=replace(spec.init, **init_overrides))
+
     # Display summary
     click.echo(click.style("\n═══════════════════════════════════════════════", fg="cyan", bold=True))
     click.echo(click.style("  GGP Topology Optimisation", fg="cyan", bold=True))
@@ -153,10 +178,19 @@ def optimize(
         name = preset_name if preset_name else (config_path.stem if config_path else "result")
         plot_path = output_dir / f"{name}_optimized.png"
         from ggp.visualization.plot import save_density_plot_2d, save_density_plot_3d
+
+        rho, coords = result.density_field, result.eval_coords
+        # Re-evaluate on a finer grid so diagonal bars render continuously
+        # (the FE element size can be comparable to a bar's thickness, which
+        # aliases the isosurface — purely a sampling artefact).
+        if render_refine and render_refine > 1 and result.design_variables is not None:
+            from ggp.visualization.render import refined_density
+            rho, coords = refined_density(spec, result.design_variables, refine=render_refine)
+
         if result.dim == 3:
-            save_density_plot_3d(result.density_field, result.eval_coords, plot_path, title=name)
+            save_density_plot_3d(rho, coords, plot_path, title=name)
         else:
-            save_density_plot_2d(result.density_field, result.eval_coords, plot_path, title=name)
+            save_density_plot_2d(rho, coords, plot_path, title=name)
         click.echo(click.style(f"  Density plot : {plot_path}", fg="cyan"))
         click.echo()
 
@@ -166,11 +200,12 @@ def optimize(
 @cli.command()
 @click.option("--presets", is_flag=True, help="List available built-in presets.")
 @click.option("--mappers", is_flag=True, help="List available projection mappers.")
+@click.option("--patterns", is_flag=True, help="List available initial-guess patterns.")
 @click.option("--backends", is_flag=True, help="List available analysis backends.")
-def info(presets: bool, mappers: bool, backends: bool):
-    """Show available presets, mappers, and analysis backends."""
-    if not (presets or mappers or backends):
-        presets = mappers = backends = True
+def info(presets: bool, mappers: bool, patterns: bool, backends: bool):
+    """Show available presets, mappers, init patterns, and analysis backends."""
+    if not (presets or mappers or patterns or backends):
+        presets = mappers = patterns = backends = True
 
     if presets:
         click.echo(click.style("\nAvailable Presets:", fg="green", bold=True))
@@ -189,6 +224,13 @@ def info(presets: bool, mappers: bool, backends: bool):
             click.echo("  • Free (3D)")
             click.echo("  • ALM (2D)")
             click.echo("  • ALM (3D)")
+
+    if patterns:
+        click.echo(click.style("\nAvailable Initial-Guess Patterns:", fg="green", bold=True))
+        from ggp.initialization import list_patterns
+        click.echo("  • grid  (legacy crossed-bar seed)")
+        for name in list_patterns():
+            click.echo(f"  • {name}")
 
     if backends:
         click.echo(click.style("\nAvailable Analysis Backends:", fg="green", bold=True))

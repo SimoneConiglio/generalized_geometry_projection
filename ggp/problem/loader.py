@@ -13,6 +13,7 @@ from .spec import (
     ConstraintSpec,
     FormulationSpec,
     GeometrySpec,
+    InitGuessSpec,
     Load,
     MaterialSpec,
     ObjectiveSpec,
@@ -87,6 +88,17 @@ def _build_material(raw: Dict[str, Any]) -> MaterialSpec:
     )
 
 
+def _build_init(raw: Dict[str, Any]) -> InitGuessSpec:
+    return InitGuessSpec(
+        pattern=raw.get("pattern", None),
+        cell_size=raw.get("cell_size", None),
+        thickness=raw.get("thickness", None),
+        membership=raw.get("membership", 1.0),
+        fit_volfrac=raw.get("fit_volfrac", True),
+        params=raw.get("params", {}),
+    )
+
+
 def load_problem(source: Union[str, Path, Dict[str, Any]]) -> ProblemSpec:
     """Load a :class:`ProblemSpec` from a YAML/JSON file or a raw dict.
 
@@ -127,6 +139,7 @@ def load_problem(source: Union[str, Path, Dict[str, Any]]) -> ProblemSpec:
     solver = _build_solver(data.get("solver", {}))
     material = _build_material(data.get("material", {}))
     volfrac = data.get("volfrac", 0.4)
+    init = _build_init(data.get("init", {}))
 
     return ProblemSpec(
         geometries=geometries,
@@ -138,4 +151,5 @@ def load_problem(source: Union[str, Path, Dict[str, Any]]) -> ProblemSpec:
         solver=solver,
         volfrac=volfrac,
         material=material,
+        init=init,
     )

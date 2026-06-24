@@ -27,7 +27,7 @@ Result
    :width: 80%
    :align: center
 
-   Optimized density field after 320 MMA iterations (40 % volume fraction, C = 75.1).
+   Optimized density field after 320 MMA iterations (40 % volume fraction, C = 71.5).
 
 Problem details
 ---------------
@@ -43,7 +43,9 @@ Problem details
 +---------------------+------------------+
 | Method              | GP               |
 +---------------------+------------------+
-| Components          | 18               |
+| Initial guess       | quad_star        |
++---------------------+------------------+
+| Components          | 54 (cell 15)     |
 +---------------------+------------------+
 | ``r_gp`` (σ)        | 0.5              |
 +---------------------+------------------+
@@ -53,5 +55,5 @@ Problem details
 +---------------------+------------------+
 | Max iterations      | 320              |
 +---------------------+------------------+
-| Compliance          | 75.1             |
+| Compliance          | 71.5             |
 +---------------------+------------------+

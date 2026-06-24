@@ -60,3 +60,9 @@ solver:
     xtol_abs: 1.0e-20
 
 volfrac: 0.4
+
+# Initial guess: seed components from a coarse quad lattice (each quad -> 4 triangles via its centre);
+# one bar per skeleton edge, cell_size drives the component count.
+init:
+  pattern: quad_star
+  cell_size: 15
