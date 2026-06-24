@@ -1,41 +1,32 @@
-# 3D Short Cantilever Benchmark
-# Cantilever beam in 3D: fixed on the left face, point load at mid-right face.
-# Uses the Free 3D GGP formulation (8 variables per component).
-# volfrac=0.1: 10 % volume fraction gives well-connected 3D bar structure.
-
 geometries:
-  - type: fenics_box
-    role: design
-    params:
-      Lx: 60.0
-      Ly: 30.0
-      Lz: 30.0
-      nx: 30
-      ny: 15
-      nz: 15
-
+- type: fenics_box
+  role: design
+  params:
+    Lx: 60.0
+    Ly: 30.0
+    Lz: 30.0
+    nx: 30
+    ny: 15
+    nz: 15
 boundary_conditions:
-  - region: left
-    type: fixed
-
+- region: left
+  type: fixed
 loads:
-  - region: mid_right
-    type: point
-    value: [0.0, -1.0]
-
+- region: mid_right
+  type: point
+  value:
+  - 0.0
+  - -1.0
 formulation:
   mode: 3D_Free
   num_components: 20
   r_gp: 0.5
-
 objective:
   name: compliance
-
 constraints:
-  - name: volume
-    type: ineq
-    bound: 0.0
-
+- name: volume
+  type: ineq
+  bound: 0.0
 solver:
   algorithm: MMA
   max_iter: 150
@@ -43,7 +34,7 @@ solver:
     max_optimization_step: 0.05
     initial_asymptotes_distance: 0.05
     max_asymptote_distance: 0.05
-    min_asymptote_distance: 0.00001
+    min_asymptote_distance: 1.0e-05
     asymptotes_distance_amplification_coefficient: 1.2
     asymptotes_distance_reduction_coefficient: 0.4
     use_penalty_formulation: false
@@ -51,11 +42,7 @@ solver:
     ftol_abs: 1.0e-20
     xtol_rel: 1.0e-20
     xtol_abs: 1.0e-20
-
 volfrac: 0.1
-
-# Initial guess: seed components from a coarse hex lattice (each hex -> 24 tets via face/body centres);
-# one bar per skeleton edge, cell_size drives the component count.
 init:
   pattern: hex_star
-  cell_size: 30
+  cell_size: 60
