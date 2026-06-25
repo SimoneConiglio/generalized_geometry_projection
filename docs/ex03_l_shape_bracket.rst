@@ -18,6 +18,8 @@ To save the density image:
 
    ggp optimize --preset l_shape --output-dir docs/_static
 
+The preset uses the **AMJax** FEM solver by default (``fem_solver: amjax``).
+
 Result
 ------
 

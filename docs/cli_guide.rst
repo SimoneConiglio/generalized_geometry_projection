@@ -136,7 +136,7 @@ Custom YAML files follow the ``ProblemSpec`` schema. The minimal structure is:
    solver:
      algorithm: MMA      # MMA | SLP | CONLIN
      max_iter: 50
-     fem_solver: direct  # direct | iterative | amjax
+     fem_solver: amjax   # direct | iterative | amjax (built-in presets default to amjax)
 
    volfrac: 0.4
 

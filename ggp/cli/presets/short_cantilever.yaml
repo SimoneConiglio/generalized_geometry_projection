@@ -40,6 +40,7 @@ constraints:
 solver:
   algorithm: MMA
   max_iter: 320
+  fem_solver: amjax
   options:
     # Exact GGP-Matlab/mmasub.m settings (the authoritative MATLAB reference, which
     # converges to the symmetric single-X truss at C~75, iter ~284):

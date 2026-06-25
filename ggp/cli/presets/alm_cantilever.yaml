@@ -44,6 +44,7 @@ constraints:
 solver:
   algorithm: MMA
   max_iter: 300
+  fem_solver: amjax
   options:
     # Wide asymptotes matching the reference GGP-Matlab/mmasub.py (asyinit=0.5,
     # asydecr=0.7, clamp [0.01, 10], move=0.01). Tight asymptotes make the MMA

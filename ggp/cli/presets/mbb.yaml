@@ -46,6 +46,7 @@ constraints:
 solver:
   algorithm: MMA
   max_iter: 600
+  fem_solver: amjax
   options:
     max_optimization_step: 0.01
     initial_asymptotes_distance: 0.01
