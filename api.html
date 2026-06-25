@@ -113,6 +113,7 @@
 </li>
 <li class="toctree-l3"><a class="reference internal" href="#ggp.problem.spec.SolverSpec"><code class="docutils literal notranslate"><span class="pre">SolverSpec</span></code></a><ul>
 <li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.SolverSpec.algorithm"><code class="docutils literal notranslate"><span class="pre">SolverSpec.algorithm</span></code></a></li>
+<li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.SolverSpec.fem_solver"><code class="docutils literal notranslate"><span class="pre">SolverSpec.fem_solver</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.SolverSpec.iterative"><code class="docutils literal notranslate"><span class="pre">SolverSpec.iterative</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.SolverSpec.max_iter"><code class="docutils literal notranslate"><span class="pre">SolverSpec.max_iter</span></code></a></li>
 <li class="toctree-l4"><a class="reference internal" href="#ggp.problem.spec.SolverSpec.options"><code class="docutils literal notranslate"><span class="pre">SolverSpec.options</span></code></a></li>
@@ -195,6 +196,10 @@
 <li class="toctree-l2"><a class="reference internal" href="#module-ggp.gemseo_wrappers.geometry_discipline">GEMSEO Wrappers</a><ul>
 <li class="toctree-l3"><a class="reference internal" href="#ggp.gemseo_wrappers.geometry_discipline.GGPGeometryDiscipline"><code class="docutils literal notranslate"><span class="pre">GGPGeometryDiscipline</span></code></a></li>
 <li class="toctree-l3"><a class="reference internal" href="#ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline"><code class="docutils literal notranslate"><span class="pre">GGPPhysicsDiscipline</span></code></a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#module-ggp.physics.amjax_solver">Physics Solvers</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#ggp.physics.amjax_solver.solve_amjax"><code class="docutils literal notranslate"><span class="pre">solve_amjax()</span></code></a></li>
 </ul>
 </li>
 </ul>
@@ -619,7 +624,7 @@ Python API, and YAML loader all produce a <code class="docutils literal notransl
 
 <dl class="py class">
 <dt class="sig sig-object py" id="ggp.problem.spec.SolverSpec">
-<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.problem.spec.</span></span><span class="sig-name descname"><span class="pre">SolverSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">algorithm:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'MMA'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_iter:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">iterative:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_line_search:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options:</span> <span class="pre">~typing.Dict[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/problem/spec.html#SolverSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.problem.spec.SolverSpec" title="Link to this definition"></a></dt>
+<em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.problem.spec.</span></span><span class="sig-name descname"><span class="pre">SolverSpec</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">algorithm:</span> <span class="pre">str</span> <span class="pre">=</span> <span class="pre">'MMA'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">max_iter:</span> <span class="pre">int</span> <span class="pre">=</span> <span class="pre">50</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">iterative:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">fem_solver:</span> <span class="pre">~typing.Literal['direct'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'iterative'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">'amjax']</span> <span class="pre">=</span> <span class="pre">'direct'</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">use_line_search:</span> <span class="pre">bool</span> <span class="pre">=</span> <span class="pre">False</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">options:</span> <span class="pre">~typing.Dict[str</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">~typing.Any]</span> <span class="pre">=</span> <span class="pre">&lt;factory&gt;</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/problem/spec.html#SolverSpec"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.problem.spec.SolverSpec" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">object</span></code></p>
 <p>Optimisation solver / algorithm configuration.</p>
 <section id="id8">
@@ -629,7 +634,13 @@ Python API, and YAML loader all produce a <code class="docutils literal notransl
 </dd>
 <dt>max_iter<span class="classifier">int</span></dt><dd><p>Maximum number of outer iterations.</p>
 </dd>
-<dt>iterative<span class="classifier">bool</span></dt><dd><p>Use PETSc iterative (PCG + GAMG) solver instead of direct LU.</p>
+<dt>iterative<span class="classifier">bool</span></dt><dd><p>Deprecated shorthand for <code class="docutils literal notranslate"><span class="pre">fem_solver=&quot;iterative&quot;</span></code>. Kept for
+backward compatibility with existing YAML files and CLI.</p>
+</dd>
+<dt>fem_solver<span class="classifier">{“direct”, “iterative”, “amjax”}</span></dt><dd><p>FEM linear-system backend.  <code class="docutils literal notranslate"><span class="pre">&quot;direct&quot;</span></code> uses
+<code class="xref py py-func docutils literal notranslate"><span class="pre">scipy.sparse.linalg.spsolve()</span></code> (LU); <code class="docutils literal notranslate"><span class="pre">&quot;iterative&quot;</span></code> uses
+PETSc CG + GAMG; <code class="docutils literal notranslate"><span class="pre">&quot;amjax&quot;</span></code> uses PyAMG + AMJax (JAX-accelerated
+algebraic multigrid, JIT-compiled and GPU-compatible).</p>
 </dd>
 <dt>use_line_search<span class="classifier">bool</span></dt><dd><p>Enable line search (SLP / CONLIN only).</p>
 </dd>
@@ -639,6 +650,11 @@ Python API, and YAML loader all produce a <code class="docutils literal notransl
 <dl class="py attribute">
 <dt class="sig sig-object py" id="ggp.problem.spec.SolverSpec.algorithm">
 <span class="sig-name descname"><span class="pre">algorithm</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">str</span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'MMA'</span></em><a class="headerlink" href="#ggp.problem.spec.SolverSpec.algorithm" title="Link to this definition"></a></dt>
+<dd></dd></dl>
+
+<dl class="py attribute">
+<dt class="sig sig-object py" id="ggp.problem.spec.SolverSpec.fem_solver">
+<span class="sig-name descname"><span class="pre">fem_solver</span></span><em class="property"><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="pre">Literal</span><span class="p"><span class="pre">[</span></span><span class="s"><span class="pre">'direct'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'iterative'</span></span><span class="p"><span class="pre">,</span></span><span class="w"> </span><span class="s"><span class="pre">'amjax'</span></span><span class="p"><span class="pre">]</span></span></em><em class="property"><span class="w"> </span><span class="p"><span class="pre">=</span></span><span class="w"> </span><span class="pre">'direct'</span></em><a class="headerlink" href="#ggp.problem.spec.SolverSpec.fem_solver" title="Link to this definition"></a></dt>
 <dd></dd></dl>
 
 <dl class="py attribute">
@@ -1163,8 +1179,51 @@ value has shape <code class="docutils literal notranslate"><span class="pre">(n_
 <dt class="sig sig-object py" id="ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline">
 <em class="property"><span class="pre">class</span><span class="w"> </span></em><span class="sig-prename descclassname"><span class="pre">ggp.gemseo_wrappers.physics_discipline.</span></span><span class="sig-name descname"><span class="pre">GGPPhysicsDiscipline</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="o"><span class="pre">*</span></span><span class="n"><span class="pre">args</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">**</span></span><span class="n"><span class="pre">kwargs</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">Any</span></span></em><span class="sig-paren">)</span><a class="reference internal" href="_modules/ggp/gemseo_wrappers/physics_discipline.html#GGPPhysicsDiscipline"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline" title="Link to this definition"></a></dt>
 <dd><p>Bases: <code class="xref py py-class docutils literal notranslate"><span class="pre">Discipline</span></code></p>
-<p>High-performance Physics Discipline using Fast Assembly (petsc4py/scipy).
+<p>High-performance Physics Discipline using Fast Assembly (petsc4py/scipy/AMJax).
 Uses directly assembled load vectors and BCs from the FEMDiscretiser.</p>
+</dd></dl>
+
+</section>
+<section id="module-ggp.physics.amjax_solver">
+<span id="physics-solvers"></span><h2>Physics Solvers<a class="headerlink" href="#module-ggp.physics.amjax_solver" title="Link to this heading"></a></h2>
+<p>AMG-preconditioned iterative solver for the FEM stiffness system.</p>
+<p>Implements the core approach of the AMJax library (<a class="reference external" href="https://github.com/vboussange/AMJax">https://github.com/vboussange/AMJax</a>):
+a PyAMG algebraic multigrid (AMG) hierarchy is built from the assembled stiffness
+matrix and used as a preconditioner for a conjugate-gradient (CG) solve.</p>
+<p>We use scipy’s CG with the PyAMG preconditioner, which avoids the Python ≥ 3.11
+requirement of the <code class="docutils literal notranslate"><span class="pre">amjax</span></code> package while delivering the same convergence behaviour.
+When JAX is available (and <code class="docutils literal notranslate"><span class="pre">jax_enable_x64</span></code> is set), the assembly of the RHS and
+solution conversion is done via JAX arrays for consistency with future GPU backends.</p>
+<dl class="py function">
+<dt class="sig sig-object py" id="ggp.physics.amjax_solver.solve_amjax">
+<span class="sig-prename descclassname"><span class="pre">ggp.physics.amjax_solver.</span></span><span class="sig-name descname"><span class="pre">solve_amjax</span></span><span class="sig-paren">(</span><em class="sig-param"><span class="n"><span class="pre">K</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">scipy.sparse.spmatrix</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">f</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">numpy.ndarray</span></span></em>, <em class="sig-param"><span class="o"><span class="pre">*</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">tol</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">float</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">1e-08</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">maxiter</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">int</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">200</span></span></em>, <em class="sig-param"><span class="n"><span class="pre">cycle</span></span><span class="p"><span class="pre">:</span></span><span class="w"> </span><span class="n"><span class="pre">str</span></span><span class="w"> </span><span class="o"><span class="pre">=</span></span><span class="w"> </span><span class="default_value"><span class="pre">'V'</span></span></em><span class="sig-paren">)</span> <span class="sig-return"><span class="sig-return-icon">&#x2192;</span> <span class="sig-return-typehint"><span class="pre">numpy.ndarray</span></span></span><a class="reference internal" href="_modules/ggp/physics/amjax_solver.html#solve_amjax"><span class="viewcode-link"><span class="pre">[source]</span></span></a><a class="headerlink" href="#ggp.physics.amjax_solver.solve_amjax" title="Link to this definition"></a></dt>
+<dd><p>Solve <em>K u = f</em> using a PyAMG AMG preconditioner with scipy CG.</p>
+<p>Builds a smoothed-aggregation multigrid hierarchy via PyAMG and uses it
+as a preconditioner for <code class="xref py py-func docutils literal notranslate"><span class="pre">scipy.sparse.linalg.cg()</span></code>.  This reproduces
+the key algorithmic idea of AMJax: AMG-preconditioned Krylov iteration for
+FEM linear systems.</p>
+<section id="id29">
+<h3>Parameters<a class="headerlink" href="#id29" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>K:</dt><dd><p>Assembled, BC-applied global stiffness matrix (any scipy sparse format).</p>
+</dd>
+<dt>f:</dt><dd><p>Load vector, shape <code class="docutils literal notranslate"><span class="pre">(n_dofs,)</span></code>.</p>
+</dd>
+<dt>tol:</dt><dd><p>Relative residual tolerance for the CG solver.</p>
+</dd>
+<dt>maxiter:</dt><dd><p>Maximum CG iterations.</p>
+</dd>
+<dt>cycle:</dt><dd><p>AMG cycle type used in the preconditioner — <code class="docutils literal notranslate"><span class="pre">&quot;V&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;W&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;F&quot;</span></code>.</p>
+</dd>
+</dl>
+</section>
+<section id="id30">
+<h3>Returns<a class="headerlink" href="#id30" title="Link to this heading"></a></h3>
+<dl class="simple">
+<dt>np.ndarray</dt><dd><p>Displacement vector, shape <code class="docutils literal notranslate"><span class="pre">(n_dofs,)</span></code>, as a NumPy float64 array.</p>
+</dd>
+</dl>
+</section>
 </dd></dl>
 
 </section>

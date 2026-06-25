@@ -121,7 +121,7 @@ bash<span class="w"> </span>Miniconda3-latest-Linux-x86_64.sh
 </section>
 <section id="step-3-create-the-conda-environment">
 <h2>Step 3: Create the Conda Environment<a class="headerlink" href="#step-3-create-the-conda-environment" title="Link to this heading"></a></h2>
-<p>We provide an <code class="docutils literal notranslate"><span class="pre">environment.yml</span></code> file that strictly pins the FEniCS version alongside GEMSEO and all required scientific tools (NumPy, SciPy, Jupyter, Sphinx). This ensures you do not face C++ compilation or MPI errors.</p>
+<p>We provide an <code class="docutils literal notranslate"><span class="pre">environment.yml</span></code> file that strictly pins the FEniCS version alongside GEMSEO and all required scientific tools (NumPy, SciPy, Jupyter, Sphinx).  It also installs the optional <strong>AMJax</strong> FEM solver backend dependencies (<code class="docutils literal notranslate"><span class="pre">pyamg</span></code>, <code class="docutils literal notranslate"><span class="pre">jax</span></code>, <code class="docutils literal notranslate"><span class="pre">jaxlib</span></code>) via pip.  These are only used when <code class="docutils literal notranslate"><span class="pre">solver.fem_solver:</span> <span class="pre">amjax</span></code> is selected; the default <code class="docutils literal notranslate"><span class="pre">direct</span></code> backend requires only SciPy.</p>
 <p>Run the following command from the root of the cloned repository:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>conda<span class="w"> </span>env<span class="w"> </span>create<span class="w"> </span>-f<span class="w"> </span>environment.yml
 </pre></div>

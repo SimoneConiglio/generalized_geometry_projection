@@ -19,11 +19,14 @@ To save the density image:
 
    ggp optimize --preset 3d_cantilever --output-dir docs/_static
 
-For large 3D problems an iterative (PCG + GAMG) FEM solver saves memory:
+The preset uses the **AMJax** FEM solver by default (``fem_solver: amjax``),
+which is JIT-compiled, GPU-compatible, and handles 3-D systems efficiently.
+The first iteration incurs a one-time JAX compilation overhead (~1–2 s);
+subsequent solves are fast.  To fall back to the PETSc iterative solver:
 
 .. code-block:: bash
 
-   ggp optimize --preset 3d_cantilever --iterative
+   ggp optimize --preset 3d_cantilever --fem-solver iterative
 
 Result
 ------

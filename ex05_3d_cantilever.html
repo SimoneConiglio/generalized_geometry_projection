@@ -111,8 +111,11 @@ a density parameter), allowing arbitrary 3D orientations.</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>3d_cantilever<span class="w"> </span>--output-dir<span class="w"> </span>docs/_static
 </pre></div>
 </div>
-<p>For large 3D problems an iterative (PCG + GAMG) FEM solver saves memory:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>3d_cantilever<span class="w"> </span>--iterative
+<p>The preset uses the <strong>AMJax</strong> FEM solver by default (<code class="docutils literal notranslate"><span class="pre">fem_solver:</span> <span class="pre">amjax</span></code>),
+which is JIT-compiled, GPU-compatible, and handles 3-D systems efficiently.
+The first iteration incurs a one-time JAX compilation overhead (~1–2 s);
+subsequent solves are fast.  To fall back to the PETSc iterative solver:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>3d_cantilever<span class="w"> </span>--fem-solver<span class="w"> </span>iterative
 </pre></div>
 </div>
 </section>

@@ -712,7 +712,13 @@ window.runMermaid = runMermaid;</script>
 <span class="sd">    max_iter : int</span>
 <span class="sd">        Maximum number of outer iterations.</span>
 <span class="sd">    iterative : bool</span>
-<span class="sd">        Use PETSc iterative (PCG + GAMG) solver instead of direct LU.</span>
+<span class="sd">        Deprecated shorthand for ``fem_solver=&quot;iterative&quot;``. Kept for</span>
+<span class="sd">        backward compatibility with existing YAML files and CLI.</span>
+<span class="sd">    fem_solver : {&quot;direct&quot;, &quot;iterative&quot;, &quot;amjax&quot;}</span>
+<span class="sd">        FEM linear-system backend.  ``&quot;direct&quot;`` uses</span>
+<span class="sd">        :func:`scipy.sparse.linalg.spsolve` (LU); ``&quot;iterative&quot;`` uses</span>
+<span class="sd">        PETSc CG + GAMG; ``&quot;amjax&quot;`` uses PyAMG + AMJax (JAX-accelerated</span>
+<span class="sd">        algebraic multigrid, JIT-compiled and GPU-compatible).</span>
 <span class="sd">    use_line_search : bool</span>
 <span class="sd">        Enable line search (SLP / CONLIN only).</span>
 <span class="sd">    options : dict</span>
@@ -721,6 +727,7 @@ window.runMermaid = runMermaid;</script>
     <span class="n">algorithm</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;MMA&quot;</span>
     <span class="n">max_iter</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">50</span>
     <span class="n">iterative</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
+    <span class="n">fem_solver</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;direct&quot;</span><span class="p">,</span> <span class="s2">&quot;iterative&quot;</span><span class="p">,</span> <span class="s2">&quot;amjax&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;direct&quot;</span>
     <span class="n">use_line_search</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span>
     <span class="n">options</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span></div>
 

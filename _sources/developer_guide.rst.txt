@@ -283,8 +283,43 @@ FEM Solver & Pre-computed Reference Matrix
 To avoid FEniCS adjoint taping overhead at every iteration, ``GGPPhysicsDiscipline`` uses a pre-computed reference stiffness matrix strategy:
 
 - **Initialisation:** A reference element stiffness matrix :math:`K_{ref}` (for :math:`E = 1`) is computed once via FEniCS during setup.
-- **Per-iteration assembly:** At each optimisation step, the global stiffness matrix is assembled by scaling :math:`K_{ref}` with the SIMP-penalized modulus :math:`E(\rho_e)` per element and injecting the result into a SciPy COO matrix.
-- **Linear solve:** The COO matrix is converted to CSR and the system :math:`K U = F` is solved with ``scipy.sparse.linalg.spsolve`` (SuperLU/UMFPACK) for 2D, or with a PETSc CG + GAMG iterative solver for 3D (enabled via ``solver.iterative: true`` in the YAML or ``--iterative`` on the CLI).
+- **Per-iteration assembly:** At each optimisation step, the global stiffness matrix is assembled by scaling :math:`K_{ref}` with the SIMP-penalized modulus :math:`E(\rho_e)` per element and injecting the result into a SciPy COO sparse matrix (CSR after conversion).
+- **Linear solve:** The assembled :math:`K U = F` is dispatched to one of three pluggable backends selected via ``solver.fem_solver`` in the YAML or ``--fem-solver`` on the CLI:
+
+  .. list-table::
+     :header-rows: 1
+     :widths: 15 30 30 25
+
+     * - Backend
+       - Key
+       - Implementation
+       - Best for
+     * - Direct
+       - ``direct`` *(default)*
+       - ``scipy.sparse.linalg.spsolve`` (SuperLU / UMFPACK)
+       - Small–medium 2-D meshes; deterministic and always converges
+     * - Iterative
+       - ``iterative``
+       - PETSc CG with GAMG algebraic multigrid preconditioner
+       - Large 3-D meshes; memory-efficient
+     * - AMJax
+       - ``amjax``
+       - PyAMG smoothed-aggregation hierarchy as preconditioner for scipy CG
+       - Both 2-D and 3-D; robust, memory-efficient, dependency-free
+
+The assembly code is identical for 2-D and 3-D problems; only the size and sparsity of :math:`K` differ.  All three backends operate on the same CSR matrix and return the same NumPy displacement vector, so switching backends never affects post-processing or sensitivity computation.
+
+**AMJax backend details** (:mod:`ggp.physics.amjax_solver`):
+
+The ``amjax`` backend in :func:`~ggp.physics.amjax_solver.solve_amjax` implements the core approach of the `AMJax library <https://github.com/vboussange/AMJax>`_ — algebraic multigrid (AMG) preconditioning for FEM Krylov solves — using PyAMG and SciPy directly.  It performs the following steps every iteration:
+
+1. Converts :math:`K` to a CSR ``float64`` matrix.
+2. Builds a smoothed-aggregation AMG hierarchy via ``pyamg.smoothed_aggregation_solver`` (optimal for SPD FEM matrices).
+3. Exposes the hierarchy as a ``scipy.sparse.linalg.LinearOperator`` preconditioner via ``ml.aspreconditioner(cycle=cycle)``.
+4. Runs preconditioned CG via ``scipy.sparse.linalg.cg`` with a fallback retry if convergence is not achieved within ``maxiter`` steps.
+5. Returns the solution as a NumPy ``float64`` array.
+
+This approach delivers the same convergence benefits as AMJax (AMG-preconditioned CG vs raw iterative solve) while requiring only ``pyamg`` as an additional dependency alongside SciPy.  The ``cycle`` parameter selects the AMG cycle type (``"V"``, ``"W"``, or ``"F"``; default ``"V"``).
 
 Performance Monitoring
 ----------------------

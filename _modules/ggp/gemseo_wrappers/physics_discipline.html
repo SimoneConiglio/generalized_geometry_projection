@@ -530,7 +530,7 @@ window.runMermaid = runMermaid;</script>
 <a class="viewcode-back" href="../../../api.html#ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline">[docs]</a>
 <span class="k">class</span><span class="w"> </span><span class="nc">GGPPhysicsDiscipline</span><span class="p">(</span><span class="n">Discipline</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;</span>
-<span class="sd">    High-performance Physics Discipline using Fast Assembly (petsc4py/scipy).</span>
+<span class="sd">    High-performance Physics Discipline using Fast Assembly (petsc4py/scipy/AMJax).</span>
 <span class="sd">    Uses directly assembled load vectors and BCs from the FEMDiscretiser.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span>
@@ -546,6 +546,7 @@ window.runMermaid = runMermaid;</script>
         <span class="n">p_penalty</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">3.0</span><span class="p">,</span>
         <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;GGP_Physics&quot;</span><span class="p">,</span>
         <span class="n">iterative</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span><span class="p">,</span>
+        <span class="n">fem_solver</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;direct&quot;</span><span class="p">,</span>
         <span class="n">empty_elements</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span>
     <span class="p">):</span>
         <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
@@ -559,7 +560,14 @@ window.runMermaid = runMermaid;</script>
         <span class="bp">self</span><span class="o">.</span><span class="n">E0</span> <span class="o">=</span> <span class="n">E0</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">Emin</span> <span class="o">=</span> <span class="n">Emin</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">p_penalty</span> <span class="o">=</span> <span class="n">p_penalty</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">iterative</span> <span class="o">=</span> <span class="n">iterative</span>
+        <span class="c1"># Resolve effective solver: ``fem_solver`` takes precedence; legacy</span>
+        <span class="c1"># ``iterative=True`` maps to &quot;iterative&quot; when fem_solver is default.</span>
+        <span class="k">if</span> <span class="n">fem_solver</span> <span class="o">!=</span> <span class="s2">&quot;direct&quot;</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fem_solver</span> <span class="o">=</span> <span class="n">fem_solver</span>
+        <span class="k">elif</span> <span class="n">iterative</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fem_solver</span> <span class="o">=</span> <span class="s2">&quot;iterative&quot;</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">fem_solver</span> <span class="o">=</span> <span class="s2">&quot;direct&quot;</span>
         <span class="c1"># Indices of non-design (empty) elements — forced to Emin stiffness</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">empty_elements</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">empty_elements</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span> <span class="k">if</span> <span class="n">empty_elements</span> <span class="k">else</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)</span>
         
@@ -619,13 +627,16 @@ window.runMermaid = runMermaid;</script>
                 <span class="n">K_global</span><span class="o">.</span><span class="n">data</span><span class="p">[</span><span class="n">dof_start</span> <span class="o">+</span> <span class="n">diag_idx</span><span class="p">[</span><span class="mi">0</span><span class="p">]]</span> <span class="o">=</span> <span class="mf">1.0</span>
         
         <span class="c1"># Solve K U = F</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">iterative</span><span class="p">:</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">fem_solver</span> <span class="o">==</span> <span class="s2">&quot;amjax&quot;</span><span class="p">:</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">ggp.physics.amjax_solver</span><span class="w"> </span><span class="kn">import</span> <span class="n">solve_amjax</span>
+            <span class="n">u_vec</span> <span class="o">=</span> <span class="n">solve_amjax</span><span class="p">(</span><span class="n">K_global</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">f_vec</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="bp">self</span><span class="o">.</span><span class="n">fem_solver</span> <span class="o">==</span> <span class="s2">&quot;iterative&quot;</span><span class="p">:</span>
             <span class="kn">from</span><span class="w"> </span><span class="nn">petsc4py</span><span class="w"> </span><span class="kn">import</span> <span class="n">PETSc</span>
             <span class="n">size</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">V_u</span><span class="o">.</span><span class="n">dim</span><span class="p">()</span>
             <span class="n">A</span> <span class="o">=</span> <span class="n">PETSc</span><span class="o">.</span><span class="n">Mat</span><span class="p">()</span><span class="o">.</span><span class="n">createAIJ</span><span class="p">(</span><span class="n">size</span><span class="o">=</span><span class="p">(</span><span class="n">size</span><span class="p">,</span> <span class="n">size</span><span class="p">),</span> <span class="n">csr</span><span class="o">=</span><span class="p">(</span><span class="n">K_global</span><span class="o">.</span><span class="n">indptr</span><span class="p">,</span> <span class="n">K_global</span><span class="o">.</span><span class="n">indices</span><span class="p">,</span> <span class="n">K_global</span><span class="o">.</span><span class="n">data</span><span class="p">))</span>
             <span class="n">b</span> <span class="o">=</span> <span class="n">PETSc</span><span class="o">.</span><span class="n">Vec</span><span class="p">()</span><span class="o">.</span><span class="n">createWithArray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">f_vec</span><span class="p">)</span>
             <span class="n">x</span> <span class="o">=</span> <span class="n">PETSc</span><span class="o">.</span><span class="n">Vec</span><span class="p">()</span><span class="o">.</span><span class="n">createWithArray</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">zeros_like</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">f_vec</span><span class="p">))</span>
-            
+
             <span class="n">ksp</span> <span class="o">=</span> <span class="n">PETSc</span><span class="o">.</span><span class="n">KSP</span><span class="p">()</span><span class="o">.</span><span class="n">create</span><span class="p">()</span>
             <span class="n">ksp</span><span class="o">.</span><span class="n">setOperators</span><span class="p">(</span><span class="n">A</span><span class="p">)</span>
             <span class="n">ksp</span><span class="o">.</span><span class="n">setType</span><span class="p">(</span><span class="n">PETSc</span><span class="o">.</span><span class="n">KSP</span><span class="o">.</span><span class="n">Type</span><span class="o">.</span><span class="n">CG</span><span class="p">)</span>

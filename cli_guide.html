@@ -130,8 +130,14 @@ Built-in presets: <code class="docutils literal notranslate"><span class="pre">s
 <li><p><code class="docutils literal notranslate"><span class="pre">--max-iter</span> <span class="pre">&lt;int&gt;</span></code> — maximum number of outer optimisation iterations.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--algorithm</span> <span class="pre">&lt;str&gt;</span></code> — optimisation algorithm: <code class="docutils literal notranslate"><span class="pre">MMA</span></code>, <code class="docutils literal notranslate"><span class="pre">SLP</span></code>, or <code class="docutils literal notranslate"><span class="pre">CONLIN</span></code>.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--volfrac</span> <span class="pre">&lt;float&gt;</span></code> — target volume fraction constraint.</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">--iterative</span></code> — flag: use PETSc iterative solver (CG + GAMG) instead of direct LU.
-Recommended for 3-D or very large 2-D meshes.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--fem-solver</span> <span class="pre">&lt;backend&gt;</span></code> — FEM linear-system backend.  Choices:</p>
+<ul>
+<li><p><code class="docutils literal notranslate"><span class="pre">direct</span></code> <em>(default)</em> — <code class="docutils literal notranslate"><span class="pre">scipy.sparse.linalg.spsolve</span></code> (SuperLU/UMFPACK); best for small-to-medium 2-D meshes.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">iterative</span></code> — PETSc CG + GAMG; recommended for large 3-D meshes.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">amjax</span></code> — AMG-preconditioned CG (PyAMG smoothed-aggregation hierarchy used as a preconditioner for <code class="docutils literal notranslate"><span class="pre">scipy.sparse.linalg.cg</span></code>); implements the core approach of the <a class="reference external" href="https://github.com/vboussange/AMJax">AMJax library</a>.  Suitable for both 2-D and 3-D problems.  Requires <code class="docutils literal notranslate"><span class="pre">pyamg</span></code> (installed via <code class="docutils literal notranslate"><span class="pre">environment.yml</span></code>).</p></li>
+</ul>
+</li>
+<li><p><code class="docutils literal notranslate"><span class="pre">--iterative</span></code> — shorthand flag equivalent to <code class="docutils literal notranslate"><span class="pre">--fem-solver</span> <span class="pre">iterative</span></code>.  Kept for backward compatibility.</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">--use-line-search</span></code> — flag: enable monotone backtracking line search.
 Recommended with <code class="docutils literal notranslate"><span class="pre">SLP</span></code> or <code class="docutils literal notranslate"><span class="pre">CONLIN</span></code>.</p></li>
 </ul>
@@ -157,6 +163,14 @@ Recommended with <code class="docutils literal notranslate"><span class="pre">SL
 </div>
 <p>Run from a custom YAML file with the iterative solver:</p>
 <div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--config<span class="w"> </span>my_3d_problem.yaml<span class="w"> </span>--iterative<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">50</span>
+</pre></div>
+</div>
+<p>Run the short cantilever with the AMJax JAX-accelerated solver:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--preset<span class="w"> </span>short_cantilever<span class="w"> </span>--fem-solver<span class="w"> </span>amjax
+</pre></div>
+</div>
+<p>Run a 3-D problem with AMJax (GPU-compatible, JIT-compiled):</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>ggp<span class="w"> </span>optimize<span class="w"> </span>--config<span class="w"> </span>my_3d_problem.yaml<span class="w"> </span>--fem-solver<span class="w"> </span>amjax<span class="w"> </span>--max-iter<span class="w"> </span><span class="m">50</span>
 </pre></div>
 </div>
 </section>
@@ -188,12 +202,14 @@ Recommended with <code class="docutils literal notranslate"><span class="pre">SL
 <span class="nt">solver</span><span class="p">:</span>
 <span class="w">  </span><span class="nt">algorithm</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">MMA</span><span class="w">      </span><span class="c1"># MMA | SLP | CONLIN</span>
 <span class="w">  </span><span class="nt">max_iter</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">50</span>
+<span class="w">  </span><span class="nt">fem_solver</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">amjax</span><span class="w">   </span><span class="c1"># direct | iterative | amjax (built-in presets default to amjax)</span>
 
 <span class="nt">volfrac</span><span class="p">:</span><span class="w"> </span><span class="l l-Scalar l-Scalar-Plain">0.4</span>
 </pre></div>
 </div>
 <p>For a 3-D problem, use <code class="docutils literal notranslate"><span class="pre">type:</span> <span class="pre">fenics_box</span></code> with params <code class="docutils literal notranslate"><span class="pre">Lx</span></code>, <code class="docutils literal notranslate"><span class="pre">Ly</span></code>, <code class="docutils literal notranslate"><span class="pre">Lz</span></code>, <code class="docutils literal notranslate"><span class="pre">nx</span></code>, <code class="docutils literal notranslate"><span class="pre">ny</span></code>, <code class="docutils literal notranslate"><span class="pre">nz</span></code>,
-set <code class="docutils literal notranslate"><span class="pre">formulation.mode</span></code> to <code class="docutils literal notranslate"><span class="pre">3D_Free</span></code> or <code class="docutils literal notranslate"><span class="pre">3D_ALM</span></code>, and pass <code class="docutils literal notranslate"><span class="pre">--iterative</span></code> on the CLI.</p>
+set <code class="docutils literal notranslate"><span class="pre">formulation.mode</span></code> to <code class="docutils literal notranslate"><span class="pre">3D_Free</span></code> or <code class="docutils literal notranslate"><span class="pre">3D_ALM</span></code>, and set <code class="docutils literal notranslate"><span class="pre">solver.fem_solver</span></code> to <code class="docutils literal notranslate"><span class="pre">iterative</span></code>
+or <code class="docutils literal notranslate"><span class="pre">amjax</span></code> in the YAML (or pass the equivalent CLI flag).</p>
 <p>The built-in presets in <code class="docutils literal notranslate"><span class="pre">ggp/cli/presets/</span></code> serve as ready-to-copy starting points.</p>
 </section>
 </section>

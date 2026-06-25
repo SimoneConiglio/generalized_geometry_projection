@@ -778,11 +778,55 @@ Each mapper is a pure-NumPy class (no FEniCS dependency) that implements the <co
 <section id="fem-solver-pre-computed-reference-matrix">
 <h3>FEM Solver &amp; Pre-computed Reference Matrix<a class="headerlink" href="#fem-solver-pre-computed-reference-matrix" title="Link to this heading"></a></h3>
 <p>To avoid FEniCS adjoint taping overhead at every iteration, <code class="docutils literal notranslate"><span class="pre">GGPPhysicsDiscipline</span></code> uses a pre-computed reference stiffness matrix strategy:</p>
-<ul class="simple">
+<ul>
 <li><p><strong>Initialisation:</strong> A reference element stiffness matrix <span class="math notranslate nohighlight">\(K_{ref}\)</span> (for <span class="math notranslate nohighlight">\(E = 1\)</span>) is computed once via FEniCS during setup.</p></li>
-<li><p><strong>Per-iteration assembly:</strong> At each optimisation step, the global stiffness matrix is assembled by scaling <span class="math notranslate nohighlight">\(K_{ref}\)</span> with the SIMP-penalized modulus <span class="math notranslate nohighlight">\(E(\rho_e)\)</span> per element and injecting the result into a SciPy COO matrix.</p></li>
-<li><p><strong>Linear solve:</strong> The COO matrix is converted to CSR and the system <span class="math notranslate nohighlight">\(K U = F\)</span> is solved with <code class="docutils literal notranslate"><span class="pre">scipy.sparse.linalg.spsolve</span></code> (SuperLU/UMFPACK) for 2D, or with a PETSc CG + GAMG iterative solver for 3D (enabled via <code class="docutils literal notranslate"><span class="pre">solver.iterative:</span> <span class="pre">true</span></code> in the YAML or <code class="docutils literal notranslate"><span class="pre">--iterative</span></code> on the CLI).</p></li>
+<li><p><strong>Per-iteration assembly:</strong> At each optimisation step, the global stiffness matrix is assembled by scaling <span class="math notranslate nohighlight">\(K_{ref}\)</span> with the SIMP-penalized modulus <span class="math notranslate nohighlight">\(E(\rho_e)\)</span> per element and injecting the result into a SciPy COO sparse matrix (CSR after conversion).</p></li>
+<li><p><strong>Linear solve:</strong> The assembled <span class="math notranslate nohighlight">\(K U = F\)</span> is dispatched to one of three pluggable backends selected via <code class="docutils literal notranslate"><span class="pre">solver.fem_solver</span></code> in the YAML or <code class="docutils literal notranslate"><span class="pre">--fem-solver</span></code> on the CLI:</p>
+<table class="docutils align-default">
+<colgroup>
+<col style="width: 15.0%" />
+<col style="width: 30.0%" />
+<col style="width: 30.0%" />
+<col style="width: 25.0%" />
+</colgroup>
+<thead>
+<tr class="row-odd"><th class="head"><p>Backend</p></th>
+<th class="head"><p>Key</p></th>
+<th class="head"><p>Implementation</p></th>
+<th class="head"><p>Best for</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Direct</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">direct</span></code> <em>(default)</em></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">scipy.sparse.linalg.spsolve</span></code> (SuperLU / UMFPACK)</p></td>
+<td><p>Small–medium 2-D meshes; deterministic and always converges</p></td>
+</tr>
+<tr class="row-odd"><td><p>Iterative</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">iterative</span></code></p></td>
+<td><p>PETSc CG with GAMG algebraic multigrid preconditioner</p></td>
+<td><p>Large 3-D meshes; memory-efficient</p></td>
+</tr>
+<tr class="row-even"><td><p>AMJax</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">amjax</span></code></p></td>
+<td><p>PyAMG smoothed-aggregation hierarchy as preconditioner for scipy CG</p></td>
+<td><p>Both 2-D and 3-D; robust, memory-efficient, dependency-free</p></td>
+</tr>
+</tbody>
+</table>
+</li>
 </ul>
+<p>The assembly code is identical for 2-D and 3-D problems; only the size and sparsity of <span class="math notranslate nohighlight">\(K\)</span> differ.  All three backends operate on the same CSR matrix and return the same NumPy displacement vector, so switching backends never affects post-processing or sensitivity computation.</p>
+<p><strong>AMJax backend details</strong> (<a class="reference internal" href="api.html#module-ggp.physics.amjax_solver" title="ggp.physics.amjax_solver"><code class="xref py py-mod docutils literal notranslate"><span class="pre">ggp.physics.amjax_solver</span></code></a>):</p>
+<p>The <code class="docutils literal notranslate"><span class="pre">amjax</span></code> backend in <a class="reference internal" href="api.html#ggp.physics.amjax_solver.solve_amjax" title="ggp.physics.amjax_solver.solve_amjax"><code class="xref py py-func docutils literal notranslate"><span class="pre">solve_amjax()</span></code></a> implements the core approach of the <a class="reference external" href="https://github.com/vboussange/AMJax">AMJax library</a> — algebraic multigrid (AMG) preconditioning for FEM Krylov solves — using PyAMG and SciPy directly.  It performs the following steps every iteration:</p>
+<ol class="arabic simple">
+<li><p>Converts <span class="math notranslate nohighlight">\(K\)</span> to a CSR <code class="docutils literal notranslate"><span class="pre">float64</span></code> matrix.</p></li>
+<li><p>Builds a smoothed-aggregation AMG hierarchy via <code class="docutils literal notranslate"><span class="pre">pyamg.smoothed_aggregation_solver</span></code> (optimal for SPD FEM matrices).</p></li>
+<li><p>Exposes the hierarchy as a <code class="docutils literal notranslate"><span class="pre">scipy.sparse.linalg.LinearOperator</span></code> preconditioner via <code class="docutils literal notranslate"><span class="pre">ml.aspreconditioner(cycle=cycle)</span></code>.</p></li>
+<li><p>Runs preconditioned CG via <code class="docutils literal notranslate"><span class="pre">scipy.sparse.linalg.cg</span></code> with a fallback retry if convergence is not achieved within <code class="docutils literal notranslate"><span class="pre">maxiter</span></code> steps.</p></li>
+<li><p>Returns the solution as a NumPy <code class="docutils literal notranslate"><span class="pre">float64</span></code> array.</p></li>
+</ol>
+<p>This approach delivers the same convergence benefits as AMJax (AMG-preconditioned CG vs raw iterative solve) while requiring only <code class="docutils literal notranslate"><span class="pre">pyamg</span></code> as an additional dependency alongside SciPy.  The <code class="docutils literal notranslate"><span class="pre">cycle</span></code> parameter selects the AMG cycle type (<code class="docutils literal notranslate"><span class="pre">&quot;V&quot;</span></code>, <code class="docutils literal notranslate"><span class="pre">&quot;W&quot;</span></code>, or <code class="docutils literal notranslate"><span class="pre">&quot;F&quot;</span></code>; default <code class="docutils literal notranslate"><span class="pre">&quot;V&quot;</span></code>).</p>
 </section>
 </section>
 <section id="performance-monitoring">

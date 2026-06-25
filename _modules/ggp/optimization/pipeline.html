@@ -823,6 +823,7 @@ window.runMermaid = runMermaid;</script>
             <span class="n">mesh_area</span><span class="o">=</span><span class="n">mesh_area</span><span class="p">,</span>
             <span class="n">volfrac</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">volfrac</span><span class="p">,</span>
             <span class="n">iterative</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">iterative</span><span class="p">,</span>
+            <span class="n">fem_solver</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">fem_solver</span><span class="p">,</span>
             <span class="n">p_penalty</span><span class="o">=</span><span class="n">p_penalty</span><span class="p">,</span>
             <span class="n">Emin</span><span class="o">=</span><span class="n">e_min</span><span class="p">,</span>
             <span class="n">E0</span><span class="o">=</span><span class="mf">1.0</span><span class="p">,</span>
@@ -963,12 +964,15 @@ window.runMermaid = runMermaid;</script>
 
         <span class="n">n_iter</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">scenario</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">optimization_problem</span><span class="o">.</span><span class="n">database</span><span class="p">)</span>
 
+        <span class="n">f_opt</span> <span class="o">=</span> <span class="n">opt_result</span><span class="o">.</span><span class="n">f_opt</span>
+        <span class="n">objective_value</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">f_opt</span><span class="p">)</span> <span class="k">if</span> <span class="n">f_opt</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;nan&quot;</span><span class="p">)</span>
+
         <span class="n">result</span> <span class="o">=</span> <span class="n">OptimisationResult</span><span class="p">(</span>
             <span class="n">problem_name</span><span class="o">=</span><span class="s2">&quot;optimization_run&quot;</span><span class="p">,</span>
             <span class="n">algorithm</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">solver</span><span class="o">.</span><span class="n">algorithm</span><span class="p">,</span>
             <span class="n">status</span><span class="o">=</span><span class="n">opt_result</span><span class="o">.</span><span class="n">status</span><span class="p">,</span>
             <span class="n">iterations</span><span class="o">=</span><span class="n">n_iter</span><span class="p">,</span>
-            <span class="n">objective_value</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">opt_result</span><span class="o">.</span><span class="n">f_opt</span><span class="p">),</span>
+            <span class="n">objective_value</span><span class="o">=</span><span class="n">objective_value</span><span class="p">,</span>
             <span class="n">max_constraint_violation</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
             <span class="n">design_variables</span><span class="o">=</span><span class="n">x_opt</span><span class="p">,</span>
             <span class="n">history</span><span class="o">=</span><span class="p">{},</span>
