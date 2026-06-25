@@ -301,6 +301,7 @@ class GGPPipeline:
             mesh_area=mesh_area,
             volfrac=self.spec.volfrac,
             iterative=self.spec.solver.iterative,
+            fem_solver=self.spec.solver.fem_solver,
             p_penalty=p_penalty,
             Emin=e_min,
             E0=1.0,
