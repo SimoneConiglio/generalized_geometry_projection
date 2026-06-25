@@ -29,4 +29,3 @@ dependencies:
     - pyamg>=5.0
     - jax>=0.4
     - jaxlib>=0.4
-    - amjax

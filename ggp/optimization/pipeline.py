@@ -442,12 +442,15 @@ class GGPPipeline:
 
         n_iter = len(scenario.formulation.optimization_problem.database)
 
+        f_opt = opt_result.f_opt
+        objective_value = float(f_opt) if f_opt is not None else float("nan")
+
         result = OptimisationResult(
             problem_name="optimization_run",
             algorithm=self.spec.solver.algorithm,
             status=opt_result.status,
             iterations=n_iter,
-            objective_value=float(opt_result.f_opt),
+            objective_value=objective_value,
             max_constraint_violation=0.0,
             design_variables=x_opt,
             history={},

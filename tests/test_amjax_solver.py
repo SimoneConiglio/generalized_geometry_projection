@@ -52,7 +52,6 @@ def _poisson_3d(nx: int, ny: int, nz: int):
 
 @pytest.fixture(scope="module")
 def amjax_available():
-    pytest.importorskip("amjax", reason="amjax not installed")
     pytest.importorskip("pyamg", reason="pyamg not installed")
     pytest.importorskip("jax", reason="jax not installed")
 
