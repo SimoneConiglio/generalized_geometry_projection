@@ -16,11 +16,9 @@ import scipy.sparse as sps
 
 def _poisson_1d(n: int):
     """Return (K, f) for a 1-D Poisson problem with Dirichlet BCs applied."""
-    # Tri-diagonal K
     diag = np.full(n, 2.0)
     off = np.full(n - 1, -1.0)
     K = sps.diags([off, diag, off], [-1, 0, 1], format="csr")
-    # Pin DOF 0 and DOF n-1
     for i in (0, n - 1):
         K.data[K.indptr[i]:K.indptr[i + 1]] = 0.0
         K[i, i] = 1.0
@@ -28,6 +26,26 @@ def _poisson_1d(n: int):
     f[0] = 0.0
     f[n - 1] = 0.0
     return K.astype(np.float64), f
+
+
+def _poisson_3d(nx: int, ny: int, nz: int):
+    """Return (K, f) for a structured 3-D Poisson problem (7-point stencil)."""
+    n = nx * ny * nz
+    diag = np.full(n, 6.0)
+    data, offsets = [diag], [0]
+    for stride in (1, nx, nx * ny):
+        off = np.full(n - stride, -1.0)
+        data += [off, off]
+        offsets += [stride, -stride]
+    K = sps.diags(data, offsets, shape=(n, n), format="lil", dtype=np.float64)
+    for i in (0, n - 1):
+        K[i, :] = 0.0
+        K[i, i] = 1.0
+    K = K.tocsr()
+    f = np.ones(n, dtype=np.float64)
+    f[0] = 0.0
+    f[n - 1] = 0.0
+    return K, f
 
 
 # ── tests ─────────────────────────────────────────────────────────────────────
@@ -98,3 +116,30 @@ def test_solver_spec_fem_solver_field():
 
     spec_amjax = replace(spec, fem_solver="amjax")
     assert spec_amjax.fem_solver == "amjax"
+
+
+# ── 3-D tests (dimension-agnostic assembly) ───────────────────────────────────
+
+def test_solve_amjax_3d_system(amjax_available):
+    """AMJax backend solves a 3-D structured problem with < 1e-4 relative residual."""
+    from ggp.physics.amjax_solver import solve_amjax
+
+    K, f = _poisson_3d(8, 8, 8)          # 512 DOFs, 7-point stencil
+    u = solve_amjax(K, f, tol=1e-8, maxiter=300)
+
+    assert u.shape == (K.shape[0],)
+    residual = np.linalg.norm(K @ u - f) / (np.linalg.norm(f) + 1e-15)
+    assert residual < 1e-4, f"3-D residual too large: {residual:.2e}"
+
+
+def test_solve_amjax_3d_matches_direct(amjax_available):
+    """AMJax and scipy spsolve agree on a 3-D problem to within solver tolerance."""
+    from scipy.sparse.linalg import spsolve
+    from ggp.physics.amjax_solver import solve_amjax
+
+    K, f = _poisson_3d(6, 6, 6)          # 216 DOFs
+    u_ref = spsolve(K, f)
+    u_amjax = solve_amjax(K, f, tol=1e-9, maxiter=300)
+
+    np.testing.assert_allclose(u_amjax, u_ref, rtol=1e-4, atol=1e-7,
+                               err_msg="3-D: AMJax and direct solver differ")

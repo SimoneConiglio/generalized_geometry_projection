@@ -72,3 +72,10 @@ GEMSEO Wrappers
    :members:
    :undoc-members:
    :show-inheritance:
+
+Physics Solvers
+---------------
+.. automodule:: ggp.physics.amjax_solver
+   :members:
+   :undoc-members:
+   :show-inheritance:

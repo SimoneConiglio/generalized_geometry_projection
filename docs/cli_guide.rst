@@ -49,8 +49,13 @@ You must provide exactly one of ``--preset`` or ``--config``.
 * ``--max-iter <int>`` — maximum number of outer optimisation iterations.
 * ``--algorithm <str>`` — optimisation algorithm: ``MMA``, ``SLP``, or ``CONLIN``.
 * ``--volfrac <float>`` — target volume fraction constraint.
-* ``--iterative`` — flag: use PETSc iterative solver (CG + GAMG) instead of direct LU.
-  Recommended for 3-D or very large 2-D meshes.
+* ``--fem-solver <backend>`` — FEM linear-system backend.  Choices:
+
+  - ``direct`` *(default)* — ``scipy.sparse.linalg.spsolve`` (SuperLU/UMFPACK); best for small-to-medium 2-D meshes.
+  - ``iterative`` — PETSc CG + GAMG; recommended for large 3-D meshes.
+  - ``amjax`` — AMJax preconditioned CG (PyAMG algebraic multigrid hierarchy, JAX execution); JIT-compiled, GPU-compatible, and differentiable.  Suitable for both 2-D and 3-D problems.
+
+* ``--iterative`` — shorthand flag equivalent to ``--fem-solver iterative``.  Kept for backward compatibility.
 * ``--use-line-search`` — flag: enable monotone backtracking line search.
   Recommended with ``SLP`` or ``CONLIN``.
 
@@ -87,6 +92,18 @@ Run from a custom YAML file with the iterative solver:
 
    ggp optimize --config my_3d_problem.yaml --iterative --max-iter 50
 
+Run the short cantilever with the AMJax JAX-accelerated solver:
+
+.. code-block:: bash
+
+   ggp optimize --preset short_cantilever --fem-solver amjax
+
+Run a 3-D problem with AMJax (GPU-compatible, JIT-compiled):
+
+.. code-block:: bash
+
+   ggp optimize --config my_3d_problem.yaml --fem-solver amjax --max-iter 50
+
 YAML Problem Definition Format
 ===============================
 
@@ -119,10 +136,12 @@ Custom YAML files follow the ``ProblemSpec`` schema. The minimal structure is:
    solver:
      algorithm: MMA      # MMA | SLP | CONLIN
      max_iter: 50
+     fem_solver: direct  # direct | iterative | amjax
 
    volfrac: 0.4
 
 For a 3-D problem, use ``type: fenics_box`` with params ``Lx``, ``Ly``, ``Lz``, ``nx``, ``ny``, ``nz``,
-set ``formulation.mode`` to ``3D_Free`` or ``3D_ALM``, and pass ``--iterative`` on the CLI.
+set ``formulation.mode`` to ``3D_Free`` or ``3D_ALM``, and set ``solver.fem_solver`` to ``iterative``
+or ``amjax`` in the YAML (or pass the equivalent CLI flag).
 
 The built-in presets in ``ggp/cli/presets/`` serve as ready-to-copy starting points.
