@@ -338,3 +338,4 @@ Citations
 
 - **Original Paper:** Coniglio, S., Morlier, J., Gogu, C. et al. *Generalized Geometry Projection: A Unified Approach for Geometric Feature Based Topology Optimization*. Arch Computat Methods Eng 27, 1573–1610 (2020). https://doi.org/10.1007/s11831-019-09362-8
 - **Original MATLAB Code:** `GGP-Matlab Repository <https://github.com/topggp/GGP-Matlab>`_
+- **AMJax FEM Solver:** The ``amjax`` backend implements the algebraic multigrid preconditioning approach introduced by `AMJax <https://github.com/vboussange/AMJax>`_ (Boussange, V.), using PyAMG smoothed-aggregation hierarchies and SciPy CG in place of the original JAX implementation.
