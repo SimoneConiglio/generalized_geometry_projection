@@ -53,7 +53,7 @@ You must provide exactly one of ``--preset`` or ``--config``.
 
   - ``direct`` *(default)* — ``scipy.sparse.linalg.spsolve`` (SuperLU/UMFPACK); best for small-to-medium 2-D meshes.
   - ``iterative`` — PETSc CG + GAMG; recommended for large 3-D meshes.
-  - ``amjax`` — AMJax preconditioned CG (PyAMG algebraic multigrid hierarchy, JAX execution); JIT-compiled, GPU-compatible, and differentiable.  Suitable for both 2-D and 3-D problems.
+  - ``amjax`` — AMG-preconditioned CG (PyAMG smoothed-aggregation hierarchy used as a preconditioner for ``scipy.sparse.linalg.cg``); implements the core approach of the `AMJax library <https://github.com/vboussange/AMJax>`_.  Suitable for both 2-D and 3-D problems.  Requires ``pyamg`` (installed via ``environment.yml``).
 
 * ``--iterative`` — shorthand flag equivalent to ``--fem-solver iterative``.  Kept for backward compatibility.
 * ``--use-line-search`` — flag: enable monotone backtracking line search.

@@ -304,21 +304,22 @@ To avoid FEniCS adjoint taping overhead at every iteration, ``GGPPhysicsDiscipli
        - Large 3-D meshes; memory-efficient
      * - AMJax
        - ``amjax``
-       - PyAMG smoothed-aggregation hierarchy + AMJax preconditioned CG (JAX)
-       - Both 2-D and 3-D; JIT-compiled, GPU-compatible, differentiable
+       - PyAMG smoothed-aggregation hierarchy as preconditioner for scipy CG
+       - Both 2-D and 3-D; robust, memory-efficient, dependency-free
 
 The assembly code is identical for 2-D and 3-D problems; only the size and sparsity of :math:`K` differ.  All three backends operate on the same CSR matrix and return the same NumPy displacement vector, so switching backends never affects post-processing or sensitivity computation.
 
 **AMJax backend details** (:mod:`ggp.physics.amjax_solver`):
 
-The ``amjax`` backend in :func:`~ggp.physics.amjax_solver.solve_amjax` performs the following steps every iteration:
+The ``amjax`` backend in :func:`~ggp.physics.amjax_solver.solve_amjax` implements the core approach of the `AMJax library <https://github.com/vboussange/AMJax>`_ — algebraic multigrid (AMG) preconditioning for FEM Krylov solves — using PyAMG and SciPy directly.  It performs the following steps every iteration:
 
-1. Builds a smoothed-aggregation AMG hierarchy from the assembled :math:`K` via ``pyamg.smoothed_aggregation_solver``.
-2. Converts the hierarchy to JAX (BCOO sparse format, precomputed coarse factorizations) via ``amjax.MultilevelSolver.from_pyamg``.
-3. Exposes the hierarchy as a preconditioner via ``MultilevelSolver.aspreconditioner`` and passes it to ``jax.scipy.sparse.linalg.cg``.
-4. Returns the solution as a NumPy ``float64`` array.
+1. Converts :math:`K` to a CSR ``float64`` matrix.
+2. Builds a smoothed-aggregation AMG hierarchy via ``pyamg.smoothed_aggregation_solver`` (optimal for SPD FEM matrices).
+3. Exposes the hierarchy as a ``scipy.sparse.linalg.LinearOperator`` preconditioner via ``ml.aspreconditioner(cycle=cycle)``.
+4. Runs preconditioned CG via ``scipy.sparse.linalg.cg`` with a fallback retry if convergence is not achieved within ``maxiter`` steps.
+5. Returns the solution as a NumPy ``float64`` array.
 
-The first call per Python session triggers JAX JIT compilation (~1–2 s overhead); subsequent iterations are fast.  On GPU hardware, the CG + AMG solve achieves up to 62× speedup over a CPU PyAMG baseline (per the `AMJax benchmarks <https://github.com/vboussange/AMJax>`_).
+This approach delivers the same convergence benefits as AMJax (AMG-preconditioned CG vs raw iterative solve) while requiring only ``pyamg`` as an additional dependency alongside SciPy.  The ``cycle`` parameter selects the AMG cycle type (``"V"``, ``"W"``, or ``"F"``; default ``"V"``).
 
 Performance Monitoring
 ----------------------
