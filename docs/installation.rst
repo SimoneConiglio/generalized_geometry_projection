@@ -36,7 +36,7 @@ Clone the repository to your local machine and navigate into it:
 Step 3: Create the Conda Environment
 ------------------------------------
 
-We provide an ``environment.yml`` file that strictly pins the FEniCS version alongside GEMSEO and all required scientific tools (NumPy, SciPy, Jupyter, Sphinx). This ensures you do not face C++ compilation or MPI errors.
+We provide an ``environment.yml`` file that strictly pins the FEniCS version alongside GEMSEO and all required scientific tools (NumPy, SciPy, Jupyter, Sphinx).  It also installs the optional **AMJax** FEM solver backend dependencies (``pyamg``, ``jax``, ``jaxlib``) via pip.  These are only used when ``solver.fem_solver: amjax`` is selected; the default ``direct`` backend requires only SciPy.
 
 Run the following command from the root of the cloned repository:
 

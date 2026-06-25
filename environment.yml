@@ -26,3 +26,6 @@ dependencies:
   - pip:
     - gemseo-mma>=4.0.0
     - scikit-image>=0.20
+    - pyamg>=5.0
+    - jax>=0.4
+    - jaxlib>=0.4

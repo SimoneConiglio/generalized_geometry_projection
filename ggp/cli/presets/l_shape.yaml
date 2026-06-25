@@ -45,6 +45,7 @@ constraints:
 solver:
   algorithm: MMA
   max_iter: 600
+  fem_solver: amjax
   options:
     max_optimization_step: 0.01
     initial_asymptotes_distance: 0.01
@@ -52,7 +53,6 @@ solver:
     min_asymptote_distance: 0.0001
     asymptotes_distance_amplification_coefficient: 1.2
     asymptotes_distance_reduction_coefficient: 0.4
-    use_penalty_formulation: false
     ftol_rel: 1.0e-20
     ftol_abs: 1.0e-20
     xtol_rel: 1.0e-20

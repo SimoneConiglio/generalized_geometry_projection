@@ -65,7 +65,16 @@ def cli():
 @click.option("--max-iter", type=int, default=None, help="Override max iterations.")
 @click.option("--algorithm", type=str, default=None, help="Override algorithm (MMA, SLP, CONLIN).")
 @click.option("--volfrac", type=float, default=None, help="Override volume fraction.")
-@click.option("--iterative", is_flag=True, default=False, help="Use PETSc iterative solver.")
+@click.option("--iterative", is_flag=True, default=False, help="Use PETSc iterative solver (shorthand for --fem-solver iterative).")
+@click.option(
+    "--fem-solver",
+    type=click.Choice(["direct", "iterative", "amjax"], case_sensitive=False),
+    default=None,
+    help=(
+        "FEM linear-system backend: 'direct' (scipy LU, default), "
+        "'iterative' (PETSc CG+GAMG), or 'amjax' (JAX-accelerated AMG via AMJax)."
+    ),
+)
 @click.option("--use-line-search", is_flag=True, default=False, help="Enable line search (SLP/CONLIN).")
 @click.option(
     "--output-dir", "-o", "output_dir",
@@ -80,6 +89,7 @@ def optimize(
     algorithm: Optional[str],
     volfrac: Optional[float],
     iterative: bool,
+    fem_solver: Optional[str],
     use_line_search: bool,
     output_dir: Optional[Path],
 ):
@@ -102,7 +112,7 @@ def optimize(
     spec = load_problem(yaml_path)
 
     # Apply CLI overrides via dataclass replacement (frozen → reconstruct)
-    if max_iter is not None or algorithm is not None or use_line_search or iterative:
+    if max_iter is not None or algorithm is not None or use_line_search or iterative or fem_solver is not None:
         from dataclasses import replace
         solver_overrides = {}
         if max_iter is not None:
@@ -113,6 +123,8 @@ def optimize(
             solver_overrides["use_line_search"] = True
         if iterative:
             solver_overrides["iterative"] = True
+        if fem_solver is not None:
+            solver_overrides["fem_solver"] = fem_solver.lower()
         spec = replace(spec, solver=replace(spec.solver, **solver_overrides))
 
     if volfrac is not None:
@@ -129,7 +141,7 @@ def optimize(
     click.echo(f"  Algorithm   : {spec.solver.algorithm}")
     click.echo(f"  Max iter    : {spec.solver.max_iter}")
     click.echo(f"  Vol. frac.  : {spec.volfrac}")
-    click.echo(f"  Iterative   : {spec.solver.iterative}")
+    click.echo(f"  FEM solver  : {spec.solver.fem_solver}")
     click.echo(f"  Line search : {spec.solver.use_line_search}")
     click.echo()
 
@@ -191,9 +203,10 @@ def info(presets: bool, mappers: bool, backends: bool):
             click.echo("  • ALM (3D)")
 
     if backends:
-        click.echo(click.style("\nAvailable Analysis Backends:", fg="green", bold=True))
-        click.echo("  • FEniCS Direct (LU)")
-        click.echo("  • PETSc Iterative (CG + GAMG)")
+        click.echo(click.style("\nAvailable FEM Solver Backends:", fg="green", bold=True))
+        click.echo("  • direct   — scipy LU (spsolve), default")
+        click.echo("  • iterative — PETSc CG + GAMG")
+        click.echo("  • amjax    — JAX-accelerated algebraic multigrid (AMJax + PyAMG)")
 
     click.echo()
 

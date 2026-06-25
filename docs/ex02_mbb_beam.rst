@@ -19,6 +19,13 @@ To save the density image:
 
    ggp optimize --preset mbb --output-dir docs/_static
 
+The preset uses the **AMJax** FEM solver by default (``fem_solver: amjax``).
+To use the SLP algorithm with line search (original recommendation):
+
+.. code-block:: bash
+
+   ggp optimize --preset mbb --algorithm SLP --use-line-search --output-dir docs/_static
+
 Result
 ------
 

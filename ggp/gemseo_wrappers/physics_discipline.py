@@ -10,7 +10,7 @@ from gemseo.core.discipline.discipline import Discipline
 
 class GGPPhysicsDiscipline(Discipline):
     """
-    High-performance Physics Discipline using Fast Assembly (petsc4py/scipy).
+    High-performance Physics Discipline using Fast Assembly (petsc4py/scipy/AMJax).
     Uses directly assembled load vectors and BCs from the FEMDiscretiser.
     """
     def __init__(
@@ -26,6 +26,7 @@ class GGPPhysicsDiscipline(Discipline):
         p_penalty: float = 3.0,
         name: str = "GGP_Physics",
         iterative: bool = False,
+        fem_solver: str = "direct",
         empty_elements=None,
     ):
         super().__init__(name=name)
@@ -39,7 +40,14 @@ class GGPPhysicsDiscipline(Discipline):
         self.E0 = E0
         self.Emin = Emin
         self.p_penalty = p_penalty
-        self.iterative = iterative
+        # Resolve effective solver: ``fem_solver`` takes precedence; legacy
+        # ``iterative=True`` maps to "iterative" when fem_solver is default.
+        if fem_solver != "direct":
+            self.fem_solver = fem_solver
+        elif iterative:
+            self.fem_solver = "iterative"
+        else:
+            self.fem_solver = "direct"
         # Indices of non-design (empty) elements — forced to Emin stiffness
         self.empty_elements = np.array(empty_elements, dtype=int) if empty_elements else np.array([], dtype=int)
         
@@ -99,13 +107,16 @@ class GGPPhysicsDiscipline(Discipline):
                 K_global.data[dof_start + diag_idx[0]] = 1.0
         
         # Solve K U = F
-        if self.iterative:
+        if self.fem_solver == "amjax":
+            from ggp.physics.amjax_solver import solve_amjax
+            u_vec = solve_amjax(K_global, self.f_vec)
+        elif self.fem_solver == "iterative":
             from petsc4py import PETSc
             size = self.V_u.dim()
             A = PETSc.Mat().createAIJ(size=(size, size), csr=(K_global.indptr, K_global.indices, K_global.data))
             b = PETSc.Vec().createWithArray(self.f_vec)
             x = PETSc.Vec().createWithArray(np.zeros_like(self.f_vec))
-            
+
             ksp = PETSc.KSP().create()
             ksp.setOperators(A)
             ksp.setType(PETSc.KSP.Type.CG)

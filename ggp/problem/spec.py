@@ -174,7 +174,13 @@ class SolverSpec:
     max_iter : int
         Maximum number of outer iterations.
     iterative : bool
-        Use PETSc iterative (PCG + GAMG) solver instead of direct LU.
+        Deprecated shorthand for ``fem_solver="iterative"``. Kept for
+        backward compatibility with existing YAML files and CLI.
+    fem_solver : {"direct", "iterative", "amjax"}
+        FEM linear-system backend.  ``"direct"`` uses
+        :func:`scipy.sparse.linalg.spsolve` (LU); ``"iterative"`` uses
+        PETSc CG + GAMG; ``"amjax"`` uses PyAMG + AMJax (JAX-accelerated
+        algebraic multigrid, JIT-compiled and GPU-compatible).
     use_line_search : bool
         Enable line search (SLP / CONLIN only).
     options : dict
@@ -183,6 +189,7 @@ class SolverSpec:
     algorithm: str = "MMA"
     max_iter: int = 50
     iterative: bool = False
+    fem_solver: Literal["direct", "iterative", "amjax"] = "direct"
     use_line_search: bool = False
     options: Dict[str, Any] = field(default_factory=dict)
 

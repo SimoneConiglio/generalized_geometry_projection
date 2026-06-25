@@ -75,6 +75,7 @@ def _build_solver(raw: Dict[str, Any]) -> SolverSpec:
         algorithm=raw.get("algorithm", "MMA"),
         max_iter=raw.get("max_iter", 50),
         iterative=raw.get("iterative", False),
+        fem_solver=raw.get("fem_solver", "direct"),
         use_line_search=raw.get("use_line_search", False),
         options=raw.get("options", {}),
     )

@@ -19,6 +19,14 @@ To save the density image directly into the documentation static folder:
 
    ggp optimize --preset short_cantilever --output-dir docs/_static
 
+The preset uses the **AMJax** FEM solver (JAX-accelerated algebraic multigrid)
+by default (``fem_solver: amjax`` in the YAML).  To switch to the direct LU
+solver instead:
+
+.. code-block:: bash
+
+   ggp optimize --preset short_cantilever --fem-solver direct --output-dir docs/_static
+
 Result
 ------
 

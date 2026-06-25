@@ -19,6 +19,8 @@ To save the density image:
 
    ggp optimize --preset alm_cantilever --output-dir docs/_static
 
+The preset uses the **AMJax** FEM solver by default (``fem_solver: amjax``).
+
 Result
 ------
 
