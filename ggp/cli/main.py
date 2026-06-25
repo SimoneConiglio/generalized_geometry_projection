@@ -72,7 +72,8 @@ def cli():
     default=None,
     help=(
         "FEM linear-system backend: 'direct' (scipy LU, default), "
-        "'iterative' (PETSc CG+GAMG), or 'amjax' (JAX-accelerated AMG via AMJax)."
+        "'iterative' (PETSc CG+GAMG), or 'amjax' (PyAMG smoothed-aggregation preconditioner + scipy CG; "
+        "implements the AMJax approach — https://github.com/vboussange/AMJax)."
     ),
 )
 @click.option("--use-line-search", is_flag=True, default=False, help="Enable line search (SLP/CONLIN).")
@@ -206,7 +207,7 @@ def info(presets: bool, mappers: bool, backends: bool):
         click.echo(click.style("\nAvailable FEM Solver Backends:", fg="green", bold=True))
         click.echo("  • direct   — scipy LU (spsolve), default")
         click.echo("  • iterative — PETSc CG + GAMG")
-        click.echo("  • amjax    — JAX-accelerated algebraic multigrid (AMJax + PyAMG)")
+        click.echo("  • amjax    — PyAMG smoothed-aggregation preconditioner + scipy CG (AMJax approach)")
 
     click.echo()
 
