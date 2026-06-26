@@ -77,6 +77,29 @@ ggp optimize --preset l_shape --algorithm CONLIN --max-iter 100
 
 For more details on CLI options, see the [CLI User Guide](https://simoneconiglio.github.io/generalized_geometry_projection/cli_guide.html).
 
+## 🔎 Escaping local minima (global search)
+
+Lagrangian / MMA topology optimization is a local solver on a non-convex landscape, so
+single-start runs land in whatever basin the initial component layout sits in. GGP-Topo
+ships four state-of-the-art strategies for reaching *improved* local minima —
+**continuation/homotopy, multi-start, basin hopping** and **deflation** — implemented in
+[`ggp/optimization/global_search.py`](ggp/optimization/global_search.py):
+
+```bash
+# Best-of-N from diverse random component layouts
+ggp search --preset short_cantilever --strategy multi_start --n-starts 8
+
+# Warm-started sharpness continuation (r_gp ramp)
+ggp search --preset short_cantilever --strategy continuation
+
+# Benchmark all strategies vs. the single-start baseline on SC 2D
+python benchmarks/sc2d_local_minima.py            # reduced (fast)
+python benchmarks/sc2d_local_minima.py --full     # publication fidelity
+```
+
+See the [state-of-the-art review and benchmark](docs/local_minima_review.md) for the
+techniques, references, and results.
+
 ## 🏗️ Architecture
 
 The `ggp/` package is organized into seven layers that separate concerns cleanly:

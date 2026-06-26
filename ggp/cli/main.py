@@ -174,6 +174,74 @@ def optimize(
         click.echo()
 
 
+# ── search ──────────────────────────────────────────────────────────────────
+
+@cli.command()
+@click.option("--config", "-c", "config_path",
+              type=click.Path(exists=True, path_type=Path),
+              help="Path to a YAML problem definition file.")
+@click.option("--preset", "-p", "preset_name", type=str,
+              help="Name of a built-in preset (e.g. short_cantilever).")
+@click.option("--strategy", "-s",
+              type=click.Choice(["continuation", "multi_start", "basin_hopping",
+                                 "deflated_search"], case_sensitive=False),
+              default="multi_start", help="Global-search strategy for improved local minima.")
+@click.option("--max-iter", type=int, default=None, help="Per-run MMA iteration budget.")
+@click.option("--n-starts", type=int, default=5, help="Restarts (multi_start) / hops / solutions.")
+@click.option("--seed", type=int, default=0)
+@click.option("--output-dir", "-o", "output_dir", type=click.Path(path_type=Path),
+              default=None, help="Directory to save the best-design density plot.")
+def search(config_path, preset_name, strategy, max_iter, n_starts, seed, output_dir):
+    """Run a global-search strategy to reach an improved local minimum.
+
+    Examples::
+
+        ggp search --preset short_cantilever --strategy continuation
+        ggp search --preset short_cantilever --strategy multi_start --n-starts 8
+    """
+    if config_path and preset_name:
+        raise click.UsageError("Specify --config OR --preset, not both.")
+    if not config_path and not preset_name:
+        raise click.UsageError("Provide --config <path> or --preset <name>.")
+
+    yaml_path = config_path if config_path else _resolve_preset(preset_name)
+    spec = load_problem(yaml_path)
+    if max_iter is not None:
+        from dataclasses import replace
+        opts = dict(spec.solver.options); opts.pop("max_iter", None)
+        spec = replace(spec, solver=replace(spec.solver, max_iter=max_iter, options=opts))
+
+    from ggp.optimization import global_search as gs
+
+    click.echo(click.style(f"\n  Global search: {strategy}", fg="cyan", bold=True))
+    if strategy == "continuation":
+        out = gs.continuation(spec, [{"r_gp": 1.5}, {"r_gp": 1.0}, {"r_gp": 0.5}])
+    elif strategy == "multi_start":
+        out = gs.multi_start(spec, n_starts=n_starts, seed=seed)
+    elif strategy == "basin_hopping":
+        out = gs.basin_hopping(spec, n_hops=n_starts, seed=seed)
+    else:
+        out = gs.deflated_search(spec, n_solutions=n_starts, seed=seed)
+
+    click.echo(out.summary())
+    click.echo(click.style(
+        f"\n  Best compliance: {out.best_compliance:.6f}  ({out.total_time_s:.1f}s)",
+        fg="green", bold=True))
+
+    if output_dir is not None and out.best_result.density_field is not None:
+        import os
+        os.makedirs(output_dir, exist_ok=True)
+        name = preset_name or (config_path.stem if config_path else "result")
+        plot_path = output_dir / f"{name}_{strategy}_best.png"
+        from ggp.visualization.plot import save_density_plot_2d, save_density_plot_3d
+        br = out.best_result
+        if br.dim == 3:
+            save_density_plot_3d(br.density_field, br.eval_coords, plot_path, title=name)
+        else:
+            save_density_plot_2d(br.density_field, br.eval_coords, plot_path, title=name)
+        click.echo(click.style(f"  Density plot : {plot_path}", fg="cyan"))
+
+
 # ── info ──────────────────────────────────────────────────────────────────────
 
 @cli.command()

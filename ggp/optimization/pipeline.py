@@ -73,11 +73,102 @@ class _OverhangDiscipline(Discipline):
         }
 
 
+class _DeflatedObjectiveDiscipline(Discipline):
+    """Deflated-objective discipline used by the deflation global-search strategy.
+
+    Implements the Farrell/Papadopoulos/Surowiec deflation operator: given a set
+    of previously found minima (``roots`` in normalised [0,1] design space), the
+    raw objective ``J(x) = log(C+1)`` is multiplied by a deflation factor
+
+        M(x) = shift + sum_i  1 / ||x - x_i||^power
+
+    so that ``J_def(x) = J(x) * M(x)``.  M(x) -> +inf as x approaches any known
+    root, which makes the deflated objective repel the optimiser from minima it
+    has already discovered and steers it towards distinct ones.
+
+    Inputs : ``compliance`` (== log(C+1), the physics output) and ``x_vars``.
+    Output : ``compliance_deflated`` (the new scenario objective).
+    """
+
+    def __init__(self, roots, num_vars, shift=1.0, power=2.0, eps=1e-6):
+        super().__init__("DeflatedObjective")
+        self.roots = [np.asarray(r, dtype=float).flatten() for r in roots]
+        self.shift = float(shift)
+        self.power = float(power)
+        self.eps = float(eps)
+        self.input_grammar.update_from_names(["compliance", "x_vars"])
+        self.output_grammar.update_from_names(["compliance_deflated"])
+        self.default_inputs = {
+            "compliance": np.array([1.0]),
+            "x_vars": np.full(num_vars, 0.5),
+        }
+        if hasattr(self, "cache"):
+            self.cache = None
+        if hasattr(self, "cache_type"):
+            self.cache_type = Discipline.CacheType.NONE
+
+    def _factor_and_grad(self, x):
+        """Return (M, dM/dx) for the deflation factor at design point *x*."""
+        m = self.shift
+        grad = np.zeros_like(x)
+        for r in self.roots:
+            d = x - r
+            dist2 = float(d @ d) + self.eps ** 2
+            dist = np.sqrt(dist2)
+            # term = dist^-power ; d(term)/dx = -power * dist^(-power-2) * d
+            term = dist ** (-self.power)
+            m += term
+            grad += -self.power * dist ** (-self.power - 2.0) * d
+        return m, grad
+
+    def _run(self, input_data=None):
+        if input_data is not None:
+            self.local_data.update(input_data)
+        j = float(np.asarray(self.local_data["compliance"]).flatten()[0])
+        x = np.asarray(self.local_data["x_vars"]).flatten()
+        m, _ = self._factor_and_grad(x)
+        self.local_data["compliance_deflated"] = np.array([j * m])
+
+    def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
+        j = float(np.asarray(self.local_data["compliance"]).flatten()[0])
+        x = np.asarray(self.local_data["x_vars"]).flatten()
+        m, dm = self._factor_and_grad(x)
+        # d(J*M)/dJ = M ; d(J*M)/dx = J * dM/dx
+        self.jac = {
+            "compliance_deflated": {
+                "compliance": np.array([[m]]),
+                "x_vars": (j * dm)[np.newaxis, :],
+            }
+        }
+
+
 class GGPPipeline:
     """Orchestrates the entire GGP optimization process."""
 
-    def __init__(self, spec: ProblemSpec):
+    def __init__(self, spec: ProblemSpec, x0=None, overrides=None, deflation=None):
+        """Orchestrate a single GGP optimisation run.
+
+        Parameters
+        ----------
+        spec : ProblemSpec
+            The frozen problem specification (single source of truth).
+        x0 : np.ndarray, optional
+            Normalised [0,1] initial design vector. When given it overrides the
+            deterministic :meth:`_make_init` starting point, enabling warm-starts,
+            random restarts and basin-hopping perturbations.
+        overrides : dict, optional
+            Per-run overrides for the GGP sharpness / penalisation knobs. Recognised
+            keys: ``ka``, ``pp``, ``r_gp``, ``gammac``, ``gammav`` (geometry) and
+            ``p_penalty``, ``Emin`` (physics). Used by the continuation strategy.
+        deflation : dict, optional
+            When present, the raw objective is deflated to repel known minima.
+            Keys: ``roots`` (list of normalised [0,1] design vectors), ``shift``
+            (default 1.0), ``power`` (default 2.0).
+        """
         self.spec = spec
+        self.x0 = None if x0 is None else np.asarray(x0, dtype=float).flatten()
+        self.overrides = dict(overrides) if overrides else {}
+        self.deflation = dict(deflation) if deflation else None
 
     @staticmethod
     def _make_init(mode: str, num_vars: int, **kwargs) -> np.ndarray:
@@ -264,6 +355,10 @@ class GGPPipeline:
             "method": self.spec.formulation.method,
             "r_gp": self.spec.formulation.r_gp,
         }
+        # Apply per-run sharpness overrides (continuation strategy).
+        for _k in ("ka", "pp", "r_gp", "gammac", "gammav"):
+            if _k in self.overrides and self.overrides[_k] is not None:
+                geom_kwargs[_k] = self.overrides[_k]
 
         geom_discipline = GGPGeometryDiscipline(
             mesh=analysis.mesh,
@@ -292,6 +387,12 @@ class GGPPipeline:
         # -> NaN), so the no-floor case is restricted to non-ALM modes.
         _is_alm = "ALM" in (self.spec.formulation.mode or "")
         e_min = 0.0 if (method == "GP" and not _is_alm) else 1e-6
+
+        # Per-run penalisation overrides (continuation strategy).
+        if self.overrides.get("p_penalty") is not None:
+            p_penalty = self.overrides["p_penalty"]
+        if self.overrides.get("Emin") is not None:
+            e_min = self.overrides["Emin"]
 
         phys_discipline = GGPPhysicsDiscipline(
             V_u=analysis.function_spaces["u"],
@@ -360,7 +461,15 @@ class GGPPipeline:
                 "lb": geom_discipline.lb,
                 "ub": geom_discipline.ub,
             }
-        x_init = self._make_init(mode, num_vars, **_init_kwargs)
+        if self.x0 is not None:
+            if self.x0.shape[0] != num_vars:
+                raise ValueError(
+                    f"x0 has length {self.x0.shape[0]} but the problem expects "
+                    f"{num_vars} design variables."
+                )
+            x_init = np.clip(self.x0, 0.0, 1.0)
+        else:
+            x_init = self._make_init(mode, num_vars, **_init_kwargs)
         design_space.add_variable(
             "x_vars", size=num_vars, lower_bound=0.0, upper_bound=1.0, value=x_init
         )
@@ -390,11 +499,23 @@ class GGPPipeline:
             )
             extra_disciplines.append(oh_disc)
 
+        # 7b. Deflation: repel known minima by deflating the objective.
+        objective_name = "compliance"
+        if self.deflation and self.deflation.get("roots"):
+            defl_disc = _DeflatedObjectiveDiscipline(
+                roots=self.deflation["roots"],
+                num_vars=num_vars,
+                shift=self.deflation.get("shift", 1.0),
+                power=self.deflation.get("power", 2.0),
+            )
+            extra_disciplines.append(defl_disc)
+            objective_name = "compliance_deflated"
+
         # 8. Scenario
         all_disciplines = [chain] + extra_disciplines
         scenario = create_scenario(
             all_disciplines,
-            objective_name="compliance",
+            objective_name=objective_name,
             design_space=design_space,
             maximize_objective=False,
             formulation_name="MDF"
@@ -442,8 +563,20 @@ class GGPPipeline:
 
         n_iter = len(scenario.formulation.optimization_problem.database)
 
-        f_opt = opt_result.f_opt
-        objective_value = float(f_opt) if f_opt is not None else float("nan")
+        # objective_value is always the *raw* log(C+1), so it is comparable across
+        # strategies. Under deflation the scenario objective is the deflated value,
+        # so recompute the true compliance at the optimum from the geom+phys chain.
+        if objective_name != "compliance":
+            try:
+                chain.execute({"x_vars": x_opt})
+                objective_value = float(
+                    np.asarray(chain.local_data["compliance"]).flatten()[0]
+                )
+            except Exception:
+                objective_value = float("nan")
+        else:
+            f_opt = opt_result.f_opt
+            objective_value = float(f_opt) if f_opt is not None else float("nan")
 
         result = OptimisationResult(
             problem_name="optimization_run",
