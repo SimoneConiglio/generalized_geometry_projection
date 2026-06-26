@@ -334,15 +334,19 @@ def test_multi_start_with_continuation_schedule():
     assert len(FakePipeline.calls) == 4    # each attempt = 2-phase continuation
 
 
-def test_tunneling_uses_offset_and_accumulates_roots():
+def test_tunneling_escape_then_refine():
     spec = _make_spec()
     out = gs.tunneling(spec, n_solutions=3, pipeline_cls=FakePipeline)
     assert out.method == "tunneling"
-    assert len(out.attempts) == 3
-    # first is a clean minimisation (no deflation), later phases tunnel (offset set)
+    assert len(out.attempts) == 3              # min0 + 2 tunnel solutions
+    # min0 is a clean minimisation (no deflation)
     assert FakePipeline.calls[0]["deflation"] is None
-    d1 = FakePipeline.calls[1]["deflation"]
-    assert d1 is not None and "offset" in d1 and len(d1["roots"]) == 1
+    # each tunnel step = escape (deflated, repels growing root set) + clean refine
+    esc1 = FakePipeline.calls[1]
+    assert esc1["deflation"] is not None and len(esc1["deflation"]["roots"]) == 1
+    assert FakePipeline.calls[2]["deflation"] is None          # refine is clean
+    esc2 = FakePipeline.calls[3]
+    assert len(esc2["deflation"]["roots"]) == 2                # root set grows
     assert out.best_compliance == pytest.approx(min(a.compliance for a in out.attempts))
 
 
