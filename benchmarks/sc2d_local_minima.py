@@ -92,19 +92,32 @@ def full_config(seed: int) -> BenchConfig:
     )
 
 
-def _load_spec(max_iter=None):
-    """Load the SC 2D preset *unchanged* so every local solve uses the example's
-    exact MMA configuration (asymptotes, move limit, 320 iters). ``max_iter`` is an
-    optional escape hatch for quick local checks only -- the default keeps the
-    preset's solver setup verbatim.
+def _load_spec(max_iter=None, fem_solver="direct"):
+    """Load the SC 2D preset, keeping the example's exact *MMA* configuration
+    (algorithm, asymptotes, move limit, 320 iters) but pinning the inner *linear*
+    FEM solver for reproducibility.
+
+    Why override the FEM solver: the preset uses ``amjax`` (PyAMG-preconditioned CG),
+    an *iterative* solver whose result is not bit-reproducible -- repeated identical
+    runs differ at ~1e-11..1e-13 (intrinsic to the AMG setup; this persists even with
+    BLAS/OpenMP threads pinned to 1). That machine-epsilon seed is then amplified by
+    the 320-step MMA feedback loop into a ~0.001-0.15 % spread in the final compliance.
+    The ``direct`` solver (scipy sparse LU) solves the *same* system *exactly* and is
+    bit-for-bit deterministic, giving reproducible benchmark numbers and exact
+    gradients. This changes only the linear-algebra backend, not the optimisation
+    problem or the MMA setup. ``fem_solver=None`` keeps the preset's choice.
     """
     spec = load_problem(str(PRESET))
+    repl = {}
     if max_iter is not None:
         opts = dict(spec.solver.options)
         opts.pop("max_iter", None)
-        spec = dataclasses.replace(
-            spec, solver=dataclasses.replace(spec.solver, max_iter=max_iter, options=opts)
-        )
+        repl["max_iter"] = max_iter
+        repl["options"] = opts
+    if fem_solver is not None:
+        repl["fem_solver"] = fem_solver
+    if repl:
+        spec = dataclasses.replace(spec, solver=dataclasses.replace(spec.solver, **repl))
     return spec
 
 
@@ -219,6 +232,10 @@ def main():
     p.add_argument("--max-iter", type=int, default=None,
                    help="escape hatch for quick local checks ONLY; by default every "
                         "local solve uses the preset's exact MMA setup (320 iters).")
+    p.add_argument("--fem-solver", default="direct",
+                   choices=["direct", "amjax", "iterative"],
+                   help="inner linear FEM solver. Default 'direct' (exact, bit-reproducible). "
+                        "'amjax' is faster but NOT reproducible (~1e-12 noise amplified by MMA).")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--output-dir", default=None,
                    help="default: docs/_static for figures, benchmarks/ for tables")
@@ -234,10 +251,10 @@ def main():
     fig_dir.mkdir(parents=True, exist_ok=True)
     tab_dir.mkdir(parents=True, exist_ok=True)
 
-    spec = _load_spec(max_iter=args.max_iter)   # default: preset's exact MMA setup
+    spec = _load_spec(max_iter=args.max_iter, fem_solver=args.fem_solver)
     print(f"SC 2D local-minima benchmark | breadth={'FULL' if args.full else 'REDUCED'} | "
-          f"solver={spec.solver.algorithm} max_iter={spec.solver.max_iter} (from preset) | "
-          f"methods={args.methods}", flush=True)
+          f"MMA={spec.solver.algorithm} max_iter={spec.solver.max_iter} (preset) | "
+          f"FEM={spec.solver.fem_solver} | methods={args.methods}", flush=True)
 
     rows = []
     results = {}

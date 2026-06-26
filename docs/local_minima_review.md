@@ -184,8 +184,8 @@ single-X cantilever truss). Against that, the strategies behave as follows.
 
 * **Continuation is the clear winner.** Ramping the sampling radius `r_gp` from a
   *smooth* `2.0` down to the target `0.5`, warm-starting each phase, reaches
-  **C ≈ 73.36** — about **1.2 % below the baseline** (74.24) and the only improvement
-  that is robustly above the solver-noise floor (see caveat). The smooth first phase lets the
+  **C ≈ 73.36** — about **1.2 % below the baseline** (74.24), a genuine improvement
+  (the benchmark uses the exact, deterministic direct solver — see §4.3). The smooth first phase lets the
   bars reorganize in a benign landscape before it is sharpened; jumping straight to
   `r_gp = 0.5` (the baseline) lands in a slightly worse basin. *The comparison is made
   at the final phase, whose `r_gp` matches the baseline — earlier phases run at a
@@ -203,11 +203,34 @@ single-X cantilever truss). Against that, the strategies behave as follows.
 * Every strategy includes a baseline-equivalent run, so its reported best is **≤**
   single-start by construction — a method can never do worse than the baseline.
 
-> **Solver-determinism caveat.** Two nominally identical runs (the baseline and the
-> `default` run inside multi-start) differ by ~0.1–0.15 % in compliance. This is
-> floating-point non-determinism from the threaded PyAMG/CG (AMJax) FEM solver, not a
-> real optimization difference. Improvements below ~0.2 % should therefore be read as
-> "within noise"; the continuation result (~1 %) sits comfortably above it.
+### 4.3 Reproducibility (and a word on solver determinism)
+
+While developing this benchmark we noticed that two *nominally identical* runs (the
+baseline and the `default` run inside multi-start) could differ in compliance — by as
+little as 1e-3 % and occasionally up to ~0.15 %. We tracked this down rather than
+wave it away:
+
+* The preset's default FEM backend is **`amjax`** — a PyAMG-preconditioned **conjugate
+  gradient** *iterative* solver. Running the exact same design through it twice gives
+  displacements that differ at the **1e-11…1e-13** level. This is **not** simply
+  BLAS/OpenMP thread non-determinism: it persists with `OMP_NUM_THREADS=OPENBLAS_NUM_THREADS=MKL_NUM_THREADS=1`
+  (we measured 4e-11 single-threaded), so it is intrinsic to the AMG setup/iteration.
+* That machine-epsilon difference is then **amplified by the optimization feedback
+  loop**: a ~1e-13 perturbation of one iteration's gradient nudges the next MMA step,
+  and over 320 tightly-asymptoted steps the trajectories diverge and settle at slightly
+  different points of a flat minimum — turning 1e-13 into a ~1e-3…1e-1 % spread in the
+  *final* compliance. It is chaos amplification of a rounding seed, not a 0.1 % solver
+  error.
+* The **`direct`** solver (scipy sparse **LU**) solves the *same* system **exactly** and
+  is **bit-for-bit reproducible** (repeated runs are identical to the last digit). It is
+  the inner linear-algebra backend only — the optimization problem and the MMA setup are
+  unchanged.
+
+**The benchmark therefore pins `fem_solver="direct"`** (≈ 1 s/iter on this 60×30 mesh,
+fully reproducible and with exact gradients); `--fem-solver amjax` is available for
+speed on larger problems at the cost of reproducibility. With the direct solver the
+numbers above are deterministic, so the +1.2 % continuation improvement is a true
+property of the optimization, not solver noise.
 
 ## 5. Reproducing & extending
 
