@@ -90,12 +90,13 @@ class _DeflatedObjectiveDiscipline(Discipline):
     Output : ``compliance_deflated`` (the new scenario objective).
     """
 
-    def __init__(self, roots, num_vars, shift=1.0, power=2.0, eps=1e-6, offset=0.0):
+    def __init__(self, roots, num_vars, shift=1.0, power=2.0, tau=1e-2, offset=0.0):
         super().__init__("DeflatedObjective")
         self.roots = [np.asarray(r, dtype=float).flatten() for r in roots]
         self.shift = float(shift)
         self.power = float(power)
-        self.eps = float(eps)
+        # tau floors the repeller at 1/tau (default 100), keeping it bounded.
+        self.tau = float(tau)
         # offset == 0      -> pure deflation, objective (J)   * M(x)
         # offset == f_star -> tunneling,      objective (J-f*)* M(x)  (Levy-Montalvo
         #   style): below the incumbent f* the shifted objective goes negative, so the
@@ -113,17 +114,27 @@ class _DeflatedObjectiveDiscipline(Discipline):
             self.cache_type = Discipline.CacheType.NONE
 
     def _factor_and_grad(self, x):
-        """Return (M, dM/dx) for the deflation factor at design point *x*."""
+        """Return (M, dM/dx) for the deflation factor at design point *x*.
+
+        Uses a **bounded** repeller ``term = 1 / (dist^power + tau)`` rather than the
+        bare pole ``dist^-power``: the bare pole reaches ~1e12 at a root (with
+        eps=1e-6, power=2), which makes the deflated/tunnelling objective and its
+        gradient explode when the sharp MMA phase steps near a known minimum, and
+        the subproblem bails out after a few iterations. The ``tau`` floor caps the
+        repeller at ``1/tau`` and keeps the gradient finite and smooth (-> 0 at the
+        root), so the optimiser is steered away from known minima without blowing up.
+        """
         m = self.shift
         grad = np.zeros_like(x)
+        p = self.power
         for r in self.roots:
             d = x - r
-            dist2 = float(d @ d) + self.eps ** 2
-            dist = np.sqrt(dist2)
-            # term = dist^-power ; d(term)/dx = -power * dist^(-power-2) * d
-            term = dist ** (-self.power)
-            m += term
-            grad += -self.power * dist ** (-self.power - 2.0) * d
+            dist2 = float(d @ d)
+            g = dist2 ** (p / 2.0)                      # = ||x-r||^power
+            den = g + self.tau
+            m += 1.0 / den
+            # d(1/den)/dx = -(1/den^2) * dg/dx ;  dg/dx = power * dist2^(p/2 - 1) * d
+            grad += -(p * dist2 ** (p / 2.0 - 1.0) / den ** 2) * d if dist2 > 0 else np.zeros_like(x)
         return m, grad
 
     def _run(self, input_data=None):
