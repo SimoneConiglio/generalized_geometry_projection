@@ -145,26 +145,31 @@ python benchmarks/sc2d_local_minima.py --full     # publication fidelity
 ### 4.1 Results
 
 <!-- BENCHMARK_RESULTS_START -->
-Single consistent run (seed 0, reduced breadth, every solve at the preset's exact
-320-iter MMA config). Improvement is `(baseline − best) / baseline`.
+Single deterministic run (seed 0, reduced breadth, every solve at the preset's exact
+320-iter MMA config, exact `direct` FEM solver). Improvement is `(baseline − best) / baseline`.
 
 | Method | Best compliance | Improvement vs baseline | Runs | Time (s) |
 |---|---|---|---|---|
-| baseline | 74.2387 | +0.00% | 1 | 227 |
-| **continuation** | **73.3648** | **+1.18%** | 4 | 1087 |
-| multi_start | 74.2380 | +0.00% | 5 | 1152 |
-| basin_hopping | 74.3209 | −0.11% | 5 | 1335 |
-| deflated_search | 74.2282 | +0.01% | 3 | 829 |
+| baseline | 74.2703 | +0.00% | 1 | 135 |
+| **continuation** | **73.5163** | **+1.02%** | 4 | 680 |
+| multi_start | 74.2703 | +0.00% | 5 | 690 |
+| basin_hopping | 74.2703 | +0.00% | 5 | 829 |
+| deflated_search | 74.2703 | +0.00% | 3 | 523 |
+
+Because the solver is now exact and deterministic (§4.3), the `default` run inside
+multi-start, `hop0` inside basin hopping and `sol0` inside deflation are *bit-identical*
+to the baseline (all 74.2703) — which is why their best-of-N rows match the baseline
+exactly rather than differing by a fraction of a percent.
 
 Continuation phase trajectory (compliance at each `r_gp`; only the final phase, at the
 baseline's `r_gp = 0.5`, is comparable to the baseline):
 
 | phase | r_gp | C |
 |---|---|---|
-| 0 | 2.0 | 69.22 |
-| 1 | 1.5 | 70.18 |
-| 2 | 1.0 | 71.76 |
-| 3 (reported) | 0.5 | **73.36** |
+| 0 | 2.0 | 69.30 |
+| 1 | 1.5 | 70.08 |
+| 2 | 1.0 | 71.66 |
+| 3 (reported) | 0.5 | **73.52** |
 <!-- BENCHMARK_RESULTS_END -->
 
 **Figures** (written to `docs/_static/`):
@@ -184,7 +189,7 @@ single-X cantilever truss). Against that, the strategies behave as follows.
 
 * **Continuation is the clear winner.** Ramping the sampling radius `r_gp` from a
   *smooth* `2.0` down to the target `0.5`, warm-starting each phase, reaches
-  **C ≈ 73.36** — about **1.2 % below the baseline** (74.24), a genuine improvement
+  **C ≈ 73.52** — about **1.0 % below the baseline** (74.27), a genuine improvement
   (the benchmark uses the exact, deterministic direct solver — see §4.3). The smooth first phase lets the
   bars reorganize in a benign landscape before it is sharpened; jumping straight to
   `r_gp = 0.5` (the baseline) lands in a slightly worse basin. *The comparison is made
@@ -196,7 +201,7 @@ single-X cantilever truss). Against that, the strategies behave as follows.
   init is already near-optimal and that the landscape is genuinely rugged — the whole
   motivation for this work.
 * **Deflation finds *distinct* minima.** Repelling the known optimum drives the solver
-  into different topologies at **C ≈ 75.7–76.9** — exactly the intended behavior
+  into different topologies at **C ≈ 76.1–77.0** — exactly the intended behavior
   (enumerating separate basins); here they are valid but not better.
 * **Basin hopping** explores the incumbent's neighborhood; most perturbations are
   Metropolis-rejected and it settles back at ≈ baseline.
@@ -229,8 +234,9 @@ wave it away:
 **The benchmark therefore pins `fem_solver="direct"`** (≈ 1 s/iter on this 60×30 mesh,
 fully reproducible and with exact gradients); `--fem-solver amjax` is available for
 speed on larger problems at the cost of reproducibility. With the direct solver the
-numbers above are deterministic, so the +1.2 % continuation improvement is a true
-property of the optimization, not solver noise.
+numbers above are deterministic — note that `multi_start/default`, `basin_hopping/hop0`
+and `deflated_search/sol0` come out *exactly* equal to the baseline (74.2703) — so the
++1.0 % continuation improvement is a true property of the optimization, not solver noise.
 
 ## 5. Reproducing & extending
 
