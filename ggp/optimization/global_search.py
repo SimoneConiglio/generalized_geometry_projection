@@ -215,6 +215,7 @@ def continuation(
     results_by_label: Dict[str, OptimisationResult] = {}
     current_x = None if x0 is None else np.asarray(x0, float)
 
+    last_result = None
     for i, overrides in enumerate(schedule):
         result = _run_once(spec, x0=current_x, overrides=overrides,
                            pipeline_cls=pipeline_cls)
@@ -222,10 +223,21 @@ def continuation(
         attempts.append(_attempt_from_result(label, result))
         results_by_label[label] = result
         current_x = np.asarray(result.design_variables, float).flatten()
+        last_result = result
         if on_phase is not None:
             on_phase(i, result)
 
-    return _finalise("continuation", attempts, results_by_label, t0)
+    # The phases use different sharpness (e.g. r_gp), so their compliances are NOT
+    # comparable across phases -- a smooth early phase reports an artificially low
+    # value. Continuation is a single warm-started trajectory whose meaningful
+    # outcome is the FINAL phase, evaluated at the target (baseline) sharpness.
+    return GlobalSearchResult(
+        method="continuation",
+        best_result=last_result,
+        best_compliance=compliance_of(last_result),
+        attempts=attempts,
+        total_time_s=time.time() - t0,
+    )
 
 
 # --------------------------------------------------------------------------- #

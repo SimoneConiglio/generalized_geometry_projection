@@ -144,6 +144,10 @@ def test_continuation_warm_start_chaining():
         )
     # overrides were threaded through verbatim
     assert FakePipeline.calls[2]["overrides"] == {"r_gp": 0.5}
+    # continuation reports the FINAL phase (target sharpness), not the min across
+    # phases -- compliances at different r_gp are not comparable.
+    assert out.best_compliance == pytest.approx(out.attempts[-1].compliance)
+    assert out.best_compliance >= min(a.compliance for a in out.attempts)
 
 
 def test_continuation_requires_schedule():
