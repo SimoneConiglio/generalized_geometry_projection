@@ -15,6 +15,7 @@ The framework supports Free (2D/3D) and Additive Layer Manufacturing (ALM, 2D/3D
    api
    3d_optimization
    alm_guide
+   local_minima_review
    scp_uno_guide
    examples
    credits
