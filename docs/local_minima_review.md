@@ -145,15 +145,35 @@ python benchmarks/sc2d_local_minima.py --full     # publication fidelity
 ### 4.1 Results
 
 <!-- BENCHMARK_RESULTS_START -->
-_Populated by `benchmarks/sc2d_local_minima.py` (see
-`benchmarks/sc2d_local_minima_results.md`)._
+Single consistent run (seed 0, reduced breadth, every solve at the preset's exact
+320-iter MMA config). Improvement is `(baseline − best) / baseline`.
+
+| Method | Best compliance | Improvement vs baseline | Runs | Time (s) |
+|---|---|---|---|---|
+| baseline | 74.2387 | +0.00% | 1 | 227 |
+| **continuation** | **73.3648** | **+1.18%** | 4 | 1087 |
+| multi_start | 74.2380 | +0.00% | 5 | 1152 |
+| basin_hopping | 74.3209 | −0.11% | 5 | 1335 |
+| deflated_search | 74.2282 | +0.01% | 3 | 829 |
+
+Continuation phase trajectory (compliance at each `r_gp`; only the final phase, at the
+baseline's `r_gp = 0.5`, is comparable to the baseline):
+
+| phase | r_gp | C |
+|---|---|---|
+| 0 | 2.0 | 69.22 |
+| 1 | 1.5 | 70.18 |
+| 2 | 1.0 | 71.76 |
+| 3 (reported) | 0.5 | **73.36** |
 <!-- BENCHMARK_RESULTS_END -->
 
 **Figures** (written to `docs/_static/`):
 
 * `sc2d_local_minima_spread.png` — compliance of every individual run per strategy,
-  with the per-strategy best and the baseline reference line. The vertical spread
-  *is* the local-minima problem made visible.
+  with the per-strategy best (star) and the baseline reference line. The vertical
+  spread *is* the local-minima problem made visible. (Note: continuation's points
+  below its star are the *smoother* `r_gp` phases, whose compliance is not comparable
+  to the sharp baseline; the star marks the comparable final phase.)
 * `sc2d_local_minima_<method>.png` — the best design found by each strategy.
 
 ### 4.2 Reading the results
@@ -164,8 +184,8 @@ single-X cantilever truss). Against that, the strategies behave as follows.
 
 * **Continuation is the clear winner.** Ramping the sampling radius `r_gp` from a
   *smooth* `2.0` down to the target `0.5`, warm-starting each phase, reaches
-  **C ≈ 73.6** — about **1 % below the baseline** and the only improvement that is
-  robustly above the solver-noise floor (see caveat). The smooth first phase lets the
+  **C ≈ 73.36** — about **1.2 % below the baseline** (74.24) and the only improvement
+  that is robustly above the solver-noise floor (see caveat). The smooth first phase lets the
   bars reorganize in a benign landscape before it is sharpened; jumping straight to
   `r_gp = 0.5` (the baseline) lands in a slightly worse basin. *The comparison is made
   at the final phase, whose `r_gp` matches the baseline — earlier phases run at a
