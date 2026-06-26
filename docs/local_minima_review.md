@@ -90,38 +90,80 @@ continuation ("deflated continuation"), this traces disconnected branches of
 solutions and reliably surfaces better minima than single-start. It is the most
 principled answer to "find me a *different, better* optimum."
 
-### 2.5 Other approaches (lower priority here)
+### 2.5 Tunneling / filled-function methods
+Levy & Montalvo's **tunneling method** (1985) alternates a *minimization* phase with a
+*tunneling* phase. After reaching a minimum with value `f*`, the tunneling phase
+minimizes a deformed function with a **pole** at the known minimizer and a shift by
+`f*` — e.g. `T(x) = (f(x) − f*) · M(x)` with `M` singular at every found root — so the
+search slides *along the `f*` level set*, past the known basins, until it re-enters a
+region where `f(x) < f*`; an ordinary minimization from there yields a *better*
+minimum. **Filled-function** methods (Ge 1990) use the same idea with a different
+deformation. Tunneling is the close cousin of deflation: deflation *multiplies* to make
+distinct minima, tunneling *shifts by `f*`* to bias explicitly toward **improvement**.
+
+### 2.6 Chaos-control-inspired methods
+A gradient optimizer on a non-convex landscape is a **nonlinear dynamical system**, and
+such systems are routinely chaotic — they exhibit *sensitive dependence on initial
+conditions* (a positive Lyapunov exponent). We observed this directly here: a `1e-13`
+perturbation from the iterative FEM solver grows into a `~0.1 %` spread in the final
+compliance over 320 MMA steps (§4.3). Chaos/control theory then suggests concrete tools:
+
+* **Chaotic optimization (ergodic search).** Drive sampling with a deterministic
+  **chaotic map** (logistic `x←μx(1−x)` at `μ=4`, tent, Chebyshev) instead of a
+  pseudo-random generator. Chaotic orbits are *ergodic* and cover the search space more
+  uniformly than a finite random sample, improving the diversity of multi-start /
+  restart points (Li & Jiang 1998; Yang, Zhuang & Wei 2007).
+* **Chaotic simulated annealing (Chen & Aihara 1995).** Inject transient chaos into the
+  neuronal/optimization dynamics and then **anneal the chaos out** by ramping a control
+  parameter. Structurally this is a *continuation on a chaos parameter* — the same
+  homotopy idea as our `r_gp` continuation, which is why continuation is so effective.
+* **OGY control & time-delayed feedback (Ott–Grebogi–Yorke 1990; Pyragas 1992).**
+  Stabilize unstable trajectories with small, targeted perturbations. The optimization
+  analogue is controlling the *trajectory* — move limits, asymptote adaptation, the
+  homotopy schedule — rather than the point, to steer the iterate into a chosen basin.
+
+### 2.7 Other approaches (lower priority here)
 * **Population metaheuristics** (GA, PSO, differential evolution), usually hybridized
   with a gradient local search. Powerful but very expensive at TO scale; best for
   low-dimensional parameterizations.
 * **Topological-derivative / bubble methods** — nucleate holes using the topological
   sensitivity (Sokołowski & Żochowski 1999; Allaire et al.). Natural for density
   fields, less so for a fixed set of explicit GGP components.
-* **Tunneling / filled-function methods** — analytically deform the objective to
-  "tunnel" past a known minimum; related in spirit to deflation.
 * **Optimizer-robustness knobs** — GCMMA, adaptive move limits / asymptotes
   (Svanberg 1987, 2002). These reduce premature stagnation but do not, by themselves,
   change the basin the solver lands in.
 
 ## 3. What we implemented
 
-All four high-value techniques are implemented as thin orchestration layers over
-`GGPPipeline`, in `ggp/optimization/global_search.py`. Two backward-compatible hooks
-were added to `GGPPipeline` (`ggp/optimization/pipeline.py`):
+Six techniques are implemented as thin orchestration layers over `GGPPipeline`, in
+`ggp/optimization/global_search.py`. Three backward-compatible hooks were added to
+`GGPPipeline` (`ggp/optimization/pipeline.py`):
 
 * `x0` — inject a normalized `[0,1]` initial design (warm-start / restart / perturbation);
 * `overrides` — per-run sharpness/penalization overrides (`ka`, `pp`, `r_gp`,
   `gammac`, `gammav`, `p_penalty`, `Emin`);
-* `deflation` — append a `_DeflatedObjectiveDiscipline` implementing `J·M(x)` with
-  analytic Jacobian, switching the scenario objective to the deflated one while still
-  reporting the *true* compliance at the optimum.
+* `deflation` — append a `_DeflatedObjectiveDiscipline` implementing `(J − offset)·M(x)`
+  with analytic Jacobian (offset 0 → deflation, offset `f*` → tunneling), switching the
+  scenario objective to the deflated/tunneling one while still reporting the *true*
+  compliance at the optimum.
 
 | Technique | Function | Knobs |
 |---|---|---|
 | Continuation / homotopy | `continuation(spec, schedule)` | warm-started `r_gp`/`ka`/`pp`/`p_penalty` ramp |
-| Multi-start | `multi_start(spec, n_starts, seed)` | best-of-N random layouts via `random_initial_design` |
-| Basin hopping | `basin_hopping(spec, n_hops, step, temperature)` | Metropolis on compliance |
-| Deflation | `deflated_search(spec, n_solutions, shift, power)` | deflation operator over found roots |
+| Multi-start | `multi_start(spec, n_starts, seed, schedule)` | best-of-N random layouts |
+| Basin hopping | `basin_hopping(spec, n_hops, step, temperature, schedule, chaotic)` | Metropolis on compliance |
+| Deflation | `deflated_search(spec, n_solutions, shift, power, schedule)` | deflation operator over found roots |
+| Tunneling | `tunneling(spec, n_solutions, power, schedule)` | `(J−f*)·M(x)` shifted-repelled objective |
+| Chaotic search | `chaotic_search(spec, n_starts, mu, schedule)` | ergodic logistic-map restarts |
+
+**The key enabler — continuation as the inner solve.** Passing a `schedule` to
+*any* of the global strategies makes each inner solve follow the `r_gp` homotopy
+instead of attacking the raw sharp problem. This is what lets **every** method improve
+on the single-start baseline (given the time for the extra phases): without it,
+multi-start / basin-hopping / deflation only find *worse* sharp-landscape basins; with
+it, each searches along the benign continuation trajectory and reaches below the
+baseline. In other words, the improvement is a matter of the *resources* (extra
+homotopy phases) attributed to each attempt — not a fundamental limit of the method.
 
 Each returns a `GlobalSearchResult` (best `OptimisationResult`, all attempts with
 their compliances, wall-clock). The strategies are exposed on the CLI
@@ -285,3 +327,15 @@ and `deflated_search/sol0` come out *exactly* equal to the baseline (74.2703) �
    of topology optimization problems.* SIAM J. Sci. Comput. 43(3):A1555–A1582, 2021.
 10. K. Svanberg. *The method of moving asymptotes — a new method for structural
     optimization.* IJNME 24(2):359–373, 1987.
+11. A. V. Levy, A. Montalvo. *The tunneling algorithm for the global minimization of
+    functions.* SIAM J. Sci. Stat. Comput. 6(1):15–29, 1985.
+12. R. P. Ge. *A filled function method for finding a global minimizer of a function of
+    several variables.* Math. Programming 46:191–204, 1990.
+13. E. Ott, C. Grebogi, J. A. Yorke. *Controlling chaos.* Phys. Rev. Lett.
+    64(11):1196–1199, 1990.
+14. K. Pyragas. *Continuous control of chaos by self-controlling feedback.* Phys. Lett.
+    A 170(6):421–428, 1992.
+15. L. Chen, K. Aihara. *Chaotic simulated annealing by a neural network model with
+    transient chaos.* Neural Networks 8(6):915–930, 1995.
+16. B. Li, W. Jiang. *Optimizing complex functions by chaos search.* Cybernetics and
+    Systems 29(4):409–419, 1998.
