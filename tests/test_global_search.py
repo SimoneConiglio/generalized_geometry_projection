@@ -268,3 +268,95 @@ def test_deflated_objective_gradient_matches_finite_difference():
     disc._compute_jacobian()
     np.testing.assert_allclose(disc.jac["compliance_deflated"]["x_vars"][0], j * grad)
     assert disc.jac["compliance_deflated"]["compliance"][0, 0] == pytest.approx(m0)
+
+
+def test_tunneling_objective_offset():
+    pytest.importorskip("gemseo")
+    from ggp.optimization.pipeline import _DeflatedObjectiveDiscipline
+
+    n = 6
+    roots = [np.full(n, 0.3)]
+    off = 2.0
+    disc = _DeflatedObjectiveDiscipline(roots, num_vars=n, offset=off)
+    x = np.full(n, 0.7)
+    j = 1.5
+    m0, grad = disc._factor_and_grad(x)
+    disc._run({"compliance": np.array([j]), "x_vars": x})
+    # objective is (J - offset) * M
+    assert disc.local_data["compliance_deflated"][0] == pytest.approx((j - off) * m0)
+    disc._compute_jacobian()
+    np.testing.assert_allclose(disc.jac["compliance_deflated"]["x_vars"][0], (j - off) * grad)
+
+
+# --------------------------------------------------------------------------- #
+# Chaotic dynamics
+# --------------------------------------------------------------------------- #
+def test_logistic_map_range_and_determinism():
+    a = gs.logistic_map(200, seed=0.137)
+    b = gs.logistic_map(200, seed=0.137)
+    assert a.shape == (200,)
+    assert np.all((a > 0.0) & (a < 1.0))
+    np.testing.assert_array_equal(a, b)            # deterministic given seed
+    # different seeds -> different orbits (ergodic / sensitive dependence)
+    c = gs.logistic_map(200, seed=0.501)
+    assert not np.allclose(a, c)
+    # decent spread across (0,1)
+    assert a.min() < 0.2 and a.max() > 0.8
+
+
+def test_chaotic_initial_design_bounds():
+    x = gs.chaotic_initial_design(24, "Free", seed=0.2)
+    assert x.shape == (24,)
+    assert np.all((x >= 0.0) & (x <= 1.0))
+    assert np.all(x[3::6] <= 0.10)                 # thin bars
+    assert np.all((x[5::6] >= 0.4) & (x[5::6] <= 0.6))
+
+
+# --------------------------------------------------------------------------- #
+# Continuation-as-inner-solve, tunneling, chaotic search (orchestration)
+# --------------------------------------------------------------------------- #
+def test_local_solve_schedule_chaining():
+    spec = _make_spec()
+    final, phases = gs._local_solve(
+        spec, x0=None, schedule=[{"r_gp": 1.5}, {"r_gp": 0.5}], pipeline_cls=FakePipeline)
+    assert len(phases) == 2
+    # warm-started: phase1 starts from phase0's optimum
+    np.testing.assert_allclose(FakePipeline.calls[1]["x0"], FakePipeline.calls[0]["x_opt"])
+    # returns the final (target-sharpness) phase
+    assert gs.compliance_of(final) == gs.compliance_of(phases[-1])
+
+
+def test_multi_start_with_continuation_schedule():
+    spec = _make_spec()
+    out = gs.multi_start(spec, n_starts=1, seed=0,
+                         schedule=[{"r_gp": 1.5}, {"r_gp": 0.5}], pipeline_cls=FakePipeline)
+    assert len(out.attempts) == 2          # default + 1 restart
+    assert len(FakePipeline.calls) == 4    # each attempt = 2-phase continuation
+
+
+def test_tunneling_uses_offset_and_accumulates_roots():
+    spec = _make_spec()
+    out = gs.tunneling(spec, n_solutions=3, pipeline_cls=FakePipeline)
+    assert out.method == "tunneling"
+    assert len(out.attempts) == 3
+    # first is a clean minimisation (no deflation), later phases tunnel (offset set)
+    assert FakePipeline.calls[0]["deflation"] is None
+    d1 = FakePipeline.calls[1]["deflation"]
+    assert d1 is not None and "offset" in d1 and len(d1["roots"]) == 1
+    assert out.best_compliance == pytest.approx(min(a.compliance for a in out.attempts))
+
+
+def test_chaotic_search_runs_and_selects_best():
+    spec = _make_spec()
+    out = gs.chaotic_search(spec, n_starts=3, seed=1, pipeline_cls=FakePipeline)
+    assert out.method == "chaotic_search"
+    assert len(out.attempts) == 4          # default + 3 chaotic restarts
+    assert out.attempts[0].label == "default"
+    assert out.best_compliance == pytest.approx(min(a.compliance for a in out.attempts))
+
+
+def test_basin_hopping_chaotic_perturbation():
+    spec = _make_spec()
+    out = gs.basin_hopping(spec, n_hops=3, step=0.1, seed=2, chaotic=True,
+                           x0=np.full(FakePipeline.num_vars, 0.5), pipeline_cls=FakePipeline)
+    assert len(out.attempts) == 4

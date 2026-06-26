@@ -90,12 +90,17 @@ class _DeflatedObjectiveDiscipline(Discipline):
     Output : ``compliance_deflated`` (the new scenario objective).
     """
 
-    def __init__(self, roots, num_vars, shift=1.0, power=2.0, eps=1e-6):
+    def __init__(self, roots, num_vars, shift=1.0, power=2.0, eps=1e-6, offset=0.0):
         super().__init__("DeflatedObjective")
         self.roots = [np.asarray(r, dtype=float).flatten() for r in roots]
         self.shift = float(shift)
         self.power = float(power)
         self.eps = float(eps)
+        # offset == 0      -> pure deflation, objective (J)   * M(x)
+        # offset == f_star -> tunneling,      objective (J-f*)* M(x)  (Levy-Montalvo
+        #   style): below the incumbent f* the shifted objective goes negative, so the
+        #   optimiser is driven to *better* basins while M(x) repels the known ones.
+        self.offset = float(offset)
         self.input_grammar.update_from_names(["compliance", "x_vars"])
         self.output_grammar.update_from_names(["compliance_deflated"])
         self.default_inputs = {
@@ -127,13 +132,14 @@ class _DeflatedObjectiveDiscipline(Discipline):
         j = float(np.asarray(self.local_data["compliance"]).flatten()[0])
         x = np.asarray(self.local_data["x_vars"]).flatten()
         m, _ = self._factor_and_grad(x)
-        self.local_data["compliance_deflated"] = np.array([j * m])
+        self.local_data["compliance_deflated"] = np.array([(j - self.offset) * m])
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
         j = float(np.asarray(self.local_data["compliance"]).flatten()[0])
         x = np.asarray(self.local_data["x_vars"]).flatten()
         m, dm = self._factor_and_grad(x)
-        # d(J*M)/dJ = M ; d(J*M)/dx = J * dM/dx
+        # d((J-off)*M)/dJ = M ; d((J-off)*M)/dx = (J-off) * dM/dx
+        j = j - self.offset
         self.jac = {
             "compliance_deflated": {
                 "compliance": np.array([[m]]),
@@ -507,6 +513,7 @@ class GGPPipeline:
                 num_vars=num_vars,
                 shift=self.deflation.get("shift", 1.0),
                 power=self.deflation.get("power", 2.0),
+                offset=self.deflation.get("offset", 0.0),
             )
             extra_disciplines.append(defl_disc)
             objective_name = "compliance_deflated"
