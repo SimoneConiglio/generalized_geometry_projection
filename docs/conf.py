@@ -25,7 +25,14 @@ extensions = [
     'sphinx.ext.mathjax',
     'sphinx_copybutton',
     'sphinxcontrib.mermaid',
+    'myst_parser',          # Markdown (.md) support, e.g. the local-minima review
 ]
+
+# Allow both reStructuredText and Markdown sources.
+source_suffix = {
+    '.rst': 'restructuredtext',
+    '.md': 'markdown',
+}
 
 autodoc_mock_imports = [
     'dolfin', 
