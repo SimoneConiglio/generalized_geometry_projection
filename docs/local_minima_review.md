@@ -172,14 +172,28 @@ baseline's `r_gp = 0.5`, is comparable to the baseline):
 | 3 (reported) | 0.5 | **73.52** |
 <!-- BENCHMARK_RESULTS_END -->
 
-**Figures** (written to `docs/_static/`):
+**Local-minima spread by strategy.** Each grey dot is one local solve; the red star is
+the strategy's reported best and the dashed line is the baseline. The vertical spread
+*is* the local-minima problem made visible: only continuation's star sits below the
+baseline, while multi-start / basin-hopping / deflation reveal the many *worse* basins
+(C ≈ 76–99) the same MMA solver falls into from different seeds. (Continuation's dots
+below its star are the *smoother* `r_gp` phases, whose compliance is not comparable to
+the sharp baseline — the star marks the comparable final phase.)
 
-* `sc2d_local_minima_spread.png` — compliance of every individual run per strategy,
-  with the per-strategy best (star) and the baseline reference line. The vertical
-  spread *is* the local-minima problem made visible. (Note: continuation's points
-  below its star are the *smoother* `r_gp` phases, whose compliance is not comparable
-  to the sharp baseline; the star marks the comparable final phase.)
-* `sc2d_local_minima_<method>.png` — the best design found by each strategy.
+![SC 2D local-minima spread by strategy](_static/sc2d_local_minima_spread.png)
+
+**Best design: baseline vs. continuation.** The continuation optimum (C = 73.52) is a
+slightly different, more triangulated topology near the fixed support than the baseline
+single-X (C = 74.27) — a genuinely distinct, better basin.
+
+| Baseline (C = 74.27) | Continuation (C = 73.52) |
+|---|---|
+| ![baseline best design](_static/sc2d_local_minima_baseline.png) | ![continuation best design](_static/sc2d_local_minima_continuation.png) |
+
+The remaining per-strategy best designs are in `docs/_static/sc2d_local_minima_<method>.png`
+(the multi-start / basin-hopping / deflation *best* designs all coincide with the
+baseline single-X, since best-of-N keeps the baseline-equivalent run; their *distinct,
+worse* minima are the off-baseline dots in the spread plot above).
 
 ### 4.2 Reading the results
 
