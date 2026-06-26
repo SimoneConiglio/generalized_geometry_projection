@@ -157,14 +157,37 @@ _Populated by `benchmarks/sc2d_local_minima.py` (see
 * `sc2d_local_minima_<method>.png` — the best design found by each strategy.
 
 ### 4.2 Reading the results
-* **Baseline** is the reference single local minimum.
-* **Multi-start** and **deflation** are expected to give the largest improvement,
-  because they sample *distinct* basins rather than refining one.
-* **Continuation** improves robustness/crispness at low extra cost (a handful of
-  warm-started phases) and often matches the baseline basin from a cleaner path.
-* **Basin hopping** improves on the incumbent when a good one is cheap to reach.
-* Any strategy's best compliance should be **≤** the baseline (it always includes a
-  baseline-equivalent run), so the method can never do worse than single-start.
+
+The SC 2D landscape under the GGP parameterization, *with the preset's already
+well-tuned MMA setup*, has a strong attractor near **C ≈ 74.3** (the classic
+single-X cantilever truss). Against that, the strategies behave as follows.
+
+* **Continuation is the clear winner.** Ramping the sampling radius `r_gp` from a
+  *smooth* `2.0` down to the target `0.5`, warm-starting each phase, reaches
+  **C ≈ 73.6** — about **1 % below the baseline** and the only improvement that is
+  robustly above the solver-noise floor (see caveat). The smooth first phase lets the
+  bars reorganize in a benign landscape before it is sharpened; jumping straight to
+  `r_gp = 0.5` (the baseline) lands in a slightly worse basin. *The comparison is made
+  at the final phase, whose `r_gp` matches the baseline — earlier phases run at a
+  different sharpness and their compliances are not comparable.*
+* **Multi-start exposes the local-minima problem directly.** Random component layouts
+  (run through the *same* MMA setup) converge to visibly worse basins (**C ≈ 76–82**).
+  Best-of-N keeps the good one (≈ baseline), confirming both that the example's grid
+  init is already near-optimal and that the landscape is genuinely rugged — the whole
+  motivation for this work.
+* **Deflation finds *distinct* minima.** Repelling the known optimum drives the solver
+  into different topologies at **C ≈ 75.7–76.9** — exactly the intended behavior
+  (enumerating separate basins); here they are valid but not better.
+* **Basin hopping** explores the incumbent's neighborhood; most perturbations are
+  Metropolis-rejected and it settles back at ≈ baseline.
+* Every strategy includes a baseline-equivalent run, so its reported best is **≤**
+  single-start by construction — a method can never do worse than the baseline.
+
+> **Solver-determinism caveat.** Two nominally identical runs (the baseline and the
+> `default` run inside multi-start) differ by ~0.1–0.15 % in compliance. This is
+> floating-point non-determinism from the threaded PyAMG/CG (AMJax) FEM solver, not a
+> real optimization difference. Improvements below ~0.2 % should therefore be read as
+> "within noise"; the continuation result (~1 %) sits comfortably above it.
 
 ## 5. Reproducing & extending
 

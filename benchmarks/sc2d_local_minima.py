@@ -64,9 +64,12 @@ def reduced_config(seed: int) -> BenchConfig:
     return BenchConfig(
         n_starts=4,
         n_hops=4,
-        n_solutions=4,
-        # r_gp continuation: smooth -> sharp, warm-started.
-        continuation_schedule=[{"r_gp": 1.5}, {"r_gp": 1.0}, {"r_gp": 0.5}],
+        n_solutions=3,
+        # r_gp continuation: smooth -> sharp, warm-started. The smooth first phase
+        # (r_gp=2.0) is what lets the bars reorganise into a better basin before the
+        # landscape is sharpened to the target r_gp=0.5 (== baseline) -- this is the
+        # phase whose compliance is comparable to the baseline.
+        continuation_schedule=[{"r_gp": 2.0}, {"r_gp": 1.5}, {"r_gp": 1.0}, {"r_gp": 0.5}],
         hop_step=0.08,
         hop_temperature=2.0,
         deflation_shift=1.0,
