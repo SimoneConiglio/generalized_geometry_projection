@@ -488,42 +488,58 @@ def tunneling(
     pipeline_cls=None,
     on_solution: Optional[Callable[[int, OptimisationResult], None]] = None,
 ) -> GlobalSearchResult:
-    """Tunneling method (Levy & Montalvo).
+    """Tunneling method (Levy & Montalvo), in a robust **escape-then-refine** form.
 
-    Alternates *minimisation* with a *tunneling* phase. After finding an incumbent
-    minimum with objective ``f*``, the next solve minimises the **shifted, repelled**
-    objective ``(J - f*) * M(x)`` (``M`` blows up at known minima): the optimiser
-    "tunnels" through the f* level set, past the basins already found, to emerge in a
-    region where ``J < f*`` -- i.e. a *better* minimum. Unlike pure deflation, the
-    f* shift biases the search towards improvement, not merely distinctness.
+    Classic tunneling minimises a *shifted, repelled* objective ``(J - f*)·M(x)`` to
+    slide through the ``f*`` level set into a better basin. That shifted objective,
+    however, sits near zero inside a known basin and trips the preset MMA's tight
+    *relative* convergence tolerance, so the sharp phase stops after a few iterations.
+    We therefore split each tunnelling step into two well-posed solves:
+
+    1. **escape** -- minimise the *multiplicative* deflated objective ``J·M(x)`` (the
+       stable, strictly-positive deflation operator) under the *smoothest* homotopy
+       phase, starting from the incumbent. ``M`` repels the known minima, so the
+       optimiser is pushed out of their basins into a new region.
+    2. **refine** -- a *clean* continuation (no deflation) from that escaped point,
+       which converges normally to the new basin's minimum.
+
+    This keeps the tunnelling idea -- leave the basins already found, then minimise --
+    while every sub-solve is numerically well-conditioned. The incumbent ``f*`` is
+    lowered whenever a better minimum is found, biasing the search downward.
     """
     t0 = time.time()
     attempts: List[Attempt] = []
     results_by_label: Dict[str, OptimisationResult] = {}
     roots: List[np.ndarray] = []
+    smooth_phase = (schedule[0] if schedule else {"r_gp": 1.5})
 
     # Phase 0: clean minimisation to establish the incumbent.
     result, _ = _local_solve(spec, x0=x0, schedule=schedule, pipeline_cls=pipeline_cls)
     attempts.append(_attempt_from_result("min0", result))
     results_by_label["min0"] = result
-    roots.append(np.asarray(result.design_variables, float).flatten())
+    inc_x = np.asarray(result.design_variables, float).flatten()
+    roots.append(inc_x)
     best = result
-    f_star = float(result.objective_value)
     if on_solution is not None:
         on_solution(0, result)
 
     for i in range(1, max(1, n_solutions)):
-        deflation = {"roots": list(roots), "shift": 1.0, "power": power,
-                     "offset": f_star}        # offset == f* -> tunneling objective
-        result, _ = _local_solve(spec, x0=x0, schedule=schedule, deflation=deflation,
+        # 1. escape: deflated (multiplicative) solve under the smooth phase.
+        deflation = {"roots": list(roots), "shift": 1.0, "power": power}
+        escaped = _run_once(spec, x0=inc_x, overrides=smooth_phase,
+                            deflation=deflation, pipeline_cls=pipeline_cls)
+        x_escape = np.asarray(escaped.design_variables, float).flatten()
+        # 2. refine: clean continuation from the escaped point.
+        result, _ = _local_solve(spec, x0=x_escape, schedule=schedule,
                                  pipeline_cls=pipeline_cls)
         label = f"tunnel{i}"
         attempts.append(_attempt_from_result(label, result))
         results_by_label[label] = result
-        roots.append(np.asarray(result.design_variables, float).flatten())
+        new_x = np.asarray(result.design_variables, float).flatten()
+        roots.append(new_x)
         if compliance_of(result) < compliance_of(best):
             best = result
-            f_star = float(result.objective_value)   # lower the level set -> keep tunnelling down
+            inc_x = new_x                 # tunnel onward from the improved incumbent
         if on_solution is not None:
             on_solution(i, result)
 
