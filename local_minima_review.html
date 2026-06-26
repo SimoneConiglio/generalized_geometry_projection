@@ -1,0 +1,510 @@
+
+
+<!DOCTYPE html>
+<html class="writer-html5" lang="en" data-content_root="./">
+<head>
+  <meta charset="utf-8" /><meta name="viewport" content="width=device-width, initial-scale=1" />
+
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Reaching improved local minima in GGP topology optimization &mdash; ggp 0.1.0 documentation</title>
+      <link rel="stylesheet" type="text/css" href="_static/pygments.css?v=b86133f3" />
+      <link rel="stylesheet" type="text/css" href="_static/css/theme.css?v=9edc463e" />
+      <link rel="stylesheet" type="text/css" href="_static/copybutton.css?v=76b2166b" />
+
+  
+      <script src="_static/jquery.js?v=5d32c60e"></script>
+      <script src="_static/_sphinx_javascript_frameworks_compat.js?v=2cd50e6c"></script>
+      <script src="_static/documentation_options.js?v=01f34227"></script>
+      <script src="_static/doctools.js?v=9bcbadda"></script>
+      <script src="_static/sphinx_highlight.js?v=dc90522c"></script>
+      <script src="_static/clipboard.min.js?v=a7894cd8"></script>
+      <script src="_static/copybutton.js?v=f281be69"></script>
+    <script src="_static/js/theme.js"></script>
+    <link rel="index" title="Index" href="genindex.html" />
+    <link rel="search" title="Search" href="search.html" />
+    <link rel="next" title="Sequential Convex Programming (SCP) Framework" href="scp_uno_guide.html" />
+    <link rel="prev" title="Additive Manufacturing Constraints" href="alm_guide.html" /> 
+</head>
+
+<body class="wy-body-for-nav"> 
+  <div class="wy-grid-for-nav">
+    <nav data-toggle="wy-nav-shift" class="wy-nav-side">
+      <div class="wy-side-scroll">
+        <div class="wy-side-nav-search" >
+
+          
+          
+          <a href="index.html" class="icon icon-home">
+            ggp
+          </a>
+<div role="search">
+  <form id="rtd-search-form" class="wy-form" action="search.html" method="get">
+    <input type="text" name="q" placeholder="Search docs" aria-label="Search docs" />
+    <input type="hidden" name="check_keywords" value="yes" />
+    <input type="hidden" name="area" value="default" />
+  </form>
+</div>
+        </div><div class="wy-menu wy-menu-vertical" data-spy="affix" role="navigation" aria-label="Navigation menu">
+              <p class="caption" role="heading"><span class="caption-text">Contents:</span></p>
+<ul class="current">
+<li class="toctree-l1"><a class="reference internal" href="installation.html">Installation Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="cli_guide.html">Command-Line Interface (CLI)</a></li>
+<li class="toctree-l1"><a class="reference internal" href="developer_guide.html">Developer Guide</a></li>
+<li class="toctree-l1"><a class="reference internal" href="api.html">API Reference</a></li>
+<li class="toctree-l1"><a class="reference internal" href="3d_optimization.html">3D Topology Optimization Framework</a></li>
+<li class="toctree-l1"><a class="reference internal" href="alm_guide.html">Additive Manufacturing Constraints</a></li>
+<li class="toctree-l1 current"><a class="current reference internal" href="#">Reaching improved local minima in GGP topology optimization</a><ul>
+<li class="toctree-l2"><a class="reference internal" href="#the-problem">1. The problem</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#state-of-the-art">2. State of the art</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#continuation-homotopy-most-widely-used">2.1 Continuation / homotopy (most widely used)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#multi-start-random-restart">2.2 Multi-start / random restart</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#stochastic-perturbation-basin-hopping-simulated-annealing">2.3 Stochastic perturbation: basin hopping &amp; simulated annealing</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#deflation-deflated-continuation-recent-principled">2.4 Deflation / deflated continuation (recent, principled)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#other-approaches-lower-priority-here">2.5 Other approaches (lower priority here)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#what-we-implemented">3. What we implemented</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#benchmark-short-cantilever-2d">4. Benchmark: Short Cantilever 2D</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#results">4.1 Results</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#reading-the-results">4.2 Reading the results</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#reproducibility-and-a-word-on-solver-determinism">4.3 Reproducibility (and a word on solver determinism)</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#reproducing-extending">5. Reproducing &amp; extending</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
+</ul>
+</li>
+<li class="toctree-l1"><a class="reference internal" href="scp_uno_guide.html">Sequential Convex Programming (SCP) Framework</a></li>
+<li class="toctree-l1"><a class="reference internal" href="examples.html">Examples</a></li>
+<li class="toctree-l1"><a class="reference internal" href="credits.html">Credits &amp; Dependencies</a></li>
+</ul>
+
+        </div>
+      </div>
+    </nav>
+
+    <section data-toggle="wy-nav-shift" class="wy-nav-content-wrap"><nav class="wy-nav-top" aria-label="Mobile navigation menu" >
+          <i data-toggle="wy-nav-top" class="fa fa-bars"></i>
+          <a href="index.html">ggp</a>
+      </nav>
+
+      <div class="wy-nav-content">
+        <div class="rst-content">
+          <div role="navigation" aria-label="Page navigation">
+  <ul class="wy-breadcrumbs">
+      <li><a href="index.html" class="icon icon-home" aria-label="Home"></a></li>
+      <li class="breadcrumb-item active">Reaching improved local minima in GGP topology optimization</li>
+      <li class="wy-breadcrumbs-aside">
+            <a href="_sources/local_minima_review.md.txt" rel="nofollow"> View page source</a>
+      </li>
+  </ul>
+  <hr/>
+</div>
+          <div role="main" class="document" itemscope="itemscope" itemtype="http://schema.org/Article">
+           <div itemprop="articleBody">
+             
+  <section id="reaching-improved-local-minima-in-ggp-topology-optimization">
+<h1>Reaching improved local minima in GGP topology optimization<a class="headerlink" href="#reaching-improved-local-minima-in-ggp-topology-optimization" title="Link to this heading"></a></h1>
+<blockquote>
+<div><p>A state-of-the-art review of techniques for escaping poor local minima in
+Lagrangian / gradient-based topology optimization, and their implementation and
+benchmarking inside <strong>GGP-Topo</strong> on the Short Cantilever 2D (SC 2D) use case.</p>
+</div></blockquote>
+<section id="the-problem">
+<h2>1. The problem<a class="headerlink" href="#the-problem" title="Link to this heading"></a></h2>
+<p>Density- and component-based topology optimization (TO) minimizes a compliance-type
+objective subject to a volume constraint. The discretized problem is <strong>strongly
+non-convex</strong>: the material-interpolation penalization (SIMP <code class="docutils literal notranslate"><span class="pre">p</span></code>, GGP membership
+<code class="docutils literal notranslate"><span class="pre">Mc</span></code>) and the geometry projection create many stationary points. Gradient-based
+“Lagrangian” solvers — MMA, SLP, CONLIN, the optimality-criteria update, augmented
+Lagrangian — are all <strong>local</strong>: they descend into whatever basin contains the
+starting point and certify only a KKT point, never global optimality.</p>
+<p>For the <strong>Generalized Geometry Projection (GGP)</strong> family — and its relatives MMC
+(Moving Morphable Components), MMV, and geometry projection of bars/plates — this is
+<em>especially</em> acute:</p>
+<ul class="simple">
+<li><p><strong>Initial-layout sensitivity.</strong> The optimizer rearranges a fixed number of
+explicit components (bars). The final topology is largely determined by where the
+bars start and how they are allowed to merge/split, so two reasonable initial
+layouts routinely converge to visibly different structures with different
+compliances (Guo et al. 2014; Zhang et al. 2016).</p></li>
+<li><p><strong>Landscape sharpness.</strong> The KS aggregation parameter <code class="docutils literal notranslate"><span class="pre">ka</span></code>, the smooth-saturation
+steepness <code class="docutils literal notranslate"><span class="pre">pp</span></code>, the sampling-window radius <code class="docutils literal notranslate"><span class="pre">r_gp</span></code>, and the SIMP exponent <code class="docutils literal notranslate"><span class="pre">p</span></code>
+control how rugged the landscape is. Sharp settings give crisp, manufacturable
+designs but a rugged landscape full of local traps; smooth settings give a benign
+landscape but blurry, intermediate-density designs.</p></li>
+</ul>
+<p>In GGP-Topo this manifests concretely: <code class="docutils literal notranslate"><span class="pre">GGPPipeline.run()</span></code> performs <strong>one
+deterministic start</strong> with <strong>fixed</strong> sharpness (<code class="docutils literal notranslate"><span class="pre">ka=10</span></code>, <code class="docutils literal notranslate"><span class="pre">pp=100</span></code>, <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> from the
+spec, <code class="docutils literal notranslate"><span class="pre">p_penalty</span></code> fixed by the formulation method) and no restart/continuation/
+global-search layer. This document reviews how the literature attacks this, then
+implements and benchmarks the most promising techniques.</p>
+</section>
+<section id="state-of-the-art">
+<h2>2. State of the art<a class="headerlink" href="#state-of-the-art" title="Link to this heading"></a></h2>
+<section id="continuation-homotopy-most-widely-used">
+<h3>2.1 Continuation / homotopy (most widely used)<a class="headerlink" href="#continuation-homotopy-most-widely-used" title="Link to this heading"></a></h3>
+<p>Solve a sequence of related, progressively harder problems, warm-starting each from
+the previous optimum, so the optimizer is guided through a benign landscape before
+the rugged one is imposed:</p>
+<ul class="simple">
+<li><p><strong>SIMP penalization continuation</strong> — ramp <code class="docutils literal notranslate"><span class="pre">p</span></code> from 1 (convex-ish, gray) to 3–5
+(crisp). Standard practice (Bendsøe &amp; Sigmund 2003; Sigmund &amp; Maute 2013, <em>Topology
+optimization approaches</em>, SMO).</p></li>
+<li><p><strong>Heaviside / projection β-continuation</strong> — gradually sharpen the
+projection/threshold to remove gray and control length scale (Guest et al. 2004;
+Wang, Lazarov &amp; Sigmund 2011). The MMC/MMV literature uses the analogous sharpening
+of the component characteristic function (Zhang, Yuan, Zhang &amp; Guo 2016).</p></li>
+<li><p><strong>Filter-radius and mesh continuation</strong> — start coarse/heavily filtered, refine.</p></li>
+</ul>
+<p>The GGP analogue is <strong>sharpness continuation</strong>: ramp <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> (sampling window),
+<code class="docutils literal notranslate"><span class="pre">ka</span></code> (aggregation), <code class="docutils literal notranslate"><span class="pre">pp</span></code> (saturation) and/or <code class="docutils literal notranslate"><span class="pre">p_penalty</span></code> from smooth to sharp.
+GGP-Topo’s own legacy <code class="docutils literal notranslate"><span class="pre">free_runner.py</span></code> carried an unused <code class="docutils literal notranslate"><span class="pre">r_gp</span> <span class="pre">=</span> <span class="pre">[1.5,</span> <span class="pre">1.0,</span> <span class="pre">0.5]</span></code>
+schedule — exactly this idea.</p>
+</section>
+<section id="multi-start-random-restart">
+<h3>2.2 Multi-start / random restart<a class="headerlink" href="#multi-start-random-restart" title="Link to this heading"></a></h3>
+<p>Run the local solver from many diverse initial designs and keep the best (best-of-N).
+Embarrassingly parallel and a strong baseline for any non-convex problem. For
+MMC/GGP it directly targets initial-layout sensitivity: randomizing component
+positions, angles and lengths samples distinct basins (Guo et al. 2014; Zhang et al.
+2016). The cost is N local solves; the payoff is robust improvement and an empirical
+picture of how rugged the landscape actually is.</p>
+</section>
+<section id="stochastic-perturbation-basin-hopping-simulated-annealing">
+<h3>2.3 Stochastic perturbation: basin hopping &amp; simulated annealing<a class="headerlink" href="#stochastic-perturbation-basin-hopping-simulated-annealing" title="Link to this heading"></a></h3>
+<p>Hybridize local descent with stochastic global moves. <strong>Basin hopping</strong> (Wales &amp;
+Doye 1997) alternates a local minimization with a random perturbation of the
+<em>incumbent</em> optimum, accepting the new basin by a <strong>Metropolis</strong> rule
+<code class="docutils literal notranslate"><span class="pre">exp(-ΔC/T)</span></code>. <strong>Simulated annealing</strong> anneals an acceptance temperature. These
+explore the <em>neighborhood of good designs</em> rather than restarting blindly, and tend
+to find improved minima with fewer solves than naive multi-start once a decent
+incumbent exists.</p>
+</section>
+<section id="deflation-deflated-continuation-recent-principled">
+<h3>2.4 Deflation / deflated continuation (recent, principled)<a class="headerlink" href="#deflation-deflated-continuation-recent-principled" title="Link to this heading"></a></h3>
+<p>Farrell, Papadopoulos &amp; Surowiec (2021, <em>Computing multiple solutions of topology
+optimization problems</em>, SIAM J. Sci. Comput.; see also Papadopoulos, Farrell &amp;
+Surowiec 2021) systematically compute <strong>distinct</strong> solutions by <strong>deflation</strong>: once a
+minimizer <code class="docutils literal notranslate"><span class="pre">x_i</span></code> is found, the objective (or the residual) is multiplied by a
+deflation operator</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>M(x) = shift + Σ_i 1 / ‖x − x_i‖^power
+</pre></div>
+</div>
+<p>that becomes singular at each known root, so a re-solve from the <em>same</em> start is
+repelled from previously found minima and driven into a new basin. Combined with
+continuation (“deflated continuation”), this traces disconnected branches of
+solutions and reliably surfaces better minima than single-start. It is the most
+principled answer to “find me a <em>different, better</em> optimum.”</p>
+</section>
+<section id="other-approaches-lower-priority-here">
+<h3>2.5 Other approaches (lower priority here)<a class="headerlink" href="#other-approaches-lower-priority-here" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Population metaheuristics</strong> (GA, PSO, differential evolution), usually hybridized
+with a gradient local search. Powerful but very expensive at TO scale; best for
+low-dimensional parameterizations.</p></li>
+<li><p><strong>Topological-derivative / bubble methods</strong> — nucleate holes using the topological
+sensitivity (Sokołowski &amp; Żochowski 1999; Allaire et al.). Natural for density
+fields, less so for a fixed set of explicit GGP components.</p></li>
+<li><p><strong>Tunneling / filled-function methods</strong> — analytically deform the objective to
+“tunnel” past a known minimum; related in spirit to deflation.</p></li>
+<li><p><strong>Optimizer-robustness knobs</strong> — GCMMA, adaptive move limits / asymptotes
+(Svanberg 1987, 2002). These reduce premature stagnation but do not, by themselves,
+change the basin the solver lands in.</p></li>
+</ul>
+</section>
+</section>
+<section id="what-we-implemented">
+<h2>3. What we implemented<a class="headerlink" href="#what-we-implemented" title="Link to this heading"></a></h2>
+<p>All four high-value techniques are implemented as thin orchestration layers over
+<code class="docutils literal notranslate"><span class="pre">GGPPipeline</span></code>, in <code class="docutils literal notranslate"><span class="pre">ggp/optimization/global_search.py</span></code>. Two backward-compatible hooks
+were added to <code class="docutils literal notranslate"><span class="pre">GGPPipeline</span></code> (<code class="docutils literal notranslate"><span class="pre">ggp/optimization/pipeline.py</span></code>):</p>
+<ul class="simple">
+<li><p><code class="docutils literal notranslate"><span class="pre">x0</span></code> — inject a normalized <code class="docutils literal notranslate"><span class="pre">[0,1]</span></code> initial design (warm-start / restart / perturbation);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">overrides</span></code> — per-run sharpness/penalization overrides (<code class="docutils literal notranslate"><span class="pre">ka</span></code>, <code class="docutils literal notranslate"><span class="pre">pp</span></code>, <code class="docutils literal notranslate"><span class="pre">r_gp</span></code>,
+<code class="docutils literal notranslate"><span class="pre">gammac</span></code>, <code class="docutils literal notranslate"><span class="pre">gammav</span></code>, <code class="docutils literal notranslate"><span class="pre">p_penalty</span></code>, <code class="docutils literal notranslate"><span class="pre">Emin</span></code>);</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">deflation</span></code> — append a <code class="docutils literal notranslate"><span class="pre">_DeflatedObjectiveDiscipline</span></code> implementing <code class="docutils literal notranslate"><span class="pre">J·M(x)</span></code> with
+analytic Jacobian, switching the scenario objective to the deflated one while still
+reporting the <em>true</em> compliance at the optimum.</p></li>
+</ul>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Technique</p></th>
+<th class="head"><p>Function</p></th>
+<th class="head"><p>Knobs</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>Continuation / homotopy</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">continuation(spec,</span> <span class="pre">schedule)</span></code></p></td>
+<td><p>warm-started <code class="docutils literal notranslate"><span class="pre">r_gp</span></code>/<code class="docutils literal notranslate"><span class="pre">ka</span></code>/<code class="docutils literal notranslate"><span class="pre">pp</span></code>/<code class="docutils literal notranslate"><span class="pre">p_penalty</span></code> ramp</p></td>
+</tr>
+<tr class="row-odd"><td><p>Multi-start</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">multi_start(spec,</span> <span class="pre">n_starts,</span> <span class="pre">seed)</span></code></p></td>
+<td><p>best-of-N random layouts via <code class="docutils literal notranslate"><span class="pre">random_initial_design</span></code></p></td>
+</tr>
+<tr class="row-even"><td><p>Basin hopping</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">basin_hopping(spec,</span> <span class="pre">n_hops,</span> <span class="pre">step,</span> <span class="pre">temperature)</span></code></p></td>
+<td><p>Metropolis on compliance</p></td>
+</tr>
+<tr class="row-odd"><td><p>Deflation</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">deflated_search(spec,</span> <span class="pre">n_solutions,</span> <span class="pre">shift,</span> <span class="pre">power)</span></code></p></td>
+<td><p>deflation operator over found roots</p></td>
+</tr>
+</tbody>
+</table>
+<p>Each returns a <code class="docutils literal notranslate"><span class="pre">GlobalSearchResult</span></code> (best <code class="docutils literal notranslate"><span class="pre">OptimisationResult</span></code>, all attempts with
+their compliances, wall-clock). The strategies are exposed on the CLI
+(<code class="docutils literal notranslate"><span class="pre">ggp</span> <span class="pre">search</span> <span class="pre">--strategy</span> <span class="pre">...</span></code>) and benchmarked by <code class="docutils literal notranslate"><span class="pre">benchmarks/sc2d_local_minima.py</span></code>.</p>
+</section>
+<section id="benchmark-short-cantilever-2d">
+<h2>4. Benchmark: Short Cantilever 2D<a class="headerlink" href="#benchmark-short-cantilever-2d" title="Link to this heading"></a></h2>
+<p><strong>Problem.</strong> 60×30 domain (2:1), left edge fixed, unit downward point load at
+mid-right, 18 free GP bars, 40% volume fraction, MMA. Objective reported as the true
+compliance <code class="docutils literal notranslate"><span class="pre">C</span></code> (the pipeline optimizes <code class="docutils literal notranslate"><span class="pre">log(C+1)</span></code>).</p>
+<p><strong>Protocol.</strong> Single-start <strong>baseline</strong> vs. the four strategies. The harness has a
+fast <strong>reduced</strong> mode (default: ~100 MMA iters/run, 5 restarts) and a <code class="docutils literal notranslate"><span class="pre">--full</span></code> mode
+(320 iters, more restarts/hops). Run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>benchmarks/sc2d_local_minima.py<span class="w">            </span><span class="c1"># reduced (default)</span>
+python<span class="w"> </span>benchmarks/sc2d_local_minima.py<span class="w"> </span>--full<span class="w">     </span><span class="c1"># publication fidelity</span>
+</pre></div>
+</div>
+<section id="results">
+<h3>4.1 Results<a class="headerlink" href="#results" title="Link to this heading"></a></h3>
+<!-- BENCHMARK_RESULTS_START -->
+<p>Single deterministic run (seed 0, reduced breadth, every solve at the preset’s exact
+320-iter MMA config, exact <code class="docutils literal notranslate"><span class="pre">direct</span></code> FEM solver). Improvement is <code class="docutils literal notranslate"><span class="pre">(baseline</span> <span class="pre">−</span> <span class="pre">best)</span> <span class="pre">/</span> <span class="pre">baseline</span></code>.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Method</p></th>
+<th class="head"><p>Best compliance</p></th>
+<th class="head"><p>Improvement vs baseline</p></th>
+<th class="head"><p>Runs</p></th>
+<th class="head"><p>Time (s)</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>baseline</p></td>
+<td><p>74.2703</p></td>
+<td><p>+0.00%</p></td>
+<td><p>1</p></td>
+<td><p>135</p></td>
+</tr>
+<tr class="row-odd"><td><p><strong>continuation</strong></p></td>
+<td><p><strong>73.5163</strong></p></td>
+<td><p><strong>+1.02%</strong></p></td>
+<td><p>4</p></td>
+<td><p>680</p></td>
+</tr>
+<tr class="row-even"><td><p>multi_start</p></td>
+<td><p>74.2703</p></td>
+<td><p>+0.00%</p></td>
+<td><p>5</p></td>
+<td><p>690</p></td>
+</tr>
+<tr class="row-odd"><td><p>basin_hopping</p></td>
+<td><p>74.2703</p></td>
+<td><p>+0.00%</p></td>
+<td><p>5</p></td>
+<td><p>829</p></td>
+</tr>
+<tr class="row-even"><td><p>deflated_search</p></td>
+<td><p>74.2703</p></td>
+<td><p>+0.00%</p></td>
+<td><p>3</p></td>
+<td><p>523</p></td>
+</tr>
+</tbody>
+</table>
+<p>Because the solver is now exact and deterministic (§4.3), the <code class="docutils literal notranslate"><span class="pre">default</span></code> run inside
+multi-start, <code class="docutils literal notranslate"><span class="pre">hop0</span></code> inside basin hopping and <code class="docutils literal notranslate"><span class="pre">sol0</span></code> inside deflation are <em>bit-identical</em>
+to the baseline (all 74.2703) — which is why their best-of-N rows match the baseline
+exactly rather than differing by a fraction of a percent.</p>
+<p>Continuation phase trajectory (compliance at each <code class="docutils literal notranslate"><span class="pre">r_gp</span></code>; only the final phase, at the
+baseline’s <code class="docutils literal notranslate"><span class="pre">r_gp</span> <span class="pre">=</span> <span class="pre">0.5</span></code>, is comparable to the baseline):</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>phase</p></th>
+<th class="head"><p>r_gp</p></th>
+<th class="head"><p>C</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>0</p></td>
+<td><p>2.0</p></td>
+<td><p>69.30</p></td>
+</tr>
+<tr class="row-odd"><td><p>1</p></td>
+<td><p>1.5</p></td>
+<td><p>70.08</p></td>
+</tr>
+<tr class="row-even"><td><p>2</p></td>
+<td><p>1.0</p></td>
+<td><p>71.66</p></td>
+</tr>
+<tr class="row-odd"><td><p>3 (reported)</p></td>
+<td><p>0.5</p></td>
+<td><p><strong>73.52</strong></p></td>
+</tr>
+</tbody>
+</table>
+<!-- BENCHMARK_RESULTS_END -->
+<p><strong>Local-minima spread by strategy.</strong> Each grey dot is one local solve; the red star is
+the strategy’s reported best and the dashed line is the baseline. The vertical spread
+<em>is</em> the local-minima problem made visible: only continuation’s star sits below the
+baseline, while multi-start / basin-hopping / deflation reveal the many <em>worse</em> basins
+(C ≈ 76–99) the same MMA solver falls into from different seeds. (Continuation’s dots
+below its star are the <em>smoother</em> <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> phases, whose compliance is not comparable to
+the sharp baseline — the star marks the comparable final phase.)</p>
+<p><img alt="SC 2D local-minima spread by strategy" src="_images/sc2d_local_minima_spread.png" /></p>
+<p><strong>Best design: baseline vs. continuation.</strong> The continuation optimum (C = 73.52) is a
+slightly different, more triangulated topology near the fixed support than the baseline
+single-X (C = 74.27) — a genuinely distinct, better basin.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Baseline (C = 74.27)</p></th>
+<th class="head"><p>Continuation (C = 73.52)</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><img alt="baseline best design" src="_images/sc2d_local_minima_baseline.png" /></p></td>
+<td><p><img alt="continuation best design" src="_images/sc2d_local_minima_continuation.png" /></p></td>
+</tr>
+</tbody>
+</table>
+<p>The remaining per-strategy best designs are in <code class="docutils literal notranslate"><span class="pre">docs/_static/sc2d_local_minima_&lt;method&gt;.png</span></code>
+(the multi-start / basin-hopping / deflation <em>best</em> designs all coincide with the
+baseline single-X, since best-of-N keeps the baseline-equivalent run; their <em>distinct,
+worse</em> minima are the off-baseline dots in the spread plot above).</p>
+</section>
+<section id="reading-the-results">
+<h3>4.2 Reading the results<a class="headerlink" href="#reading-the-results" title="Link to this heading"></a></h3>
+<p>The SC 2D landscape under the GGP parameterization, <em>with the preset’s already
+well-tuned MMA setup</em>, has a strong attractor near <strong>C ≈ 74.3</strong> (the classic
+single-X cantilever truss). Against that, the strategies behave as follows.</p>
+<ul class="simple">
+<li><p><strong>Continuation is the clear winner.</strong> Ramping the sampling radius <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> from a
+<em>smooth</em> <code class="docutils literal notranslate"><span class="pre">2.0</span></code> down to the target <code class="docutils literal notranslate"><span class="pre">0.5</span></code>, warm-starting each phase, reaches
+<strong>C ≈ 73.52</strong> — about <strong>1.0 % below the baseline</strong> (74.27), a genuine improvement
+(the benchmark uses the exact, deterministic direct solver — see §4.3). The smooth first phase lets the
+bars reorganize in a benign landscape before it is sharpened; jumping straight to
+<code class="docutils literal notranslate"><span class="pre">r_gp</span> <span class="pre">=</span> <span class="pre">0.5</span></code> (the baseline) lands in a slightly worse basin. <em>The comparison is made
+at the final phase, whose <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> matches the baseline — earlier phases run at a
+different sharpness and their compliances are not comparable.</em></p></li>
+<li><p><strong>Multi-start exposes the local-minima problem directly.</strong> Random component layouts
+(run through the <em>same</em> MMA setup) converge to visibly worse basins (<strong>C ≈ 76–82</strong>).
+Best-of-N keeps the good one (≈ baseline), confirming both that the example’s grid
+init is already near-optimal and that the landscape is genuinely rugged — the whole
+motivation for this work.</p></li>
+<li><p><strong>Deflation finds <em>distinct</em> minima.</strong> Repelling the known optimum drives the solver
+into different topologies at <strong>C ≈ 76.1–77.0</strong> — exactly the intended behavior
+(enumerating separate basins); here they are valid but not better.</p></li>
+<li><p><strong>Basin hopping</strong> explores the incumbent’s neighborhood; most perturbations are
+Metropolis-rejected and it settles back at ≈ baseline.</p></li>
+<li><p>Every strategy includes a baseline-equivalent run, so its reported best is <strong>≤</strong>
+single-start by construction — a method can never do worse than the baseline.</p></li>
+</ul>
+</section>
+<section id="reproducibility-and-a-word-on-solver-determinism">
+<h3>4.3 Reproducibility (and a word on solver determinism)<a class="headerlink" href="#reproducibility-and-a-word-on-solver-determinism" title="Link to this heading"></a></h3>
+<p>While developing this benchmark we noticed that two <em>nominally identical</em> runs (the
+baseline and the <code class="docutils literal notranslate"><span class="pre">default</span></code> run inside multi-start) could differ in compliance — by as
+little as 1e-3 % and occasionally up to ~0.15 %. We tracked this down rather than
+wave it away:</p>
+<ul class="simple">
+<li><p>The preset’s default FEM backend is <strong><code class="docutils literal notranslate"><span class="pre">amjax</span></code></strong> — a PyAMG-preconditioned <strong>conjugate
+gradient</strong> <em>iterative</em> solver. Running the exact same design through it twice gives
+displacements that differ at the <strong>1e-11…1e-13</strong> level. This is <strong>not</strong> simply
+BLAS/OpenMP thread non-determinism: it persists with <code class="docutils literal notranslate"><span class="pre">OMP_NUM_THREADS=OPENBLAS_NUM_THREADS=MKL_NUM_THREADS=1</span></code>
+(we measured 4e-11 single-threaded), so it is intrinsic to the AMG setup/iteration.</p></li>
+<li><p>That machine-epsilon difference is then <strong>amplified by the optimization feedback
+loop</strong>: a ~1e-13 perturbation of one iteration’s gradient nudges the next MMA step,
+and over 320 tightly-asymptoted steps the trajectories diverge and settle at slightly
+different points of a flat minimum — turning 1e-13 into a ~1e-3…1e-1 % spread in the
+<em>final</em> compliance. It is chaos amplification of a rounding seed, not a 0.1 % solver
+error.</p></li>
+<li><p>The <strong><code class="docutils literal notranslate"><span class="pre">direct</span></code></strong> solver (scipy sparse <strong>LU</strong>) solves the <em>same</em> system <strong>exactly</strong> and
+is <strong>bit-for-bit reproducible</strong> (repeated runs are identical to the last digit). It is
+the inner linear-algebra backend only — the optimization problem and the MMA setup are
+unchanged.</p></li>
+</ul>
+<p><strong>The benchmark therefore pins <code class="docutils literal notranslate"><span class="pre">fem_solver=&quot;direct&quot;</span></code></strong> (≈ 1 s/iter on this 60×30 mesh,
+fully reproducible and with exact gradients); <code class="docutils literal notranslate"><span class="pre">--fem-solver</span> <span class="pre">amjax</span></code> is available for
+speed on larger problems at the cost of reproducibility. With the direct solver the
+numbers above are deterministic — note that <code class="docutils literal notranslate"><span class="pre">multi_start/default</span></code>, <code class="docutils literal notranslate"><span class="pre">basin_hopping/hop0</span></code>
+and <code class="docutils literal notranslate"><span class="pre">deflated_search/sol0</span></code> come out <em>exactly</em> equal to the baseline (74.2703) — so the
++1.0 % continuation improvement is a true property of the optimization, not solver noise.</p>
+</section>
+</section>
+<section id="reproducing-extending">
+<h2>5. Reproducing &amp; extending<a class="headerlink" href="#reproducing-extending" title="Link to this heading"></a></h2>
+<ul class="simple">
+<li><p>Run a single strategy: <code class="docutils literal notranslate"><span class="pre">ggp</span> <span class="pre">search</span> <span class="pre">--preset</span> <span class="pre">short_cantilever</span> <span class="pre">--strategy</span> <span class="pre">continuation</span></code>.</p></li>
+<li><p>Add a new continuation schedule: pass a list of <code class="docutils literal notranslate"><span class="pre">overrides</span></code> dicts to
+<code class="docutils literal notranslate"><span class="pre">global_search.continuation</span></code>.</p></li>
+<li><p>New strategies plug in the same way (construct <code class="docutils literal notranslate"><span class="pre">GGPPipeline(spec,</span> <span class="pre">x0=...,</span> <span class="pre">overrides=...,</span> <span class="pre">deflation=...)</span></code>, read back <code class="docutils literal notranslate"><span class="pre">OptimisationResult</span></code>); the orchestration is FEniCS-free and
+unit-tested in <code class="docutils literal notranslate"><span class="pre">tests/test_global_search.py</span></code>.</p></li>
+</ul>
+</section>
+<section id="references">
+<h2>References<a class="headerlink" href="#references" title="Link to this heading"></a></h2>
+<ol class="arabic simple">
+<li><p>M. P. Bendsøe, O. Sigmund. <em>Topology Optimization: Theory, Methods, and
+Applications.</em> Springer, 2003.</p></li>
+<li><p>O. Sigmund, K. Maute. <em>Topology optimization approaches.</em> Struct. Multidiscip.
+Optim. 48(6):1031–1055, 2013.</p></li>
+<li><p>J. K. Guest, J. H. Prévost, T. Belytschko. <em>Achieving minimum length scale … using
+nodal design variables and projection functions.</em> IJNME 61(2):238–254, 2004.</p></li>
+<li><p>F. Wang, B. S. Lazarov, O. Sigmund. <em>On projection methods, convergence and robust
+formulations in topology optimization.</em> SMO 43(6):767–784, 2011.</p></li>
+<li><p>X. Guo, W. Zhang, W. Zhong. <em>Doing topology optimization explicitly and
+geometrically — a new moving morphable components based framework.</em> J. Appl. Mech.
+81(8), 2014.</p></li>
+<li><p>W. Zhang, J. Yuan, J. Zhang, X. Guo. <em>A new topology optimization approach based on
+Moving Morphable Components (MMC) and the ersatz material model.</em> SMO 53:1243–1260,
+2016.</p></li>
+<li><p>S. Coniglio, J. Morlier, C. Gogu, R. Amargier. <em>Generalized Geometry Projection: A
+unified approach for geometric feature based topology optimization.</em> Arch. Comput.
+Methods Eng. 27:1573–1610, 2020.</p></li>
+<li><p>D. P. Wales, J. P. K. Doye. <em>Global optimization by basin-hopping …</em> J. Phys. Chem.
+A 101(28):5111–5116, 1997.</p></li>
+<li><p>I. P. A. Papadopoulos, P. E. Farrell, T. M. Surowiec. <em>Computing multiple solutions
+of topology optimization problems.</em> SIAM J. Sci. Comput. 43(3):A1555–A1582, 2021.</p></li>
+<li><p>K. Svanberg. <em>The method of moving asymptotes — a new method for structural
+optimization.</em> IJNME 24(2):359–373, 1987.</p></li>
+</ol>
+</section>
+</section>
+
+
+           </div>
+          </div>
+          <footer><div class="rst-footer-buttons" role="navigation" aria-label="Footer">
+        <a href="alm_guide.html" class="btn btn-neutral float-left" title="Additive Manufacturing Constraints" accesskey="p" rel="prev"><span class="fa fa-arrow-circle-left" aria-hidden="true"></span> Previous</a>
+        <a href="scp_uno_guide.html" class="btn btn-neutral float-right" title="Sequential Convex Programming (SCP) Framework" accesskey="n" rel="next">Next <span class="fa fa-arrow-circle-right" aria-hidden="true"></span></a>
+    </div>
+
+  <hr/>
+
+  <div role="contentinfo">
+    <p>&#169; Copyright 2026, Simone Coniglio.</p>
+  </div>
+
+  Built with <a href="https://www.sphinx-doc.org/">Sphinx</a> using a
+    <a href="https://github.com/readthedocs/sphinx_rtd_theme">theme</a>
+    provided by <a href="https://readthedocs.org">Read the Docs</a>.
+   
+
+</footer>
+        </div>
+      </div>
+    </section>
+  </div>
+  <script>
+      jQuery(function () {
+          SphinxRtdTheme.Navigation.enable(true);
+      });
+  </script> 
+
+</body>
+</html>
