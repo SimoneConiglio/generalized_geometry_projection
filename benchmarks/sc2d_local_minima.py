@@ -36,7 +36,8 @@ from ggp.optimization import global_search as gs
 
 PRESET = Path(__file__).resolve().parents[1] / "ggp" / "cli" / "presets" / "short_cantilever.yaml"
 
-ALL_METHODS = ["baseline", "continuation", "multi_start", "basin_hopping", "deflated_search"]
+ALL_METHODS = ["baseline", "continuation", "multi_start", "basin_hopping",
+               "deflated_search", "tunneling", "chaotic_search"]
 
 
 # --------------------------------------------------------------------------- #
@@ -52,7 +53,10 @@ class BenchConfig:
     n_starts: int
     n_hops: int
     n_solutions: int
-    continuation_schedule: list
+    continuation_schedule: list   # full homotopy for the standalone `continuation`
+    inner_schedule: list          # shorter homotopy used as the *inner* solve of the
+                                  # other strategies, so each of them can also reach
+                                  # below the baseline (more time/resources per attempt)
     hop_step: float
     hop_temperature: float
     deflation_shift: float
@@ -62,14 +66,15 @@ class BenchConfig:
 
 def reduced_config(seed: int) -> BenchConfig:
     return BenchConfig(
-        n_starts=4,
-        n_hops=4,
+        n_starts=2,
+        n_hops=2,
         n_solutions=3,
         # r_gp continuation: smooth -> sharp, warm-started. The smooth first phase
         # (r_gp=2.0) is what lets the bars reorganise into a better basin before the
         # landscape is sharpened to the target r_gp=0.5 (== baseline) -- this is the
         # phase whose compliance is comparable to the baseline.
         continuation_schedule=[{"r_gp": 2.0}, {"r_gp": 1.5}, {"r_gp": 1.0}, {"r_gp": 0.5}],
+        inner_schedule=[{"r_gp": 1.5}, {"r_gp": 0.5}],
         hop_step=0.08,
         hop_temperature=2.0,
         deflation_shift=1.0,
@@ -80,10 +85,11 @@ def reduced_config(seed: int) -> BenchConfig:
 
 def full_config(seed: int) -> BenchConfig:
     return BenchConfig(
-        n_starts=8,
-        n_hops=8,
+        n_starts=6,
+        n_hops=6,
         n_solutions=5,
         continuation_schedule=[{"r_gp": 2.0}, {"r_gp": 1.5}, {"r_gp": 1.0}, {"r_gp": 0.5}],
+        inner_schedule=[{"r_gp": 2.0}, {"r_gp": 1.0}, {"r_gp": 0.5}],
         hop_step=0.06,
         hop_temperature=2.0,
         deflation_shift=1.0,
@@ -148,21 +154,32 @@ def run_method(name: str, spec, cfg: BenchConfig) -> gs.GlobalSearchResult:
         )
     if name == "multi_start":
         return gs.multi_start(
-            spec, n_starts=cfg.n_starts, seed=cfg.seed,
+            spec, n_starts=cfg.n_starts, seed=cfg.seed, schedule=cfg.inner_schedule,
             on_start=lambda i, r: log(f"start {i}: C={gs.compliance_of(r):.4g}"),
         )
     if name == "basin_hopping":
         return gs.basin_hopping(
             spec, n_hops=cfg.n_hops, step=cfg.hop_step,
-            temperature=cfg.hop_temperature, seed=cfg.seed,
+            temperature=cfg.hop_temperature, seed=cfg.seed, schedule=cfg.inner_schedule,
             on_hop=lambda i, r, acc: log(
                 f"hop {i}: C={gs.compliance_of(r):.4g} {'accept' if acc else 'reject'}"),
         )
     if name == "deflated_search":
         return gs.deflated_search(
             spec, n_solutions=cfg.n_solutions, shift=cfg.deflation_shift,
-            power=cfg.deflation_power, seed=cfg.seed,
+            power=cfg.deflation_power, seed=cfg.seed, schedule=cfg.inner_schedule,
             on_solution=lambda i, r: log(f"solution {i}: C={gs.compliance_of(r):.4g}"),
+        )
+    if name == "tunneling":
+        return gs.tunneling(
+            spec, n_solutions=cfg.n_solutions, power=cfg.deflation_power,
+            seed=cfg.seed, schedule=cfg.inner_schedule,
+            on_solution=lambda i, r: log(f"tunnel {i}: C={gs.compliance_of(r):.4g}"),
+        )
+    if name == "chaotic_search":
+        return gs.chaotic_search(
+            spec, n_starts=cfg.n_starts, seed=cfg.seed, schedule=cfg.inner_schedule,
+            on_start=lambda i, r: log(f"chaos {i}: C={gs.compliance_of(r):.4g}"),
         )
     raise ValueError(f"unknown method {name}")
 
