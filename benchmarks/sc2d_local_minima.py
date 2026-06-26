@@ -9,15 +9,16 @@ a scatter of the local-minima spread.
 
 Run inside the conda ``ggp`` environment::
 
-    python benchmarks/sc2d_local_minima.py                 # reduced (default)
-    python benchmarks/sc2d_local_minima.py --full          # publication fidelity
+    python benchmarks/sc2d_local_minima.py                 # reduced breadth (default)
+    python benchmarks/sc2d_local_minima.py --full          # more restarts/hops
     python benchmarks/sc2d_local_minima.py --methods baseline multi_start
     python benchmarks/sc2d_local_minima.py --n-starts 8 --seed 1
 
-Reduced mode keeps every run short (~100 MMA iters, 5 restarts) so the whole sweep
-finishes in a reasonable wall-clock while still exposing the spread of minima and
-which technique wins. ``--full`` matches the preset (320 iters) and uses more
-restarts/hops -- closest to publication quality but much slower.
+Every individual local solve uses the *preset's exact MMA configuration* (algorithm,
+asymptotes, move limit, 320 iterations) -- a strategy never changes the local solver,
+only how the search is seeded / homotopied / repelled. ``--reduced`` vs ``--full``
+controls only the *breadth* of the global search (number of restarts, phases and
+hops), not the per-run solver setup.
 """
 from __future__ import annotations
 
@@ -43,7 +44,11 @@ ALL_METHODS = ["baseline", "continuation", "multi_start", "basin_hopping", "defl
 # --------------------------------------------------------------------------- #
 @dataclasses.dataclass
 class BenchConfig:
-    max_iter: int
+    # NB: the per-run *local solver* configuration (MMA algorithm, asymptotes,
+    # move limit, max_iter) always comes from the preset and is NEVER changed by a
+    # strategy -- every individual local solve is exactly the example's setup. The
+    # fields below only control the *breadth* of the global search (how many
+    # restarts / phases / hops) and the geometry-homotopy schedule.
     n_starts: int
     n_hops: int
     n_solutions: int
@@ -57,8 +62,7 @@ class BenchConfig:
 
 def reduced_config(seed: int) -> BenchConfig:
     return BenchConfig(
-        max_iter=100,
-        n_starts=5,
+        n_starts=4,
         n_hops=4,
         n_solutions=4,
         # r_gp continuation: smooth -> sharp, warm-started.
@@ -73,7 +77,6 @@ def reduced_config(seed: int) -> BenchConfig:
 
 def full_config(seed: int) -> BenchConfig:
     return BenchConfig(
-        max_iter=320,
         n_starts=8,
         n_hops=8,
         n_solutions=5,
@@ -86,15 +89,20 @@ def full_config(seed: int) -> BenchConfig:
     )
 
 
-def _spec_with_max_iter(max_iter: int):
-    """Load SC 2D and override the iteration budget (frozen-dataclass safe)."""
+def _load_spec(max_iter=None):
+    """Load the SC 2D preset *unchanged* so every local solve uses the example's
+    exact MMA configuration (asymptotes, move limit, 320 iters). ``max_iter`` is an
+    optional escape hatch for quick local checks only -- the default keeps the
+    preset's solver setup verbatim.
+    """
     spec = load_problem(str(PRESET))
-    solver = dataclasses.replace(spec.solver, max_iter=max_iter)
-    # The preset bakes max_iter into solver.options too; keep them consistent.
-    opts = dict(solver.options)
-    opts.pop("max_iter", None)
-    solver = dataclasses.replace(solver, options=opts)
-    return dataclasses.replace(spec, solver=solver)
+    if max_iter is not None:
+        opts = dict(spec.solver.options)
+        opts.pop("max_iter", None)
+        spec = dataclasses.replace(
+            spec, solver=dataclasses.replace(spec.solver, max_iter=max_iter, options=opts)
+        )
+    return spec
 
 
 # --------------------------------------------------------------------------- #
@@ -205,7 +213,9 @@ def main():
     p.add_argument("--methods", nargs="+", default=ALL_METHODS,
                    choices=ALL_METHODS, help="which strategies to run")
     p.add_argument("--n-starts", type=int, default=None, help="override multi-start count")
-    p.add_argument("--max-iter", type=int, default=None, help="override per-run MMA iters")
+    p.add_argument("--max-iter", type=int, default=None,
+                   help="escape hatch for quick local checks ONLY; by default every "
+                        "local solve uses the preset's exact MMA setup (320 iters).")
     p.add_argument("--seed", type=int, default=0)
     p.add_argument("--output-dir", default=None,
                    help="default: docs/_static for figures, benchmarks/ for tables")
@@ -214,8 +224,6 @@ def main():
     cfg = full_config(args.seed) if args.full else reduced_config(args.seed)
     if args.n_starts is not None:
         cfg.n_starts = args.n_starts
-    if args.max_iter is not None:
-        cfg.max_iter = args.max_iter
 
     root = Path(__file__).resolve().parents[1]
     fig_dir = Path(args.output_dir) if args.output_dir else root / "docs" / "_static"
@@ -223,9 +231,10 @@ def main():
     fig_dir.mkdir(parents=True, exist_ok=True)
     tab_dir.mkdir(parents=True, exist_ok=True)
 
-    spec = _spec_with_max_iter(cfg.max_iter)
-    print(f"SC 2D local-minima benchmark | {'FULL' if args.full else 'REDUCED'} | "
-          f"max_iter={cfg.max_iter} | methods={args.methods}", flush=True)
+    spec = _load_spec(max_iter=args.max_iter)   # default: preset's exact MMA setup
+    print(f"SC 2D local-minima benchmark | breadth={'FULL' if args.full else 'REDUCED'} | "
+          f"solver={spec.solver.algorithm} max_iter={spec.solver.max_iter} (from preset) | "
+          f"methods={args.methods}", flush=True)
 
     rows = []
     results = {}
