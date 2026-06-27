@@ -311,18 +311,25 @@ instead of the thin Matlab-style crossed bars. Preset: `short_cantilever_grid.ya
 | Start | Final C | vs baseline |
 |---|---|---|
 | crossed-bars (baseline) | 74.2703 | — |
-| rect grid-fill, single start | 92.30 | −24 % (worse) |
-| **rect grid-fill + continuation** | **73.61** | **+0.89 %** |
+| rect grid-fill, single start (320 it) | 92.30 | −24 % (worse) |
+| **rect grid-fill + continuation (600-it sharp tail)** | **73.18** | **+1.47 %** |
 
 The lesson mirrors §4.2: the grid-fill start *on its own* is **worse** (92.30) — it begins
 near-void and far from the solution topology, and the preset's tight `move=0.01` asymptotes
 cannot recover a good basin in 320 iterations, leaving gray mush in the centre. But run
-through the **`r_gp` continuation**, the very same start reaches **73.61, below the
-baseline** and on par with the GP crossed-bars continuation (73.52). A better *primitive
-and layout* helps only once the landscape is also smoothed — the starting guess and the
-homotopy are complementary, not substitutes.
+through the **`r_gp` continuation** with a long enough sharp tail, the very same start
+reaches **73.18, below the baseline** and on par with the GP crossed-bars continuation
+(73.52). A better *primitive and layout* helps only once the landscape is also smoothed —
+the starting guess and the homotopy are complementary, not substitutes.
 
-| rect grid-fill, single start (C = 92.30) | rect grid-fill + continuation (C = 73.61) |
+Convergence is iteration-sensitive here: at 320 sharp iterations the design is C = 73.61
+with a noticeably grayer interior; extending the final `r_gp = 0.5` phase to 600 iterations
+lowers it to **C = 73.18** with the volume constraint active (vol = 0.40) and the
+intermediate-density (gray) fraction down to ~0.18 — the residual gray being mostly thin
+edge-transition bands inherent to the smooth projection. A sharpening continuation (ramping
+`pp`/`gammac`) would drive it fully to 0/1 if a crisp design is required.
+
+| rect grid-fill, single start (C = 92.30) | rect grid-fill + continuation (C = 73.18) |
 |---|---|
 | ![rect grid single start](_static/sc2d_rect_grid_optimized.png) | ![rect grid + continuation](_static/sc2d_rect_grid_continuation.png) |
 
