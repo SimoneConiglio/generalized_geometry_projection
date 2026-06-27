@@ -58,6 +58,9 @@ def _build_formulation(raw: Dict[str, Any]) -> FormulationSpec:
         r_gp=raw.get("r_gp", 0.5),
         Ngp=raw.get("Ngp", 2),
         method=raw.get("method", "GP"),
+        init=raw.get("init", "default"),
+        grid_nx=raw.get("grid_nx"),
+        grid_ny=raw.get("grid_ny"),
     )
 
 

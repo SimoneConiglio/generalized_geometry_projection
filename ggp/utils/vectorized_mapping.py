@@ -95,9 +95,11 @@ def compute_local_characteristic_2d_with_grad_np(X_mesh, Y_mesh, X, Y, L, h, T, 
         dW_dT = dW_dzetavar * dzetavar_dxloc * dxloc_dT
         
         return W, dW_dX, dW_dY, dW_dL, dW_dh, dW_dT
-    elif method == 'AMNA':
+    elif method in ('AMNA', 'rect'):
+        # Rectangle primitive: product of four quintic-smoothed half-plane
+        # constraints -> a width-L x height-h rectangle with analytic gradients.
         sigma = r_gp
-        
+
         # zetas
         zeta1 = -L/2.0 - x_loc
         zeta2 = x_loc - L/2.0
@@ -214,7 +216,7 @@ def compute_local_characteristic_np(X_mesh, Y_mesh, X, Y, L, h, T, r_gp, method=
         
         mask_y = np.abs(y_loc) <= (h/2.0 + 1e-6)
         return np.where(mask_y, deltamin + (1.0 - deltamin) * deltaiel, 0.0)
-    elif method == 'AMNA' and Z_mesh is None:
+    elif method in ('AMNA', 'rect') and Z_mesh is None:
         sigma = r_gp
         zeta1 = -L/2.0 - x_loc
         zeta2 = x_loc - L/2.0

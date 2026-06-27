@@ -115,8 +115,17 @@ class FormulationSpec:
         Sampling-window radius for Gauss-point integration.
     Ngp : int
         Number of Gauss points per dimension.
-    method : {"GP", "WGP"}
-        Geometry projection method variant.
+    method : {"GP", "WGP", "rect"}
+        Geometry projection method / primitive variant. ``"GP"`` is the round-ended
+        bar (capsule); ``"rect"`` is a true rectangle primitive (quintic-smoothed,
+        width ``L`` x height ``h``).
+    init : {"default", "grid"}
+        Initial-design layout. ``"default"`` is the Matlab-style crossed-bar grid;
+        ``"grid"`` tiles the domain with ``grid_nx`` x ``grid_ny`` rectangles
+        (squares when the tile aspect matches the domain) at density = ``volfrac``.
+    grid_nx, grid_ny : int, optional
+        Number of tiles along x and y for the ``"grid"`` initialisation. Their
+        product must equal ``num_components`` and both must be < the mesh resolution.
     """
     mode: Literal["Free", "ALM", "3D_Free", "3D_ALM"] = "Free"
     num_components: int = 18
@@ -126,6 +135,9 @@ class FormulationSpec:
     r_gp: float = 0.5
     Ngp: int = 2
     method: str = "GP"
+    init: str = "default"
+    grid_nx: Optional[int] = None
+    grid_ny: Optional[int] = None
 
 
 # ── Optimisation ──────────────────────────────────────────────────────────────
