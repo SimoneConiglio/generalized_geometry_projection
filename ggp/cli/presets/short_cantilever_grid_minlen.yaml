@@ -27,9 +27,9 @@ formulation:
   init: grid
   grid_nx: 6
   grid_ny: 3
-  min_thickness: 3.0      # minimum member thickness (mesh units) -> minimum length scale
+  min_thickness: 3.0      # min member size in BOTH L and h (mesh units) -> length scale
   r_gp: 0.5
-  Ngp: 2
+  Ngp: 3                  # 3x3 = 9 Gauss points in the sampling window (anti-checkerboard)
 
 objective:
   name: compliance

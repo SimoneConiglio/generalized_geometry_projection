@@ -69,8 +69,13 @@ class Free2DMapper(ProjectionMapper):
         # [Xc, Yc, L, h, Theta, Mc]
         lb[0::6] = -1.0;          ub[0::6] = Lx + 1.0
         lb[1::6] = -1.0;          ub[1::6] = Ly + 1.0
-        lb[2::6] = 0.0;           ub[2::6] = diag
-        lb[3::6] = self.min_thickness;  ub[3::6] = diag   # min thickness (minh=1 by default)
+        # Minimum length scale: when min_thickness > 1 it bounds BOTH the length L and
+        # the thickness h, so a member is at least min_thickness elements in *both*
+        # directions (prevents thin diagonal members rasterising to a checkerboard).
+        # Default (min_thickness == 1) keeps the reference L_min = 0.
+        min_len = self.min_thickness if self.min_thickness > 1.0 else 0.0
+        lb[2::6] = min_len;       ub[2::6] = diag        # length L
+        lb[3::6] = self.min_thickness;  ub[3::6] = diag  # thickness h (minh=1 by default)
         lb[4::6] = -2.0 * np.pi;  ub[4::6] = 2.0 * np.pi
         lb[5::6] = 0.0;           ub[5::6] = 1.0
         return lb, ub

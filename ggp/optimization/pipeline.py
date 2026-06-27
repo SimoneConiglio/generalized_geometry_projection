@@ -418,6 +418,7 @@ class GGPPipeline:
             "pp": 100.0,
             "method": self.spec.formulation.method,
             "r_gp": self.spec.formulation.r_gp,
+            "Ngp": self.spec.formulation.Ngp,
             "min_thickness": self.spec.formulation.min_thickness,
         }
         # Apply per-run sharpness overrides (continuation strategy).

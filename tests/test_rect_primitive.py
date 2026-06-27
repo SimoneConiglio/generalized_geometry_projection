@@ -95,16 +95,26 @@ def test_grid_fill_init_layout():
     np.testing.assert_allclose(hc, Ly / gny)   # 10-tall rectangles
 
 
-def test_min_thickness_raises_h_lower_bound():
-    # default: h lower bound = 1
+def test_min_thickness_bounds_both_L_and_h():
+    # default: L lower bound = 0, h lower bound = 1
     lb0, _ = Free2DMapper(18).default_bounds((60.0, 30.0), 18)
+    np.testing.assert_allclose(lb0[2::6], 0.0)
     np.testing.assert_allclose(lb0[3::6], 1.0)
-    # min_thickness=3 -> every h lower bound = 3 (a minimum length scale)
+    # min_thickness=3 -> minimum 3 elements in BOTH directions (L and h)
     lb3, ub3 = Free2DMapper(18, min_thickness=3.0).default_bounds((60.0, 30.0), 18)
-    np.testing.assert_allclose(lb3[3::6], 3.0)
+    np.testing.assert_allclose(lb3[2::6], 3.0)      # length L
+    np.testing.assert_allclose(lb3[3::6], 3.0)      # thickness h
     assert np.all(ub3[3::6] > 3.0)
-    # other variable bounds unchanged
-    np.testing.assert_allclose(lb3[0::6], lb0[0::6])
+    np.testing.assert_allclose(lb3[0::6], lb0[0::6])  # positions unchanged
+
+
+def test_ngp_controls_gauss_point_count():
+    m2 = Free2DMapper(4, Ngp=2)
+    m3 = Free2DMapper(4, Ngp=3)
+    m4 = Free2DMapper(4, Ngp=4)
+    assert m2.num_gp_per_el == 4      # 2x2
+    assert m3.num_gp_per_el == 9      # 3x3
+    assert m4.num_gp_per_el == 16     # 4x4
 
 
 def test_grid_fill_init_rejects_mismatched_counts():
