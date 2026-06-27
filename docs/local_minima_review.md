@@ -373,6 +373,38 @@ recover efficiency at the same (relative) length scale. Preset:
 |---|---|
 | ![rect grid single start](_static/sc2d_rect_grid_optimized.png) | ![rect grid + continuation](_static/sc2d_rect_grid_continuation.png) |
 
+### 4.5 Global search on the rectangle / minimum-length config
+
+Finally we run the **full strategy exploration** (§3) on this harder configuration —
+rectangle primitives, grid-fill start, `min_thickness = 3` bounds — each strategy using a
+continuation + sharpening inner solve (`benchmarks/sc2d_local_minima.py --preset
+short_cantilever_grid_minlen --sharpen`). The constrained, thick-member design space is
+*much* more rugged than the GP one, which makes the global search essential:
+
+| Method | Best C | vs single-start baseline |
+|---|---|---|
+| baseline (single start) | 119.5 | — |
+| deflated_search | 87.8 | +26.6 % |
+| continuation (single start) | 89.0 | +25.5 % |
+| basin_hopping | 83.6 | +30.0 % |
+| multi_start | 78.0 | +34.8 % |
+| tunneling | 77.2 | +35.4 % |
+| **chaotic_search** | **76.5** | **+36.0 %** |
+
+Two clear messages. First, on this config a single start — *even with continuation +
+sharpening* — stalls at ~89; only the strategies that **explore different layouts**
+(multi-start, tunnelling, chaotic) escape to the good basin. Second, those exploring
+strategies **agree**: their best designs all land at **C ≈ 76–78** and are the *same*
+thick-membered cantilever truss, reached from independent random / chaotic / tunnelled
+starts — the global search robustly converges to a similar, clean, near-0/1 design.
+
+| chaotic_search, C = 76.5 | multi_start, C = 78.0 | spread by strategy |
+|---|---|---|
+| ![chaotic](_static/sc2d_grid_explore_chaotic.png) | ![multistart](_static/sc2d_grid_explore_multistart.png) | ![spread](_static/sc2d_grid_explore_spread.png) |
+
+(Run with `Ngp = 2` for exploration speed; the best design renders cleanly to 0/1 at
+`Ngp = 3` as in §4.4.)
+
 ## 5. Reproducing & extending
 
 * Run a single strategy: `ggp search --preset short_cantilever --strategy continuation`.
