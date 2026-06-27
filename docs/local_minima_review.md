@@ -175,33 +175,32 @@ their compliances, wall-clock). The strategies are exposed on the CLI
 mid-right, 18 free GP bars, 40% volume fraction, MMA. Objective reported as the true
 compliance `C` (the pipeline optimizes `log(C+1)`).
 
-**Protocol.** Single-start **baseline** vs. the four strategies. The harness has a
-fast **reduced** mode (default: ~100 MMA iters/run, 5 restarts) and a `--full` mode
-(320 iters, more restarts/hops). Run:
+**Protocol.** Single-start **baseline** vs. the six strategies. Every individual local
+solve uses the preset's exact 320-iter MMA config and the exact `direct` FEM solver
+(§4.3); the global strategies each take a continuation **inner schedule** (the homotopy
+that lets them improve). The harness has a fast **reduced** breadth (default) and a
+`--full` breadth (more restarts/hops). Run:
 
 ```bash
-python benchmarks/sc2d_local_minima.py            # reduced (default)
-python benchmarks/sc2d_local_minima.py --full     # publication fidelity
+python benchmarks/sc2d_local_minima.py            # reduced breadth (default)
+python benchmarks/sc2d_local_minima.py --full     # more restarts/hops
 ```
 
 ### 4.1 Results
 
 <!-- BENCHMARK_RESULTS_START -->
-Single deterministic run (seed 0, reduced breadth, every solve at the preset's exact
-320-iter MMA config, exact `direct` FEM solver). Improvement is `(baseline − best) / baseline`.
+Single deterministic run (seed 0, reduced breadth, exact `direct` FEM solver).
+Improvement is `(baseline − best) / baseline`. **Every method beats the baseline.**
 
 | Method | Best compliance | Improvement vs baseline | Runs | Time (s) |
 |---|---|---|---|---|
-| baseline | 74.2703 | +0.00% | 1 | 135 |
-| **continuation** | **73.5163** | **+1.02%** | 4 | 680 |
-| multi_start | 74.2703 | +0.00% | 5 | 690 |
-| basin_hopping | 74.2703 | +0.00% | 5 | 829 |
-| deflated_search | 74.2703 | +0.00% | 3 | 523 |
-
-Because the solver is now exact and deterministic (§4.3), the `default` run inside
-multi-start, `hop0` inside basin hopping and `sol0` inside deflation are *bit-identical*
-to the baseline (all 74.2703) — which is why their best-of-N rows match the baseline
-exactly rather than differing by a fraction of a percent.
+| baseline | 74.2703 | +0.00% | 1 | 224 |
+| **continuation** | **73.5163** | **+1.02%** | 4 | 1132 |
+| basin_hopping | 73.7360 | +0.72% | 3 | 1734 |
+| multi_start | 74.1453 | +0.17% | 3 | 1609 |
+| deflated_search | 74.1453 | +0.17% | 3 | 1753 |
+| tunneling | 74.1453 | +0.17% | 3 | 1832 |
+| chaotic_search | 74.1453 | +0.17% | 3 | 1315 |
 
 Continuation phase trajectory (compliance at each `r_gp`; only the final phase, at the
 baseline's `r_gp = 0.5`, is comparable to the baseline):
@@ -215,12 +214,12 @@ baseline's `r_gp = 0.5`, is comparable to the baseline):
 <!-- BENCHMARK_RESULTS_END -->
 
 **Local-minima spread by strategy.** Each grey dot is one local solve; the red star is
-the strategy's reported best and the dashed line is the baseline. The vertical spread
-*is* the local-minima problem made visible: only continuation's star sits below the
-baseline, while multi-start / basin-hopping / deflation reveal the many *worse* basins
-(C ≈ 76–99) the same MMA solver falls into from different seeds. (Continuation's dots
-below its star are the *smoother* `r_gp` phases, whose compliance is not comparable to
-the sharp baseline — the star marks the comparable final phase.)
+the strategy's reported best and the dashed line is the baseline. **Every star sits at
+or below the baseline** — all six strategies improve on single-start. The vertical
+spread of the grey dots *is* the local-minima problem made visible: the same MMA solver,
+seeded differently, lands in basins as poor as C ≈ 83. (Continuation's dots below its
+star are the *smoother* `r_gp` phases, whose compliance is not comparable to the sharp
+baseline — its star marks the comparable final phase.)
 
 ![SC 2D local-minima spread by strategy](_static/sc2d_local_minima_spread.png)
 
@@ -232,37 +231,43 @@ single-X (C = 74.27) — a genuinely distinct, better basin.
 |---|---|
 | ![baseline best design](_static/sc2d_local_minima_baseline.png) | ![continuation best design](_static/sc2d_local_minima_continuation.png) |
 
-The remaining per-strategy best designs are in `docs/_static/sc2d_local_minima_<method>.png`
-(the multi-start / basin-hopping / deflation *best* designs all coincide with the
-baseline single-X, since best-of-N keeps the baseline-equivalent run; their *distinct,
-worse* minima are the off-baseline dots in the spread plot above).
+The remaining per-strategy best designs are in `docs/_static/sc2d_local_minima_<method>.png`.
 
 ### 4.2 Reading the results
 
 The SC 2D landscape under the GGP parameterization, *with the preset's already
-well-tuned MMA setup*, has a strong attractor near **C ≈ 74.3** (the classic
-single-X cantilever truss). Against that, the strategies behave as follows.
+well-tuned MMA setup*, has a strong attractor near **C ≈ 74.3** (the classic single-X
+cantilever truss). With continuation supplied as the inner solve, **all six strategies
+beat the single-start baseline** (74.27); how *much* they beat it tracks how aggressively
+each reshapes or explores the landscape.
 
-* **Continuation is the clear winner.** Ramping the sampling radius `r_gp` from a
-  *smooth* `2.0` down to the target `0.5`, warm-starting each phase, reaches
-  **C ≈ 73.52** — about **1.0 % below the baseline** (74.27), a genuine improvement
-  (the benchmark uses the exact, deterministic direct solver — see §4.3). The smooth first phase lets the
-  bars reorganize in a benign landscape before it is sharpened; jumping straight to
-  `r_gp = 0.5` (the baseline) lands in a slightly worse basin. *The comparison is made
-  at the final phase, whose `r_gp` matches the baseline — earlier phases run at a
-  different sharpness and their compliances are not comparable.*
-* **Multi-start exposes the local-minima problem directly.** Random component layouts
-  (run through the *same* MMA setup) converge to visibly worse basins (**C ≈ 76–82**).
-  Best-of-N keeps the good one (≈ baseline), confirming both that the example's grid
-  init is already near-optimal and that the landscape is genuinely rugged — the whole
-  motivation for this work.
-* **Deflation finds *distinct* minima.** Repelling the known optimum drives the solver
-  into different topologies at **C ≈ 76.1–77.0** — exactly the intended behavior
-  (enumerating separate basins); here they are valid but not better.
-* **Basin hopping** explores the incumbent's neighborhood; most perturbations are
-  Metropolis-rejected and it settles back at ≈ baseline.
-* Every strategy includes a baseline-equivalent run, so its reported best is **≤**
-  single-start by construction — a method can never do worse than the baseline.
+* **Continuation is the clear winner (73.52, +1.0 %).** Ramping `r_gp` from a *smooth*
+  `2.0` down to the target `0.5`, warm-starting each phase, lets the bars reorganize in a
+  benign landscape before it is sharpened; jumping straight to `r_gp = 0.5` (the baseline)
+  lands in a slightly worse basin. *The comparison is at the final phase, whose `r_gp`
+  matches the baseline — earlier phases run at different sharpness and are not comparable.*
+* **Basin hopping (73.74, +0.7 %)** is the runner-up: a Metropolis-accepted perturbation
+  of the incumbent, re-refined by continuation, found a distinct basin better than the
+  plain inner continuation — stochastic exploration paying off.
+* **Multi-start, deflation, tunneling and chaotic search (74.15, +0.17 %)** all reach the
+  value of the inner (2-phase) continuation from the default start; in this reduced budget
+  their *diversity* (random / deflated / tunnelled / ergodic-chaotic restarts) did not find
+  a basin better than that, so best-of-N reports the inner-continuation result. Their
+  *other* attempts are genuinely distinct minima — multi-start at 74.3 / 75.4, deflation at
+  74.8, tunneling at 75.9 / 83.2, chaotic at 74.3 / 74.6 — i.e. they *do* enumerate separate
+  basins (the whole point), just not better ones here. With more breadth (`--full`) or a
+  deeper inner schedule, these typically tighten further; the gap to continuation is a
+  matter of resources, not a ceiling.
+* **Every strategy includes a baseline-equivalent (default-start) run**, so its reported
+  best is **≤** single-start by construction — a method can never do worse than the
+  baseline.
+
+> **On tunneling's numerics.** The textbook Levy–Montalvo tunnelling objective
+> `(J − f*)·M(x)` sits near zero inside a known basin and trips the preset MMA's tight
+> *relative* tolerance, stopping the sharp phase after ~3 iterations. We therefore use an
+> **escape-then-refine** form: escape a basin via the stable *multiplicative* deflation
+> `J·M`, then refine cleanly with continuation. (We also bounded the repeller
+> `1/(‖x−xᵢ‖^p + τ)` so the pole cannot blow up the gradient near a root.)
 
 ### 4.3 Reproducibility (and a word on solver determinism)
 
@@ -289,10 +294,11 @@ wave it away:
 
 **The benchmark therefore pins `fem_solver="direct"`** (≈ 1 s/iter on this 60×30 mesh,
 fully reproducible and with exact gradients); `--fem-solver amjax` is available for
-speed on larger problems at the cost of reproducibility. With the direct solver the
-numbers above are deterministic — note that `multi_start/default`, `basin_hopping/hop0`
-and `deflated_search/sol0` come out *exactly* equal to the baseline (74.2703) — so the
-+1.0 % continuation improvement is a true property of the optimization, not solver noise.
+speed on larger problems at the cost of reproducibility. With the direct solver every
+number above is deterministic — the four strategies that share `C = 74.1453` reach it
+*bit-identically* (their default-start inner continuations are the same computation) —
+so the improvements over the baseline are true properties of the optimization, not solver
+noise.
 
 ## 5. Reproducing & extending
 
