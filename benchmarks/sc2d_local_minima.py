@@ -98,7 +98,7 @@ def full_config(seed: int) -> BenchConfig:
     )
 
 
-def _load_spec(max_iter=None, fem_solver="direct"):
+def _load_spec(max_iter=None, fem_solver="direct", preset=None, ngp=None):
     """Load the SC 2D preset, keeping the example's exact *MMA* configuration
     (algorithm, asymptotes, move limit, 320 iters) but pinning the inner *linear*
     FEM solver for reproducibility.
@@ -113,7 +113,8 @@ def _load_spec(max_iter=None, fem_solver="direct"):
     gradients. This changes only the linear-algebra backend, not the optimisation
     problem or the MMA setup. ``fem_solver=None`` keeps the preset's choice.
     """
-    spec = load_problem(str(PRESET))
+    path = (PRESET.parent / f"{preset}.yaml") if preset else PRESET
+    spec = load_problem(str(path))
     repl = {}
     if max_iter is not None:
         opts = dict(spec.solver.options)
@@ -124,6 +125,8 @@ def _load_spec(max_iter=None, fem_solver="direct"):
         repl["fem_solver"] = fem_solver
     if repl:
         spec = dataclasses.replace(spec, solver=dataclasses.replace(spec.solver, **repl))
+    if ngp is not None:   # override Gauss-point count (exploration speed vs accuracy)
+        spec = dataclasses.replace(spec, formulation=dataclasses.replace(spec.formulation, Ngp=ngp))
     return spec
 
 
@@ -254,6 +257,14 @@ def main():
                    help="inner linear FEM solver. Default 'direct' (exact, bit-reproducible). "
                         "'amjax' is faster but NOT reproducible (~1e-12 noise amplified by MMA).")
     p.add_argument("--seed", type=int, default=0)
+    p.add_argument("--preset", default=None,
+                   help="preset name to benchmark (default: short_cantilever). e.g. "
+                        "short_cantilever_grid_minlen for the rectangle grid-fill config.")
+    p.add_argument("--ngp", type=int, default=None,
+                   help="override Gauss-point count per dim (2/3/4); lower = faster exploration.")
+    p.add_argument("--sharpen", action="store_true",
+                   help="append a sharpening phase (r_gp down, pp & gammac up) to the "
+                        "continuation schedules, to drive designs toward 0/1.")
     p.add_argument("--output-dir", default=None,
                    help="default: docs/_static for figures, benchmarks/ for tables")
     args = p.parse_args()
@@ -261,6 +272,10 @@ def main():
     cfg = full_config(args.seed) if args.full else reduced_config(args.seed)
     if args.n_starts is not None:
         cfg.n_starts = args.n_starts
+    if args.sharpen:
+        sharp = {"r_gp": 0.3, "pp": 300.0, "gammac": 5.0}
+        cfg.continuation_schedule = cfg.continuation_schedule + [sharp]
+        cfg.inner_schedule = cfg.inner_schedule + [sharp]
 
     root = Path(__file__).resolve().parents[1]
     fig_dir = Path(args.output_dir) if args.output_dir else root / "docs" / "_static"
@@ -268,10 +283,13 @@ def main():
     fig_dir.mkdir(parents=True, exist_ok=True)
     tab_dir.mkdir(parents=True, exist_ok=True)
 
-    spec = _load_spec(max_iter=args.max_iter, fem_solver=args.fem_solver)
-    print(f"SC 2D local-minima benchmark | breadth={'FULL' if args.full else 'REDUCED'} | "
-          f"MMA={spec.solver.algorithm} max_iter={spec.solver.max_iter} (preset) | "
-          f"FEM={spec.solver.fem_solver} | methods={args.methods}", flush=True)
+    spec = _load_spec(max_iter=args.max_iter, fem_solver=args.fem_solver,
+                      preset=args.preset, ngp=args.ngp)
+    print(f"SC 2D local-minima benchmark | preset={args.preset or 'short_cantilever'} | "
+          f"breadth={'FULL' if args.full else 'REDUCED'} | "
+          f"MMA={spec.solver.algorithm} max_iter={spec.solver.max_iter} | "
+          f"Ngp={spec.formulation.Ngp} min_thick={spec.formulation.min_thickness} | "
+          f"sharpen={args.sharpen} | methods={args.methods}", flush=True)
 
     rows = []
     results = {}
