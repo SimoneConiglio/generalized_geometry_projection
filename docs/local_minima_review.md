@@ -346,17 +346,28 @@ robust ("eta-erode/dilate") formulation.
 |---|---|---|
 | ![grayer](_static/sc2d_rect_grid_continuation.png) | ![sharpened](_static/sc2d_rect_grid_sharp.png) | ![binary](_static/sc2d_rect_grid_binary.png) |
 
-**A clean 0/1 design via a minimum length scale.** The broken-member problem is fixed by
-giving the explicit rectangles a **minimum thickness** (`min_thickness` raises the lower
-bound on `h`). With `min_thickness = 3` elements, members are born thick enough that the
-0.5 threshold keeps them solid and connected: the same grid + sharpening pipeline yields a
-**fully 0/1, connected, manufacturable** truss at **C = 83.96** (vol = 0.40) — versus 96.6
-(disconnected) without it. This is the explicit-geometry analogue of a robust/length-scale
-formulation: rather than filtering densities, we simply forbid sub-resolution members. The
-residual gap to the gray optimum (75.3) is the genuine cost of an exact 0/1 design with a
-3-element minimum feature on a 60×30 mesh. Preset: `short_cantilever_grid_minlen.yaml`.
+**A clean 0/1 design via a minimum length scale + better integration.** A hard threshold
+of the bare design disconnects ~1-element members (C = 96.6). Bounding only the thickness
+`h ≥ 3` reconnects the structure (C ≈ 84) but a *diagonal* member of perpendicular
+thickness 3 still rasterises to a thin staircase, leaving **checkerboard** artifacts. Two
+changes remove them:
 
-![min-length 0/1 design](_static/sc2d_rect_grid_minlen_binary.png)
+1. **minimum 3 elements in *both* directions** — `min_thickness` bounds the rectangle
+   length `L` *and* thickness `h`, so no member is sub-resolution along any axis;
+2. **9 Gauss points** (`Ngp = 3`, vs the default 4) properly integrate the characteristic
+   over each element's sampling window, killing the integration aliasing. (`Ngp` was also
+   silently dropped before the mapper — now wired through.)
+
+The result is a **fully 0/1, connected, checkerboard-free, manufacturable** truss at
+**C = 91.1** (vol = 0.40, gray fraction 0.06 before thresholding). This is the
+explicit-geometry analogue of a robust/length-scale formulation: rather than filtering
+densities we forbid sub-resolution members. The higher compliance is the honest price of a
+clean design with a 3-element minimum feature on a coarse 60×30 mesh — chunky members are
+stiffer to manufacture but less weight-efficient than slender ones; a finer mesh would
+recover efficiency at the same (relative) length scale. Preset:
+`short_cantilever_grid_minlen.yaml`.
+
+![min-length + 9-Gauss-point 0/1 design](_static/sc2d_rect_grid_minlen_binary.png)
 
 | rect grid-fill, single start (C = 92.30) | rect grid-fill + continuation (C = 73.18) |
 |---|---|
