@@ -326,8 +326,25 @@ Convergence is iteration-sensitive here: at 320 sharp iterations the design is C
 with a noticeably grayer interior; extending the final `r_gp = 0.5` phase to 600 iterations
 lowers it to **C = 73.18** with the volume constraint active (vol = 0.40) and the
 intermediate-density (gray) fraction down to ~0.18 — the residual gray being mostly thin
-edge-transition bands inherent to the smooth projection. A sharpening continuation (ramping
-`pp`/`gammac`) would drive it fully to 0/1 if a crisp design is required.
+edge-transition bands inherent to the smooth projection.
+
+**Driving it to a 0/1 design.** A *sharpening continuation* — after the `r_gp` ramp, add
+phases that lower `r_gp` (sharper edges) and raise the saturation `pp` and the penalisation
+`gammac` (a β-continuation) — reduces the gray fraction to ~0.13 (`gammac=5`) and ~0.10
+(`gammac=9`), but at rising compliance (73.9 → 75.8): forcing 0/1 thins the members. The
+gray then plateaus, because it is dominated by **single-pixel edge bands** — on this 60×30
+mesh the min-compliance truss members are only 1–3 elements wide. A hard **Heaviside
+threshold** at 0.5 yields a *truly* 0/1 design (vol = 0.40) but breaks the ~1-element-wide
+diagonal members into dotted, load-broken lines, so the FE-evaluated compliance jumps to
+**C = 96.6**. The lesson is a classic one: on a coarse mesh you can have *low compliance
+with gray edges* or *exact black/white with broken thin members*, but not both — the
+features are sub-element. A genuinely crisp **and** stiff binary design needs either a
+finer mesh (so each member spans several solid elements) or a minimum-length-scale /
+robust ("eta-erode/dilate") formulation.
+
+| optimized (gray edges), C = 73.2 | hard-sharpened, C = 75.8, gray ≈ 0.10 | thresholded 0/1, C = 96.6 |
+|---|---|---|
+| ![grayer](_static/sc2d_rect_grid_continuation.png) | ![sharpened](_static/sc2d_rect_grid_sharp.png) | ![binary](_static/sc2d_rect_grid_binary.png) |
 
 | rect grid-fill, single start (C = 92.30) | rect grid-fill + continuation (C = 73.18) |
 |---|---|
