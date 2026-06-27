@@ -300,6 +300,32 @@ number above is deterministic — the four strategies that share `C = 74.1453` r
 so the improvements over the baseline are true properties of the optimization, not solver
 noise.
 
+### 4.4 Improving the starting guess: rectangle primitives + grid fill
+
+Besides *escaping* a basin, one can *choose a better basin to start in*. We added a
+true **rectangle primitive** (`method: rect` — a quintic-smoothed width-`L`×height-`h`
+block with analytic gradients) and a **grid-fill initialisation** that tiles the domain
+with `grid_nx`×`grid_ny` rectangles (6×3 → 10×10 squares for SC) at `Mc = volfrac`,
+instead of the thin Matlab-style crossed bars. Preset: `short_cantilever_grid.yaml`.
+
+| Start | Final C | vs baseline |
+|---|---|---|
+| crossed-bars (baseline) | 74.2703 | — |
+| rect grid-fill, single start | 92.30 | −24 % (worse) |
+| **rect grid-fill + continuation** | **73.61** | **+0.89 %** |
+
+The lesson mirrors §4.2: the grid-fill start *on its own* is **worse** (92.30) — it begins
+near-void and far from the solution topology, and the preset's tight `move=0.01` asymptotes
+cannot recover a good basin in 320 iterations, leaving gray mush in the centre. But run
+through the **`r_gp` continuation**, the very same start reaches **73.61, below the
+baseline** and on par with the GP crossed-bars continuation (73.52). A better *primitive
+and layout* helps only once the landscape is also smoothed — the starting guess and the
+homotopy are complementary, not substitutes.
+
+| rect grid-fill, single start (C = 92.30) | rect grid-fill + continuation (C = 73.61) |
+|---|---|
+| ![rect grid single start](_static/sc2d_rect_grid_optimized.png) | ![rect grid + continuation](_static/sc2d_rect_grid_continuation.png) |
+
 ## 5. Reproducing & extending
 
 * Run a single strategy: `ggp search --preset short_cantilever --strategy continuation`.
