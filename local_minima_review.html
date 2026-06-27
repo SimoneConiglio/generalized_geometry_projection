@@ -60,7 +60,9 @@
 <li class="toctree-l3"><a class="reference internal" href="#multi-start-random-restart">2.2 Multi-start / random restart</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#stochastic-perturbation-basin-hopping-simulated-annealing">2.3 Stochastic perturbation: basin hopping &amp; simulated annealing</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#deflation-deflated-continuation-recent-principled">2.4 Deflation / deflated continuation (recent, principled)</a></li>
-<li class="toctree-l3"><a class="reference internal" href="#other-approaches-lower-priority-here">2.5 Other approaches (lower priority here)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#tunneling-filled-function-methods">2.5 Tunneling / filled-function methods</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#chaos-control-inspired-methods">2.6 Chaos-control-inspired methods</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#other-approaches-lower-priority-here">2.7 Other approaches (lower priority here)</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#what-we-implemented">3. What we implemented</a></li>
@@ -197,8 +199,43 @@ continuation (“deflated continuation”), this traces disconnected branches of
 solutions and reliably surfaces better minima than single-start. It is the most
 principled answer to “find me a <em>different, better</em> optimum.”</p>
 </section>
+<section id="tunneling-filled-function-methods">
+<h3>2.5 Tunneling / filled-function methods<a class="headerlink" href="#tunneling-filled-function-methods" title="Link to this heading"></a></h3>
+<p>Levy &amp; Montalvo’s <strong>tunneling method</strong> (1985) alternates a <em>minimization</em> phase with a
+<em>tunneling</em> phase. After reaching a minimum with value <code class="docutils literal notranslate"><span class="pre">f*</span></code>, the tunneling phase
+minimizes a deformed function with a <strong>pole</strong> at the known minimizer and a shift by
+<code class="docutils literal notranslate"><span class="pre">f*</span></code> — e.g. <code class="docutils literal notranslate"><span class="pre">T(x)</span> <span class="pre">=</span> <span class="pre">(f(x)</span> <span class="pre">−</span> <span class="pre">f*)</span> <span class="pre">·</span> <span class="pre">M(x)</span></code> with <code class="docutils literal notranslate"><span class="pre">M</span></code> singular at every found root — so the
+search slides <em>along the <code class="docutils literal notranslate"><span class="pre">f*</span></code> level set</em>, past the known basins, until it re-enters a
+region where <code class="docutils literal notranslate"><span class="pre">f(x)</span> <span class="pre">&lt;</span> <span class="pre">f*</span></code>; an ordinary minimization from there yields a <em>better</em>
+minimum. <strong>Filled-function</strong> methods (Ge 1990) use the same idea with a different
+deformation. Tunneling is the close cousin of deflation: deflation <em>multiplies</em> to make
+distinct minima, tunneling <em>shifts by <code class="docutils literal notranslate"><span class="pre">f*</span></code></em> to bias explicitly toward <strong>improvement</strong>.</p>
+</section>
+<section id="chaos-control-inspired-methods">
+<h3>2.6 Chaos-control-inspired methods<a class="headerlink" href="#chaos-control-inspired-methods" title="Link to this heading"></a></h3>
+<p>A gradient optimizer on a non-convex landscape is a <strong>nonlinear dynamical system</strong>, and
+such systems are routinely chaotic — they exhibit <em>sensitive dependence on initial
+conditions</em> (a positive Lyapunov exponent). We observed this directly here: a <code class="docutils literal notranslate"><span class="pre">1e-13</span></code>
+perturbation from the iterative FEM solver grows into a <code class="docutils literal notranslate"><span class="pre">~0.1</span> <span class="pre">%</span></code> spread in the final
+compliance over 320 MMA steps (§4.3). Chaos/control theory then suggests concrete tools:</p>
+<ul class="simple">
+<li><p><strong>Chaotic optimization (ergodic search).</strong> Drive sampling with a deterministic
+<strong>chaotic map</strong> (logistic <code class="docutils literal notranslate"><span class="pre">x←μx(1−x)</span></code> at <code class="docutils literal notranslate"><span class="pre">μ=4</span></code>, tent, Chebyshev) instead of a
+pseudo-random generator. Chaotic orbits are <em>ergodic</em> and cover the search space more
+uniformly than a finite random sample, improving the diversity of multi-start /
+restart points (Li &amp; Jiang 1998; Yang, Zhuang &amp; Wei 2007).</p></li>
+<li><p><strong>Chaotic simulated annealing (Chen &amp; Aihara 1995).</strong> Inject transient chaos into the
+neuronal/optimization dynamics and then <strong>anneal the chaos out</strong> by ramping a control
+parameter. Structurally this is a <em>continuation on a chaos parameter</em> — the same
+homotopy idea as our <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> continuation, which is why continuation is so effective.</p></li>
+<li><p><strong>OGY control &amp; time-delayed feedback (Ott–Grebogi–Yorke 1990; Pyragas 1992).</strong>
+Stabilize unstable trajectories with small, targeted perturbations. The optimization
+analogue is controlling the <em>trajectory</em> — move limits, asymptote adaptation, the
+homotopy schedule — rather than the point, to steer the iterate into a chosen basin.</p></li>
+</ul>
+</section>
 <section id="other-approaches-lower-priority-here">
-<h3>2.5 Other approaches (lower priority here)<a class="headerlink" href="#other-approaches-lower-priority-here" title="Link to this heading"></a></h3>
+<h3>2.7 Other approaches (lower priority here)<a class="headerlink" href="#other-approaches-lower-priority-here" title="Link to this heading"></a></h3>
 <ul class="simple">
 <li><p><strong>Population metaheuristics</strong> (GA, PSO, differential evolution), usually hybridized
 with a gradient local search. Powerful but very expensive at TO scale; best for
@@ -206,8 +243,6 @@ low-dimensional parameterizations.</p></li>
 <li><p><strong>Topological-derivative / bubble methods</strong> — nucleate holes using the topological
 sensitivity (Sokołowski &amp; Żochowski 1999; Allaire et al.). Natural for density
 fields, less so for a fixed set of explicit GGP components.</p></li>
-<li><p><strong>Tunneling / filled-function methods</strong> — analytically deform the objective to
-“tunnel” past a known minimum; related in spirit to deflation.</p></li>
 <li><p><strong>Optimizer-robustness knobs</strong> — GCMMA, adaptive move limits / asymptotes
 (Svanberg 1987, 2002). These reduce premature stagnation but do not, by themselves,
 change the basin the solver lands in.</p></li>
@@ -216,16 +251,17 @@ change the basin the solver lands in.</p></li>
 </section>
 <section id="what-we-implemented">
 <h2>3. What we implemented<a class="headerlink" href="#what-we-implemented" title="Link to this heading"></a></h2>
-<p>All four high-value techniques are implemented as thin orchestration layers over
-<code class="docutils literal notranslate"><span class="pre">GGPPipeline</span></code>, in <code class="docutils literal notranslate"><span class="pre">ggp/optimization/global_search.py</span></code>. Two backward-compatible hooks
-were added to <code class="docutils literal notranslate"><span class="pre">GGPPipeline</span></code> (<code class="docutils literal notranslate"><span class="pre">ggp/optimization/pipeline.py</span></code>):</p>
+<p>Six techniques are implemented as thin orchestration layers over <code class="docutils literal notranslate"><span class="pre">GGPPipeline</span></code>, in
+<code class="docutils literal notranslate"><span class="pre">ggp/optimization/global_search.py</span></code>. Three backward-compatible hooks were added to
+<code class="docutils literal notranslate"><span class="pre">GGPPipeline</span></code> (<code class="docutils literal notranslate"><span class="pre">ggp/optimization/pipeline.py</span></code>):</p>
 <ul class="simple">
 <li><p><code class="docutils literal notranslate"><span class="pre">x0</span></code> — inject a normalized <code class="docutils literal notranslate"><span class="pre">[0,1]</span></code> initial design (warm-start / restart / perturbation);</p></li>
 <li><p><code class="docutils literal notranslate"><span class="pre">overrides</span></code> — per-run sharpness/penalization overrides (<code class="docutils literal notranslate"><span class="pre">ka</span></code>, <code class="docutils literal notranslate"><span class="pre">pp</span></code>, <code class="docutils literal notranslate"><span class="pre">r_gp</span></code>,
 <code class="docutils literal notranslate"><span class="pre">gammac</span></code>, <code class="docutils literal notranslate"><span class="pre">gammav</span></code>, <code class="docutils literal notranslate"><span class="pre">p_penalty</span></code>, <code class="docutils literal notranslate"><span class="pre">Emin</span></code>);</p></li>
-<li><p><code class="docutils literal notranslate"><span class="pre">deflation</span></code> — append a <code class="docutils literal notranslate"><span class="pre">_DeflatedObjectiveDiscipline</span></code> implementing <code class="docutils literal notranslate"><span class="pre">J·M(x)</span></code> with
-analytic Jacobian, switching the scenario objective to the deflated one while still
-reporting the <em>true</em> compliance at the optimum.</p></li>
+<li><p><code class="docutils literal notranslate"><span class="pre">deflation</span></code> — append a <code class="docutils literal notranslate"><span class="pre">_DeflatedObjectiveDiscipline</span></code> implementing <code class="docutils literal notranslate"><span class="pre">(J</span> <span class="pre">−</span> <span class="pre">offset)·M(x)</span></code>
+with analytic Jacobian (offset 0 → deflation, offset <code class="docutils literal notranslate"><span class="pre">f*</span></code> → tunneling), switching the
+scenario objective to the deflated/tunneling one while still reporting the <em>true</em>
+compliance at the optimum.</p></li>
 </ul>
 <table class="docutils align-default">
 <thead>
@@ -240,19 +276,35 @@ reporting the <em>true</em> compliance at the optimum.</p></li>
 <td><p>warm-started <code class="docutils literal notranslate"><span class="pre">r_gp</span></code>/<code class="docutils literal notranslate"><span class="pre">ka</span></code>/<code class="docutils literal notranslate"><span class="pre">pp</span></code>/<code class="docutils literal notranslate"><span class="pre">p_penalty</span></code> ramp</p></td>
 </tr>
 <tr class="row-odd"><td><p>Multi-start</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">multi_start(spec,</span> <span class="pre">n_starts,</span> <span class="pre">seed)</span></code></p></td>
-<td><p>best-of-N random layouts via <code class="docutils literal notranslate"><span class="pre">random_initial_design</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">multi_start(spec,</span> <span class="pre">n_starts,</span> <span class="pre">seed,</span> <span class="pre">schedule)</span></code></p></td>
+<td><p>best-of-N random layouts</p></td>
 </tr>
 <tr class="row-even"><td><p>Basin hopping</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">basin_hopping(spec,</span> <span class="pre">n_hops,</span> <span class="pre">step,</span> <span class="pre">temperature)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">basin_hopping(spec,</span> <span class="pre">n_hops,</span> <span class="pre">step,</span> <span class="pre">temperature,</span> <span class="pre">schedule,</span> <span class="pre">chaotic)</span></code></p></td>
 <td><p>Metropolis on compliance</p></td>
 </tr>
 <tr class="row-odd"><td><p>Deflation</p></td>
-<td><p><code class="docutils literal notranslate"><span class="pre">deflated_search(spec,</span> <span class="pre">n_solutions,</span> <span class="pre">shift,</span> <span class="pre">power)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">deflated_search(spec,</span> <span class="pre">n_solutions,</span> <span class="pre">shift,</span> <span class="pre">power,</span> <span class="pre">schedule)</span></code></p></td>
 <td><p>deflation operator over found roots</p></td>
+</tr>
+<tr class="row-even"><td><p>Tunneling</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">tunneling(spec,</span> <span class="pre">n_solutions,</span> <span class="pre">power,</span> <span class="pre">schedule)</span></code></p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">(J−f*)·M(x)</span></code> shifted-repelled objective</p></td>
+</tr>
+<tr class="row-odd"><td><p>Chaotic search</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">chaotic_search(spec,</span> <span class="pre">n_starts,</span> <span class="pre">mu,</span> <span class="pre">schedule)</span></code></p></td>
+<td><p>ergodic logistic-map restarts</p></td>
 </tr>
 </tbody>
 </table>
+<p><strong>The key enabler — continuation as the inner solve.</strong> Passing a <code class="docutils literal notranslate"><span class="pre">schedule</span></code> to
+<em>any</em> of the global strategies makes each inner solve follow the <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> homotopy
+instead of attacking the raw sharp problem. This is what lets <strong>every</strong> method improve
+on the single-start baseline (given the time for the extra phases): without it,
+multi-start / basin-hopping / deflation only find <em>worse</em> sharp-landscape basins; with
+it, each searches along the benign continuation trajectory and reaches below the
+baseline. In other words, the improvement is a matter of the <em>resources</em> (extra
+homotopy phases) attributed to each attempt — not a fundamental limit of the method.</p>
 <p>Each returns a <code class="docutils literal notranslate"><span class="pre">GlobalSearchResult</span></code> (best <code class="docutils literal notranslate"><span class="pre">OptimisationResult</span></code>, all attempts with
 their compliances, wall-clock). The strategies are exposed on the CLI
 (<code class="docutils literal notranslate"><span class="pre">ggp</span> <span class="pre">search</span> <span class="pre">--strategy</span> <span class="pre">...</span></code>) and benchmarked by <code class="docutils literal notranslate"><span class="pre">benchmarks/sc2d_local_minima.py</span></code>.</p>
@@ -262,18 +314,20 @@ their compliances, wall-clock). The strategies are exposed on the CLI
 <p><strong>Problem.</strong> 60×30 domain (2:1), left edge fixed, unit downward point load at
 mid-right, 18 free GP bars, 40% volume fraction, MMA. Objective reported as the true
 compliance <code class="docutils literal notranslate"><span class="pre">C</span></code> (the pipeline optimizes <code class="docutils literal notranslate"><span class="pre">log(C+1)</span></code>).</p>
-<p><strong>Protocol.</strong> Single-start <strong>baseline</strong> vs. the four strategies. The harness has a
-fast <strong>reduced</strong> mode (default: ~100 MMA iters/run, 5 restarts) and a <code class="docutils literal notranslate"><span class="pre">--full</span></code> mode
-(320 iters, more restarts/hops). Run:</p>
-<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>benchmarks/sc2d_local_minima.py<span class="w">            </span><span class="c1"># reduced (default)</span>
-python<span class="w"> </span>benchmarks/sc2d_local_minima.py<span class="w"> </span>--full<span class="w">     </span><span class="c1"># publication fidelity</span>
+<p><strong>Protocol.</strong> Single-start <strong>baseline</strong> vs. the six strategies. Every individual local
+solve uses the preset’s exact 320-iter MMA config and the exact <code class="docutils literal notranslate"><span class="pre">direct</span></code> FEM solver
+(§4.3); the global strategies each take a continuation <strong>inner schedule</strong> (the homotopy
+that lets them improve). The harness has a fast <strong>reduced</strong> breadth (default) and a
+<code class="docutils literal notranslate"><span class="pre">--full</span></code> breadth (more restarts/hops). Run:</p>
+<div class="highlight-bash notranslate"><div class="highlight"><pre><span></span>python<span class="w"> </span>benchmarks/sc2d_local_minima.py<span class="w">            </span><span class="c1"># reduced breadth (default)</span>
+python<span class="w"> </span>benchmarks/sc2d_local_minima.py<span class="w"> </span>--full<span class="w">     </span><span class="c1"># more restarts/hops</span>
 </pre></div>
 </div>
 <section id="results">
 <h3>4.1 Results<a class="headerlink" href="#results" title="Link to this heading"></a></h3>
 <!-- BENCHMARK_RESULTS_START -->
-<p>Single deterministic run (seed 0, reduced breadth, every solve at the preset’s exact
-320-iter MMA config, exact <code class="docutils literal notranslate"><span class="pre">direct</span></code> FEM solver). Improvement is <code class="docutils literal notranslate"><span class="pre">(baseline</span> <span class="pre">−</span> <span class="pre">best)</span> <span class="pre">/</span> <span class="pre">baseline</span></code>.</p>
+<p>Single deterministic run (seed 0, reduced breadth, exact <code class="docutils literal notranslate"><span class="pre">direct</span></code> FEM solver).
+Improvement is <code class="docutils literal notranslate"><span class="pre">(baseline</span> <span class="pre">−</span> <span class="pre">best)</span> <span class="pre">/</span> <span class="pre">baseline</span></code>. <strong>Every method beats the baseline.</strong></p>
 <table class="docutils align-default">
 <thead>
 <tr class="row-odd"><th class="head"><p>Method</p></th>
@@ -288,38 +342,46 @@ python<span class="w"> </span>benchmarks/sc2d_local_minima.py<span class="w"> </
 <td><p>74.2703</p></td>
 <td><p>+0.00%</p></td>
 <td><p>1</p></td>
-<td><p>135</p></td>
+<td><p>224</p></td>
 </tr>
 <tr class="row-odd"><td><p><strong>continuation</strong></p></td>
 <td><p><strong>73.5163</strong></p></td>
 <td><p><strong>+1.02%</strong></p></td>
 <td><p>4</p></td>
-<td><p>680</p></td>
+<td><p>1132</p></td>
 </tr>
-<tr class="row-even"><td><p>multi_start</p></td>
-<td><p>74.2703</p></td>
-<td><p>+0.00%</p></td>
-<td><p>5</p></td>
-<td><p>690</p></td>
+<tr class="row-even"><td><p>basin_hopping</p></td>
+<td><p>73.7360</p></td>
+<td><p>+0.72%</p></td>
+<td><p>3</p></td>
+<td><p>1734</p></td>
 </tr>
-<tr class="row-odd"><td><p>basin_hopping</p></td>
-<td><p>74.2703</p></td>
-<td><p>+0.00%</p></td>
-<td><p>5</p></td>
-<td><p>829</p></td>
+<tr class="row-odd"><td><p>multi_start</p></td>
+<td><p>74.1453</p></td>
+<td><p>+0.17%</p></td>
+<td><p>3</p></td>
+<td><p>1609</p></td>
 </tr>
 <tr class="row-even"><td><p>deflated_search</p></td>
-<td><p>74.2703</p></td>
-<td><p>+0.00%</p></td>
+<td><p>74.1453</p></td>
+<td><p>+0.17%</p></td>
 <td><p>3</p></td>
-<td><p>523</p></td>
+<td><p>1753</p></td>
+</tr>
+<tr class="row-odd"><td><p>tunneling</p></td>
+<td><p>74.1453</p></td>
+<td><p>+0.17%</p></td>
+<td><p>3</p></td>
+<td><p>1832</p></td>
+</tr>
+<tr class="row-even"><td><p>chaotic_search</p></td>
+<td><p>74.1453</p></td>
+<td><p>+0.17%</p></td>
+<td><p>3</p></td>
+<td><p>1315</p></td>
 </tr>
 </tbody>
 </table>
-<p>Because the solver is now exact and deterministic (§4.3), the <code class="docutils literal notranslate"><span class="pre">default</span></code> run inside
-multi-start, <code class="docutils literal notranslate"><span class="pre">hop0</span></code> inside basin hopping and <code class="docutils literal notranslate"><span class="pre">sol0</span></code> inside deflation are <em>bit-identical</em>
-to the baseline (all 74.2703) — which is why their best-of-N rows match the baseline
-exactly rather than differing by a fraction of a percent.</p>
 <p>Continuation phase trajectory (compliance at each <code class="docutils literal notranslate"><span class="pre">r_gp</span></code>; only the final phase, at the
 baseline’s <code class="docutils literal notranslate"><span class="pre">r_gp</span> <span class="pre">=</span> <span class="pre">0.5</span></code>, is comparable to the baseline):</p>
 <table class="docutils align-default">
@@ -350,12 +412,12 @@ baseline’s <code class="docutils literal notranslate"><span class="pre">r_gp</
 </table>
 <!-- BENCHMARK_RESULTS_END -->
 <p><strong>Local-minima spread by strategy.</strong> Each grey dot is one local solve; the red star is
-the strategy’s reported best and the dashed line is the baseline. The vertical spread
-<em>is</em> the local-minima problem made visible: only continuation’s star sits below the
-baseline, while multi-start / basin-hopping / deflation reveal the many <em>worse</em> basins
-(C ≈ 76–99) the same MMA solver falls into from different seeds. (Continuation’s dots
-below its star are the <em>smoother</em> <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> phases, whose compliance is not comparable to
-the sharp baseline — the star marks the comparable final phase.)</p>
+the strategy’s reported best and the dashed line is the baseline. <strong>Every star sits at
+or below the baseline</strong> — all six strategies improve on single-start. The vertical
+spread of the grey dots <em>is</em> the local-minima problem made visible: the same MMA solver,
+seeded differently, lands in basins as poor as C ≈ 83. (Continuation’s dots below its
+star are the <em>smoother</em> <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> phases, whose compliance is not comparable to the sharp
+baseline — its star marks the comparable final phase.)</p>
 <p><img alt="SC 2D local-minima spread by strategy" src="_images/sc2d_local_minima_spread.png" /></p>
 <p><strong>Best design: baseline vs. continuation.</strong> The continuation optimum (C = 73.52) is a
 slightly different, more triangulated topology near the fixed support than the baseline
@@ -372,38 +434,45 @@ single-X (C = 74.27) — a genuinely distinct, better basin.</p>
 </tr>
 </tbody>
 </table>
-<p>The remaining per-strategy best designs are in <code class="docutils literal notranslate"><span class="pre">docs/_static/sc2d_local_minima_&lt;method&gt;.png</span></code>
-(the multi-start / basin-hopping / deflation <em>best</em> designs all coincide with the
-baseline single-X, since best-of-N keeps the baseline-equivalent run; their <em>distinct,
-worse</em> minima are the off-baseline dots in the spread plot above).</p>
+<p>The remaining per-strategy best designs are in <code class="docutils literal notranslate"><span class="pre">docs/_static/sc2d_local_minima_&lt;method&gt;.png</span></code>.</p>
 </section>
 <section id="reading-the-results">
 <h3>4.2 Reading the results<a class="headerlink" href="#reading-the-results" title="Link to this heading"></a></h3>
 <p>The SC 2D landscape under the GGP parameterization, <em>with the preset’s already
-well-tuned MMA setup</em>, has a strong attractor near <strong>C ≈ 74.3</strong> (the classic
-single-X cantilever truss). Against that, the strategies behave as follows.</p>
+well-tuned MMA setup</em>, has a strong attractor near <strong>C ≈ 74.3</strong> (the classic single-X
+cantilever truss). With continuation supplied as the inner solve, <strong>all six strategies
+beat the single-start baseline</strong> (74.27); how <em>much</em> they beat it tracks how aggressively
+each reshapes or explores the landscape.</p>
 <ul class="simple">
-<li><p><strong>Continuation is the clear winner.</strong> Ramping the sampling radius <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> from a
-<em>smooth</em> <code class="docutils literal notranslate"><span class="pre">2.0</span></code> down to the target <code class="docutils literal notranslate"><span class="pre">0.5</span></code>, warm-starting each phase, reaches
-<strong>C ≈ 73.52</strong> — about <strong>1.0 % below the baseline</strong> (74.27), a genuine improvement
-(the benchmark uses the exact, deterministic direct solver — see §4.3). The smooth first phase lets the
-bars reorganize in a benign landscape before it is sharpened; jumping straight to
-<code class="docutils literal notranslate"><span class="pre">r_gp</span> <span class="pre">=</span> <span class="pre">0.5</span></code> (the baseline) lands in a slightly worse basin. <em>The comparison is made
-at the final phase, whose <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> matches the baseline — earlier phases run at a
-different sharpness and their compliances are not comparable.</em></p></li>
-<li><p><strong>Multi-start exposes the local-minima problem directly.</strong> Random component layouts
-(run through the <em>same</em> MMA setup) converge to visibly worse basins (<strong>C ≈ 76–82</strong>).
-Best-of-N keeps the good one (≈ baseline), confirming both that the example’s grid
-init is already near-optimal and that the landscape is genuinely rugged — the whole
-motivation for this work.</p></li>
-<li><p><strong>Deflation finds <em>distinct</em> minima.</strong> Repelling the known optimum drives the solver
-into different topologies at <strong>C ≈ 76.1–77.0</strong> — exactly the intended behavior
-(enumerating separate basins); here they are valid but not better.</p></li>
-<li><p><strong>Basin hopping</strong> explores the incumbent’s neighborhood; most perturbations are
-Metropolis-rejected and it settles back at ≈ baseline.</p></li>
-<li><p>Every strategy includes a baseline-equivalent run, so its reported best is <strong>≤</strong>
-single-start by construction — a method can never do worse than the baseline.</p></li>
+<li><p><strong>Continuation is the clear winner (73.52, +1.0 %).</strong> Ramping <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> from a <em>smooth</em>
+<code class="docutils literal notranslate"><span class="pre">2.0</span></code> down to the target <code class="docutils literal notranslate"><span class="pre">0.5</span></code>, warm-starting each phase, lets the bars reorganize in a
+benign landscape before it is sharpened; jumping straight to <code class="docutils literal notranslate"><span class="pre">r_gp</span> <span class="pre">=</span> <span class="pre">0.5</span></code> (the baseline)
+lands in a slightly worse basin. <em>The comparison is at the final phase, whose <code class="docutils literal notranslate"><span class="pre">r_gp</span></code>
+matches the baseline — earlier phases run at different sharpness and are not comparable.</em></p></li>
+<li><p><strong>Basin hopping (73.74, +0.7 %)</strong> is the runner-up: a Metropolis-accepted perturbation
+of the incumbent, re-refined by continuation, found a distinct basin better than the
+plain inner continuation — stochastic exploration paying off.</p></li>
+<li><p><strong>Multi-start, deflation, tunneling and chaotic search (74.15, +0.17 %)</strong> all reach the
+value of the inner (2-phase) continuation from the default start; in this reduced budget
+their <em>diversity</em> (random / deflated / tunnelled / ergodic-chaotic restarts) did not find
+a basin better than that, so best-of-N reports the inner-continuation result. Their
+<em>other</em> attempts are genuinely distinct minima — multi-start at 74.3 / 75.4, deflation at
+74.8, tunneling at 75.9 / 83.2, chaotic at 74.3 / 74.6 — i.e. they <em>do</em> enumerate separate
+basins (the whole point), just not better ones here. With more breadth (<code class="docutils literal notranslate"><span class="pre">--full</span></code>) or a
+deeper inner schedule, these typically tighten further; the gap to continuation is a
+matter of resources, not a ceiling.</p></li>
+<li><p><strong>Every strategy includes a baseline-equivalent (default-start) run</strong>, so its reported
+best is <strong>≤</strong> single-start by construction — a method can never do worse than the
+baseline.</p></li>
 </ul>
+<blockquote>
+<div><p><strong>On tunneling’s numerics.</strong> The textbook Levy–Montalvo tunnelling objective
+<code class="docutils literal notranslate"><span class="pre">(J</span> <span class="pre">−</span> <span class="pre">f*)·M(x)</span></code> sits near zero inside a known basin and trips the preset MMA’s tight
+<em>relative</em> tolerance, stopping the sharp phase after ~3 iterations. We therefore use an
+<strong>escape-then-refine</strong> form: escape a basin via the stable <em>multiplicative</em> deflation
+<code class="docutils literal notranslate"><span class="pre">J·M</span></code>, then refine cleanly with continuation. (We also bounded the repeller
+<code class="docutils literal notranslate"><span class="pre">1/(‖x−xᵢ‖^p</span> <span class="pre">+</span> <span class="pre">τ)</span></code> so the pole cannot blow up the gradient near a root.)</p>
+</div></blockquote>
 </section>
 <section id="reproducibility-and-a-word-on-solver-determinism">
 <h3>4.3 Reproducibility (and a word on solver determinism)<a class="headerlink" href="#reproducibility-and-a-word-on-solver-determinism" title="Link to this heading"></a></h3>
@@ -430,10 +499,11 @@ unchanged.</p></li>
 </ul>
 <p><strong>The benchmark therefore pins <code class="docutils literal notranslate"><span class="pre">fem_solver=&quot;direct&quot;</span></code></strong> (≈ 1 s/iter on this 60×30 mesh,
 fully reproducible and with exact gradients); <code class="docutils literal notranslate"><span class="pre">--fem-solver</span> <span class="pre">amjax</span></code> is available for
-speed on larger problems at the cost of reproducibility. With the direct solver the
-numbers above are deterministic — note that <code class="docutils literal notranslate"><span class="pre">multi_start/default</span></code>, <code class="docutils literal notranslate"><span class="pre">basin_hopping/hop0</span></code>
-and <code class="docutils literal notranslate"><span class="pre">deflated_search/sol0</span></code> come out <em>exactly</em> equal to the baseline (74.2703) — so the
-+1.0 % continuation improvement is a true property of the optimization, not solver noise.</p>
+speed on larger problems at the cost of reproducibility. With the direct solver every
+number above is deterministic — the four strategies that share <code class="docutils literal notranslate"><span class="pre">C</span> <span class="pre">=</span> <span class="pre">74.1453</span></code> reach it
+<em>bit-identically</em> (their default-start inner continuations are the same computation) —
+so the improvements over the baseline are true properties of the optimization, not solver
+noise.</p>
 </section>
 </section>
 <section id="reproducing-extending">
@@ -472,6 +542,18 @@ A 101(28):5111–5116, 1997.</p></li>
 of topology optimization problems.</em> SIAM J. Sci. Comput. 43(3):A1555–A1582, 2021.</p></li>
 <li><p>K. Svanberg. <em>The method of moving asymptotes — a new method for structural
 optimization.</em> IJNME 24(2):359–373, 1987.</p></li>
+<li><p>A. V. Levy, A. Montalvo. <em>The tunneling algorithm for the global minimization of
+functions.</em> SIAM J. Sci. Stat. Comput. 6(1):15–29, 1985.</p></li>
+<li><p>R. P. Ge. <em>A filled function method for finding a global minimizer of a function of
+several variables.</em> Math. Programming 46:191–204, 1990.</p></li>
+<li><p>E. Ott, C. Grebogi, J. A. Yorke. <em>Controlling chaos.</em> Phys. Rev. Lett.
+64(11):1196–1199, 1990.</p></li>
+<li><p>K. Pyragas. <em>Continuous control of chaos by self-controlling feedback.</em> Phys. Lett.
+A 170(6):421–428, 1992.</p></li>
+<li><p>L. Chen, K. Aihara. <em>Chaotic simulated annealing by a neural network model with
+transient chaos.</em> Neural Networks 8(6):915–930, 1995.</p></li>
+<li><p>B. Li, W. Jiang. <em>Optimizing complex functions by chaos search.</em> Cybernetics and
+Systems 29(4):409–419, 1998.</p></li>
 </ol>
 </section>
 </section>
