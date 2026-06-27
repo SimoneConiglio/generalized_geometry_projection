@@ -342,9 +342,21 @@ features are sub-element. A genuinely crisp **and** stiff binary design needs ei
 finer mesh (so each member spans several solid elements) or a minimum-length-scale /
 robust ("eta-erode/dilate") formulation.
 
-| optimized (gray edges), C = 73.2 | hard-sharpened, C = 75.8, gray ≈ 0.10 | thresholded 0/1, C = 96.6 |
+| optimized (gray edges), C = 73.2 | hard-sharpened, C = 75.8, gray ≈ 0.10 | thresholded 0/1, C = 96.6 (broken) |
 |---|---|---|
 | ![grayer](_static/sc2d_rect_grid_continuation.png) | ![sharpened](_static/sc2d_rect_grid_sharp.png) | ![binary](_static/sc2d_rect_grid_binary.png) |
+
+**A clean 0/1 design via a minimum length scale.** The broken-member problem is fixed by
+giving the explicit rectangles a **minimum thickness** (`min_thickness` raises the lower
+bound on `h`). With `min_thickness = 3` elements, members are born thick enough that the
+0.5 threshold keeps them solid and connected: the same grid + sharpening pipeline yields a
+**fully 0/1, connected, manufacturable** truss at **C = 83.96** (vol = 0.40) — versus 96.6
+(disconnected) without it. This is the explicit-geometry analogue of a robust/length-scale
+formulation: rather than filtering densities, we simply forbid sub-resolution members. The
+residual gap to the gray optimum (75.3) is the genuine cost of an exact 0/1 design with a
+3-element minimum feature on a 60×30 mesh. Preset: `short_cantilever_grid_minlen.yaml`.
+
+![min-length 0/1 design](_static/sc2d_rect_grid_minlen_binary.png)
 
 | rect grid-fill, single start (C = 92.30) | rect grid-fill + continuation (C = 73.18) |
 |---|---|
