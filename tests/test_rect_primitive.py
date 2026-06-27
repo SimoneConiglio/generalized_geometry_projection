@@ -95,6 +95,18 @@ def test_grid_fill_init_layout():
     np.testing.assert_allclose(hc, Ly / gny)   # 10-tall rectangles
 
 
+def test_min_thickness_raises_h_lower_bound():
+    # default: h lower bound = 1
+    lb0, _ = Free2DMapper(18).default_bounds((60.0, 30.0), 18)
+    np.testing.assert_allclose(lb0[3::6], 1.0)
+    # min_thickness=3 -> every h lower bound = 3 (a minimum length scale)
+    lb3, ub3 = Free2DMapper(18, min_thickness=3.0).default_bounds((60.0, 30.0), 18)
+    np.testing.assert_allclose(lb3[3::6], 3.0)
+    assert np.all(ub3[3::6] > 3.0)
+    # other variable bounds unchanged
+    np.testing.assert_allclose(lb3[0::6], lb0[0::6])
+
+
 def test_grid_fill_init_rejects_mismatched_counts():
     lb, ub = Free2DMapper(18).default_bounds((60.0, 30.0), 18)
     with pytest.raises(ValueError):

@@ -138,6 +138,10 @@ class FormulationSpec:
     init: str = "default"
     grid_nx: Optional[int] = None
     grid_ny: Optional[int] = None
+    # Minimum member thickness (in physical/mesh units) -> a minimum length scale.
+    # Raises the lower bound on the primitive thickness `h` so members are born thick
+    # enough to threshold to a clean, connected 0/1 design. None -> framework default (1).
+    min_thickness: Optional[float] = None
 
 
 # ── Optimisation ──────────────────────────────────────────────────────────────
