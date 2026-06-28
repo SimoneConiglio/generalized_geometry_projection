@@ -645,8 +645,17 @@ window.runMermaid = runMermaid;</script>
 <span class="sd">        Sampling-window radius for Gauss-point integration.</span>
 <span class="sd">    Ngp : int</span>
 <span class="sd">        Number of Gauss points per dimension.</span>
-<span class="sd">    method : {&quot;GP&quot;, &quot;WGP&quot;}</span>
-<span class="sd">        Geometry projection method variant.</span>
+<span class="sd">    method : {&quot;GP&quot;, &quot;WGP&quot;, &quot;rect&quot;}</span>
+<span class="sd">        Geometry projection method / primitive variant. ``&quot;GP&quot;`` is the round-ended</span>
+<span class="sd">        bar (capsule); ``&quot;rect&quot;`` is a true rectangle primitive (quintic-smoothed,</span>
+<span class="sd">        width ``L`` x height ``h``).</span>
+<span class="sd">    init : {&quot;default&quot;, &quot;grid&quot;}</span>
+<span class="sd">        Initial-design layout. ``&quot;default&quot;`` is the Matlab-style crossed-bar grid;</span>
+<span class="sd">        ``&quot;grid&quot;`` tiles the domain with ``grid_nx`` x ``grid_ny`` rectangles</span>
+<span class="sd">        (squares when the tile aspect matches the domain) at density = ``volfrac``.</span>
+<span class="sd">    grid_nx, grid_ny : int, optional</span>
+<span class="sd">        Number of tiles along x and y for the ``&quot;grid&quot;`` initialisation. Their</span>
+<span class="sd">        product must equal ``num_components`` and both must be &lt; the mesh resolution.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">mode</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;Free&quot;</span><span class="p">,</span> <span class="s2">&quot;ALM&quot;</span><span class="p">,</span> <span class="s2">&quot;3D_Free&quot;</span><span class="p">,</span> <span class="s2">&quot;3D_ALM&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;Free&quot;</span>
     <span class="n">num_components</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">18</span>
@@ -655,7 +664,14 @@ window.runMermaid = runMermaid;</script>
     <span class="n">layer_height</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">r_gp</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.5</span>
     <span class="n">Ngp</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">2</span>
-    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;GP&quot;</span></div>
+    <span class="n">method</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;GP&quot;</span>
+    <span class="n">init</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;default&quot;</span>
+    <span class="n">grid_nx</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="n">grid_ny</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># Minimum member thickness (in physical/mesh units) -&gt; a minimum length scale.</span>
+    <span class="c1"># Raises the lower bound on the primitive thickness `h` so members are born thick</span>
+    <span class="c1"># enough to threshold to a clean, connected 0/1 design. None -&gt; framework default (1).</span>
+    <span class="n">min_thickness</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
 
 
 

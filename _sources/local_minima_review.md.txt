@@ -300,6 +300,126 @@ number above is deterministic — the four strategies that share `C = 74.1453` r
 so the improvements over the baseline are true properties of the optimization, not solver
 noise.
 
+### 4.4 Improving the starting guess: rectangle primitives + grid fill
+
+Besides *escaping* a basin, one can *choose a better basin to start in*. We added a
+true **rectangle primitive** (`method: rect` — a quintic-smoothed width-`L`×height-`h`
+block with analytic gradients) and a **grid-fill initialisation** that tiles the domain
+with `grid_nx`×`grid_ny` rectangles (6×3 → 10×10 squares for SC) at `Mc = volfrac`,
+instead of the thin Matlab-style crossed bars. Preset: `short_cantilever_grid.yaml`.
+
+| Start | Final C | vs baseline |
+|---|---|---|
+| crossed-bars (baseline) | 74.2703 | — |
+| rect grid-fill, single start (320 it) | 92.30 | −24 % (worse) |
+| **rect grid-fill + continuation (600-it sharp tail)** | **73.18** | **+1.47 %** |
+
+The lesson mirrors §4.2: the grid-fill start *on its own* is **worse** (92.30) — it begins
+near-void and far from the solution topology, and the preset's tight `move=0.01` asymptotes
+cannot recover a good basin in 320 iterations, leaving gray mush in the centre. But run
+through the **`r_gp` continuation** with a long enough sharp tail, the very same start
+reaches **73.18, below the baseline** and on par with the GP crossed-bars continuation
+(73.52). A better *primitive and layout* helps only once the landscape is also smoothed —
+the starting guess and the homotopy are complementary, not substitutes.
+
+Convergence is iteration-sensitive here: at 320 sharp iterations the design is C = 73.61
+with a noticeably grayer interior; extending the final `r_gp = 0.5` phase to 600 iterations
+lowers it to **C = 73.18** with the volume constraint active (vol = 0.40) and the
+intermediate-density (gray) fraction down to ~0.18 — the residual gray being mostly thin
+edge-transition bands inherent to the smooth projection.
+
+**Driving it to a 0/1 design.** A *sharpening continuation* — after the `r_gp` ramp, add
+phases that lower `r_gp` (sharper edges) and raise the saturation `pp` and the penalisation
+`gammac` (a β-continuation) — reduces the gray fraction to ~0.13 (`gammac=5`) and ~0.10
+(`gammac=9`), but at rising compliance (73.9 → 75.8): forcing 0/1 thins the members. The
+gray then plateaus, because it is dominated by **single-pixel edge bands** — on this 60×30
+mesh the min-compliance truss members are only 1–3 elements wide. A hard **Heaviside
+threshold** at 0.5 yields a *truly* 0/1 design (vol = 0.40) but breaks the ~1-element-wide
+diagonal members into dotted, load-broken lines, so the FE-evaluated compliance jumps to
+**C = 96.6**. The lesson is a classic one: on a coarse mesh you can have *low compliance
+with gray edges* or *exact black/white with broken thin members*, but not both — the
+features are sub-element. A genuinely crisp **and** stiff binary design needs either a
+finer mesh (so each member spans several solid elements) or a minimum-length-scale /
+robust ("eta-erode/dilate") formulation.
+
+| optimized (gray edges), C = 73.2 | hard-sharpened, C = 75.8, gray ≈ 0.10 | thresholded 0/1, C = 96.6 (broken) |
+|---|---|---|
+| ![grayer](_static/sc2d_rect_grid_continuation.png) | ![sharpened](_static/sc2d_rect_grid_sharp.png) | ![binary](_static/sc2d_rect_grid_binary.png) |
+
+**A clean 0/1 design via a minimum length scale + better integration.** A hard threshold
+of the bare design disconnects ~1-element members (C = 96.6). Bounding only the thickness
+`h ≥ 3` reconnects the structure (C ≈ 84) but a *diagonal* member of perpendicular
+thickness 3 still rasterises to a thin staircase, leaving **checkerboard** artifacts. Two
+changes remove them:
+
+1. **minimum 3 elements in *both* directions** — `min_thickness` bounds the rectangle
+   length `L` *and* thickness `h`, so no member is sub-resolution along any axis;
+2. **9 Gauss points** (`Ngp = 3`, vs the default 4) properly integrate the characteristic
+   over each element's sampling window, killing the integration aliasing. (`Ngp` was also
+   silently dropped before the mapper — now wired through.)
+
+The result is a **fully 0/1, connected, checkerboard-free, manufacturable** truss at
+**C = 91.1** (vol = 0.40, gray fraction 0.06 before thresholding). This is the
+explicit-geometry analogue of a robust/length-scale formulation: rather than filtering
+densities we forbid sub-resolution members. The higher compliance is the honest price of a
+clean design with a 3-element minimum feature on a coarse 60×30 mesh — chunky members are
+stiffer to manufacture but less weight-efficient than slender ones; a finer mesh would
+recover efficiency at the same (relative) length scale. Preset:
+`short_cantilever_grid_minlen.yaml`.
+
+![min-length + 9-Gauss-point 0/1 design](_static/sc2d_rect_grid_minlen_binary.png)
+
+| rect grid-fill, single start (C = 92.30) | rect grid-fill + continuation (C = 73.18) |
+|---|---|
+| ![rect grid single start](_static/sc2d_rect_grid_optimized.png) | ![rect grid + continuation](_static/sc2d_rect_grid_continuation.png) |
+
+### 4.5 Global search on the rectangle / minimum-length config
+
+Finally we run the **full strategy exploration** (§3) on this harder configuration —
+rectangle primitives, grid-fill start, `min_thickness = 3` bounds — each strategy using a
+continuation + sharpening inner solve (`benchmarks/sc2d_local_minima.py --preset
+short_cantilever_grid_minlen --sharpen`). The constrained, thick-member design space is
+*much* more rugged than the GP one, which makes the global search essential:
+
+| Method | Best C | vs single-start baseline |
+|---|---|---|
+| baseline (single start) | 119.5 | — |
+| deflated_search | 87.8 | +26.6 % |
+| continuation (single start) | 89.0 | +25.5 % |
+| basin_hopping | 83.6 | +30.0 % |
+| multi_start | 78.0 | +34.8 % |
+| tunneling | 77.2 | +35.4 % |
+| **chaotic_search** | **76.5** | **+36.0 %** |
+
+Two clear messages. First, on this config a single start — *even with continuation +
+sharpening* — stalls at ~89; only the strategies that **explore different layouts**
+(multi-start, tunnelling, chaotic) escape to the good basin. Second, those exploring
+strategies **agree**: their best designs all land at **C ≈ 76–78** and are the *same*
+thick-membered cantilever truss, reached from independent random / chaotic / tunnelled
+starts — the global search robustly converges to a similar, clean, near-0/1 design.
+
+| chaotic_search, C = 76.5 | multi_start, C = 78.0 | spread by strategy |
+|---|---|---|
+| ![chaotic](_static/sc2d_grid_explore_chaotic.png) | ![multistart](_static/sc2d_grid_explore_multistart.png) | ![spread](_static/sc2d_grid_explore_spread.png) |
+
+(Run with `Ngp = 2` for exploration speed; the best design renders cleanly to 0/1 at
+`Ngp = 3` as in §4.4.)
+
+**Does more budget help? (3 → 10 restarts).** Re-running with `--budget 10` (ten
+restarts / hops / solutions per strategy instead of ~3) is revealing: the best compliance
+**barely moves** — multi-start 78.0 → 76.5, basin-hopping 83.6 → 76.1, chaotic 76.5 → 76.3
+— because there is a **strong, repeatable attractor at C ≈ 76**. With ten chaotic restarts,
+*four independent* ones land at 76.33 / 76.49 / 76.37 / 76.74 (the same design); multi-start
+and basin-hopping hit it too. So extra budget does **not** find a lower optimum — it makes
+the search **reliably** reach the ~76 basin (multiple independent hits ⇒ this is, to high
+confidence, the near-global optimum for this constrained config), rather than occasionally.
+The payoff of budget is *robustness*, not a better minimum; returns diminish sharply once
+the basin is found. (Convergence-heavy methods — tunnelling, deflation — actually regressed
+here because the 10× breadth was paid for by halving `max_iter` to 150; best-of-N methods
+are immune to that, which is itself a useful robustness lesson.)
+
+![budget-10 spread by strategy](_static/sc2d_grid_budget10_spread.png)
+
 ## 5. Reproducing & extending
 
 * Run a single strategy: `ggp search --preset short_cantilever --strategy continuation`.

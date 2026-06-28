@@ -70,6 +70,8 @@
 <li class="toctree-l3"><a class="reference internal" href="#results">4.1 Results</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#reading-the-results">4.2 Reading the results</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#reproducibility-and-a-word-on-solver-determinism">4.3 Reproducibility (and a word on solver determinism)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#improving-the-starting-guess-rectangle-primitives-grid-fill">4.4 Improving the starting guess: rectangle primitives + grid fill</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#global-search-on-the-rectangle-minimum-length-config">4.5 Global search on the rectangle / minimum-length config</a></li>
 </ul>
 </li>
 <li class="toctree-l2"><a class="reference internal" href="#reproducing-extending">5. Reproducing &amp; extending</a></li>
@@ -504,6 +506,188 @@ number above is deterministic — the four strategies that share <code class="do
 <em>bit-identically</em> (their default-start inner continuations are the same computation) —
 so the improvements over the baseline are true properties of the optimization, not solver
 noise.</p>
+</section>
+<section id="improving-the-starting-guess-rectangle-primitives-grid-fill">
+<h3>4.4 Improving the starting guess: rectangle primitives + grid fill<a class="headerlink" href="#improving-the-starting-guess-rectangle-primitives-grid-fill" title="Link to this heading"></a></h3>
+<p>Besides <em>escaping</em> a basin, one can <em>choose a better basin to start in</em>. We added a
+true <strong>rectangle primitive</strong> (<code class="docutils literal notranslate"><span class="pre">method:</span> <span class="pre">rect</span></code> — a quintic-smoothed width-<code class="docutils literal notranslate"><span class="pre">L</span></code>×height-<code class="docutils literal notranslate"><span class="pre">h</span></code>
+block with analytic gradients) and a <strong>grid-fill initialisation</strong> that tiles the domain
+with <code class="docutils literal notranslate"><span class="pre">grid_nx</span></code>×<code class="docutils literal notranslate"><span class="pre">grid_ny</span></code> rectangles (6×3 → 10×10 squares for SC) at <code class="docutils literal notranslate"><span class="pre">Mc</span> <span class="pre">=</span> <span class="pre">volfrac</span></code>,
+instead of the thin Matlab-style crossed bars. Preset: <code class="docutils literal notranslate"><span class="pre">short_cantilever_grid.yaml</span></code>.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Start</p></th>
+<th class="head"><p>Final C</p></th>
+<th class="head"><p>vs baseline</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>crossed-bars (baseline)</p></td>
+<td><p>74.2703</p></td>
+<td><p>—</p></td>
+</tr>
+<tr class="row-odd"><td><p>rect grid-fill, single start (320 it)</p></td>
+<td><p>92.30</p></td>
+<td><p>−24 % (worse)</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>rect grid-fill + continuation (600-it sharp tail)</strong></p></td>
+<td><p><strong>73.18</strong></p></td>
+<td><p><strong>+1.47 %</strong></p></td>
+</tr>
+</tbody>
+</table>
+<p>The lesson mirrors §4.2: the grid-fill start <em>on its own</em> is <strong>worse</strong> (92.30) — it begins
+near-void and far from the solution topology, and the preset’s tight <code class="docutils literal notranslate"><span class="pre">move=0.01</span></code> asymptotes
+cannot recover a good basin in 320 iterations, leaving gray mush in the centre. But run
+through the <strong><code class="docutils literal notranslate"><span class="pre">r_gp</span></code> continuation</strong> with a long enough sharp tail, the very same start
+reaches <strong>73.18, below the baseline</strong> and on par with the GP crossed-bars continuation
+(73.52). A better <em>primitive and layout</em> helps only once the landscape is also smoothed —
+the starting guess and the homotopy are complementary, not substitutes.</p>
+<p>Convergence is iteration-sensitive here: at 320 sharp iterations the design is C = 73.61
+with a noticeably grayer interior; extending the final <code class="docutils literal notranslate"><span class="pre">r_gp</span> <span class="pre">=</span> <span class="pre">0.5</span></code> phase to 600 iterations
+lowers it to <strong>C = 73.18</strong> with the volume constraint active (vol = 0.40) and the
+intermediate-density (gray) fraction down to ~0.18 — the residual gray being mostly thin
+edge-transition bands inherent to the smooth projection.</p>
+<p><strong>Driving it to a 0/1 design.</strong> A <em>sharpening continuation</em> — after the <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> ramp, add
+phases that lower <code class="docutils literal notranslate"><span class="pre">r_gp</span></code> (sharper edges) and raise the saturation <code class="docutils literal notranslate"><span class="pre">pp</span></code> and the penalisation
+<code class="docutils literal notranslate"><span class="pre">gammac</span></code> (a β-continuation) — reduces the gray fraction to ~0.13 (<code class="docutils literal notranslate"><span class="pre">gammac=5</span></code>) and ~0.10
+(<code class="docutils literal notranslate"><span class="pre">gammac=9</span></code>), but at rising compliance (73.9 → 75.8): forcing 0/1 thins the members. The
+gray then plateaus, because it is dominated by <strong>single-pixel edge bands</strong> — on this 60×30
+mesh the min-compliance truss members are only 1–3 elements wide. A hard <strong>Heaviside
+threshold</strong> at 0.5 yields a <em>truly</em> 0/1 design (vol = 0.40) but breaks the ~1-element-wide
+diagonal members into dotted, load-broken lines, so the FE-evaluated compliance jumps to
+<strong>C = 96.6</strong>. The lesson is a classic one: on a coarse mesh you can have <em>low compliance
+with gray edges</em> or <em>exact black/white with broken thin members</em>, but not both — the
+features are sub-element. A genuinely crisp <strong>and</strong> stiff binary design needs either a
+finer mesh (so each member spans several solid elements) or a minimum-length-scale /
+robust (“eta-erode/dilate”) formulation.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>optimized (gray edges), C = 73.2</p></th>
+<th class="head"><p>hard-sharpened, C = 75.8, gray ≈ 0.10</p></th>
+<th class="head"><p>thresholded 0/1, C = 96.6 (broken)</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><img alt="grayer" src="_images/sc2d_rect_grid_continuation.png" /></p></td>
+<td><p><img alt="sharpened" src="_images/sc2d_rect_grid_sharp.png" /></p></td>
+<td><p><img alt="binary" src="_images/sc2d_rect_grid_binary.png" /></p></td>
+</tr>
+</tbody>
+</table>
+<p><strong>A clean 0/1 design via a minimum length scale + better integration.</strong> A hard threshold
+of the bare design disconnects ~1-element members (C = 96.6). Bounding only the thickness
+<code class="docutils literal notranslate"><span class="pre">h</span> <span class="pre">≥</span> <span class="pre">3</span></code> reconnects the structure (C ≈ 84) but a <em>diagonal</em> member of perpendicular
+thickness 3 still rasterises to a thin staircase, leaving <strong>checkerboard</strong> artifacts. Two
+changes remove them:</p>
+<ol class="arabic simple">
+<li><p><strong>minimum 3 elements in <em>both</em> directions</strong> — <code class="docutils literal notranslate"><span class="pre">min_thickness</span></code> bounds the rectangle
+length <code class="docutils literal notranslate"><span class="pre">L</span></code> <em>and</em> thickness <code class="docutils literal notranslate"><span class="pre">h</span></code>, so no member is sub-resolution along any axis;</p></li>
+<li><p><strong>9 Gauss points</strong> (<code class="docutils literal notranslate"><span class="pre">Ngp</span> <span class="pre">=</span> <span class="pre">3</span></code>, vs the default 4) properly integrate the characteristic
+over each element’s sampling window, killing the integration aliasing. (<code class="docutils literal notranslate"><span class="pre">Ngp</span></code> was also
+silently dropped before the mapper — now wired through.)</p></li>
+</ol>
+<p>The result is a <strong>fully 0/1, connected, checkerboard-free, manufacturable</strong> truss at
+<strong>C = 91.1</strong> (vol = 0.40, gray fraction 0.06 before thresholding). This is the
+explicit-geometry analogue of a robust/length-scale formulation: rather than filtering
+densities we forbid sub-resolution members. The higher compliance is the honest price of a
+clean design with a 3-element minimum feature on a coarse 60×30 mesh — chunky members are
+stiffer to manufacture but less weight-efficient than slender ones; a finer mesh would
+recover efficiency at the same (relative) length scale. Preset:
+<code class="docutils literal notranslate"><span class="pre">short_cantilever_grid_minlen.yaml</span></code>.</p>
+<p><img alt="min-length + 9-Gauss-point 0/1 design" src="_images/sc2d_rect_grid_minlen_binary.png" /></p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>rect grid-fill, single start (C = 92.30)</p></th>
+<th class="head"><p>rect grid-fill + continuation (C = 73.18)</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><img alt="rect grid single start" src="_images/sc2d_rect_grid_optimized.png" /></p></td>
+<td><p><img alt="rect grid + continuation" src="_images/sc2d_rect_grid_continuation.png" /></p></td>
+</tr>
+</tbody>
+</table>
+</section>
+<section id="global-search-on-the-rectangle-minimum-length-config">
+<h3>4.5 Global search on the rectangle / minimum-length config<a class="headerlink" href="#global-search-on-the-rectangle-minimum-length-config" title="Link to this heading"></a></h3>
+<p>Finally we run the <strong>full strategy exploration</strong> (§3) on this harder configuration —
+rectangle primitives, grid-fill start, <code class="docutils literal notranslate"><span class="pre">min_thickness</span> <span class="pre">=</span> <span class="pre">3</span></code> bounds — each strategy using a
+continuation + sharpening inner solve (<code class="docutils literal notranslate"><span class="pre">benchmarks/sc2d_local_minima.py</span> <span class="pre">--preset</span> <span class="pre">short_cantilever_grid_minlen</span> <span class="pre">--sharpen</span></code>). The constrained, thick-member design space is
+<em>much</em> more rugged than the GP one, which makes the global search essential:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Method</p></th>
+<th class="head"><p>Best C</p></th>
+<th class="head"><p>vs single-start baseline</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>baseline (single start)</p></td>
+<td><p>119.5</p></td>
+<td><p>—</p></td>
+</tr>
+<tr class="row-odd"><td><p>deflated_search</p></td>
+<td><p>87.8</p></td>
+<td><p>+26.6 %</p></td>
+</tr>
+<tr class="row-even"><td><p>continuation (single start)</p></td>
+<td><p>89.0</p></td>
+<td><p>+25.5 %</p></td>
+</tr>
+<tr class="row-odd"><td><p>basin_hopping</p></td>
+<td><p>83.6</p></td>
+<td><p>+30.0 %</p></td>
+</tr>
+<tr class="row-even"><td><p>multi_start</p></td>
+<td><p>78.0</p></td>
+<td><p>+34.8 %</p></td>
+</tr>
+<tr class="row-odd"><td><p>tunneling</p></td>
+<td><p>77.2</p></td>
+<td><p>+35.4 %</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>chaotic_search</strong></p></td>
+<td><p><strong>76.5</strong></p></td>
+<td><p><strong>+36.0 %</strong></p></td>
+</tr>
+</tbody>
+</table>
+<p>Two clear messages. First, on this config a single start — <em>even with continuation +
+sharpening</em> — stalls at ~89; only the strategies that <strong>explore different layouts</strong>
+(multi-start, tunnelling, chaotic) escape to the good basin. Second, those exploring
+strategies <strong>agree</strong>: their best designs all land at <strong>C ≈ 76–78</strong> and are the <em>same</em>
+thick-membered cantilever truss, reached from independent random / chaotic / tunnelled
+starts — the global search robustly converges to a similar, clean, near-0/1 design.</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>chaotic_search, C = 76.5</p></th>
+<th class="head"><p>multi_start, C = 78.0</p></th>
+<th class="head"><p>spread by strategy</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><img alt="chaotic" src="_images/sc2d_grid_explore_chaotic.png" /></p></td>
+<td><p><img alt="multistart" src="_images/sc2d_grid_explore_multistart.png" /></p></td>
+<td><p><img alt="spread" src="_images/sc2d_grid_explore_spread.png" /></p></td>
+</tr>
+</tbody>
+</table>
+<p>(Run with <code class="docutils literal notranslate"><span class="pre">Ngp</span> <span class="pre">=</span> <span class="pre">2</span></code> for exploration speed; the best design renders cleanly to 0/1 at
+<code class="docutils literal notranslate"><span class="pre">Ngp</span> <span class="pre">=</span> <span class="pre">3</span></code> as in §4.4.)</p>
+<p><strong>Does more budget help? (3 → 10 restarts).</strong> Re-running with <code class="docutils literal notranslate"><span class="pre">--budget</span> <span class="pre">10</span></code> (ten
+restarts / hops / solutions per strategy instead of ~3) is revealing: the best compliance
+<strong>barely moves</strong> — multi-start 78.0 → 76.5, basin-hopping 83.6 → 76.1, chaotic 76.5 → 76.3
+— because there is a <strong>strong, repeatable attractor at C ≈ 76</strong>. With ten chaotic restarts,
+<em>four independent</em> ones land at 76.33 / 76.49 / 76.37 / 76.74 (the same design); multi-start
+and basin-hopping hit it too. So extra budget does <strong>not</strong> find a lower optimum — it makes
+the search <strong>reliably</strong> reach the ~76 basin (multiple independent hits ⇒ this is, to high
+confidence, the near-global optimum for this constrained config), rather than occasionally.
+The payoff of budget is <em>robustness</em>, not a better minimum; returns diminish sharply once
+the basin is found. (Convergence-heavy methods — tunnelling, deflation — actually regressed
+here because the 10× breadth was paid for by halving <code class="docutils literal notranslate"><span class="pre">max_iter</span></code> to 150; best-of-N methods
+are immune to that, which is itself a useful robustness lesson.)</p>
+<p><img alt="budget-10 spread by strategy" src="_images/sc2d_grid_budget10_spread.png" /></p>
 </section>
 </section>
 <section id="reproducing-extending">
