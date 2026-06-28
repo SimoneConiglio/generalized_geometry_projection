@@ -249,6 +249,8 @@ def main():
     p.add_argument("--methods", nargs="+", default=ALL_METHODS,
                    choices=ALL_METHODS, help="which strategies to run")
     p.add_argument("--n-starts", type=int, default=None, help="override multi-start count")
+    p.add_argument("--budget", type=int, default=None,
+                   help="set the breadth (restarts = hops = solutions) for every strategy.")
     p.add_argument("--max-iter", type=int, default=None,
                    help="escape hatch for quick local checks ONLY; by default every "
                         "local solve uses the preset's exact MMA setup (320 iters).")
@@ -270,6 +272,8 @@ def main():
     args = p.parse_args()
 
     cfg = full_config(args.seed) if args.full else reduced_config(args.seed)
+    if args.budget is not None:
+        cfg.n_starts = cfg.n_hops = cfg.n_solutions = args.budget
     if args.n_starts is not None:
         cfg.n_starts = args.n_starts
     if args.sharpen:
