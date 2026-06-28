@@ -405,6 +405,21 @@ starts — the global search robustly converges to a similar, clean, near-0/1 de
 (Run with `Ngp = 2` for exploration speed; the best design renders cleanly to 0/1 at
 `Ngp = 3` as in §4.4.)
 
+**Does more budget help? (3 → 10 restarts).** Re-running with `--budget 10` (ten
+restarts / hops / solutions per strategy instead of ~3) is revealing: the best compliance
+**barely moves** — multi-start 78.0 → 76.5, basin-hopping 83.6 → 76.1, chaotic 76.5 → 76.3
+— because there is a **strong, repeatable attractor at C ≈ 76**. With ten chaotic restarts,
+*four independent* ones land at 76.33 / 76.49 / 76.37 / 76.74 (the same design); multi-start
+and basin-hopping hit it too. So extra budget does **not** find a lower optimum — it makes
+the search **reliably** reach the ~76 basin (multiple independent hits ⇒ this is, to high
+confidence, the near-global optimum for this constrained config), rather than occasionally.
+The payoff of budget is *robustness*, not a better minimum; returns diminish sharply once
+the basin is found. (Convergence-heavy methods — tunnelling, deflation — actually regressed
+here because the 10× breadth was paid for by halving `max_iter` to 150; best-of-N methods
+are immune to that, which is itself a useful robustness lesson.)
+
+![budget-10 spread by strategy](_static/sc2d_grid_budget10_spread.png)
+
 ## 5. Reproducing & extending
 
 * Run a single strategy: `ggp search --preset short_cantilever --strategy continuation`.
