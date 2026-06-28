@@ -33,12 +33,15 @@ class Free2DMapper(ProjectionMapper):
         r_gp: float = 0.5,
         method: str = "GP",
         Ngp: int = 2,
+        min_thickness: float = 1.0,
         **kwargs,
     ):
         self._num_components = num_components
         self.r_gp = r_gp
         self.method = method
         self.Ngp = Ngp
+        # Minimum primitive thickness (lower bound on h) -> minimum length scale.
+        self.min_thickness = float(min_thickness) if min_thickness else 1.0
 
         # Pre-compute local sampling window integration weights
         pts, wts = np.polynomial.legendre.leggauss(self.Ngp)
@@ -66,8 +69,13 @@ class Free2DMapper(ProjectionMapper):
         # [Xc, Yc, L, h, Theta, Mc]
         lb[0::6] = -1.0;          ub[0::6] = Lx + 1.0
         lb[1::6] = -1.0;          ub[1::6] = Ly + 1.0
-        lb[2::6] = 0.0;           ub[2::6] = diag
-        lb[3::6] = 1.0;           ub[3::6] = diag      # minh=1 element (matches Matlab reference)
+        # Minimum length scale: when min_thickness > 1 it bounds BOTH the length L and
+        # the thickness h, so a member is at least min_thickness elements in *both*
+        # directions (prevents thin diagonal members rasterising to a checkerboard).
+        # Default (min_thickness == 1) keeps the reference L_min = 0.
+        min_len = self.min_thickness if self.min_thickness > 1.0 else 0.0
+        lb[2::6] = min_len;       ub[2::6] = diag        # length L
+        lb[3::6] = self.min_thickness;  ub[3::6] = diag  # thickness h (minh=1 by default)
         lb[4::6] = -2.0 * np.pi;  ub[4::6] = 2.0 * np.pi
         lb[5::6] = 0.0;           ub[5::6] = 1.0
         return lb, ub

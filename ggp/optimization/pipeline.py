@@ -18,6 +18,22 @@ from gemseo.mda.mda_chain import MDAChain
 from gemseo.core.discipline.discipline import Discipline
 
 
+def _auto_grid(nc: int, Lx: float, Ly: float) -> tuple[int, int]:
+    """Factor *nc* into (gnx, gny) whose aspect ratio best matches Lx/Ly, so the
+    tiles ``(Lx/gnx) x (Ly/gny)`` are as square as possible."""
+    ratio = Lx / Ly
+    best = (nc, 1)
+    best_err = float("inf")
+    for gny in range(1, nc + 1):
+        if nc % gny:
+            continue
+        gnx = nc // gny
+        err = abs((gnx / gny) - ratio)
+        if err < best_err:
+            best_err, best = err, (gnx, gny)
+    return best
+
+
 class _OverhangDiscipline(Discipline):
     """Overhang + optional bridge-length constraint discipline for ALM 2-D mode.
 
@@ -197,6 +213,37 @@ class GGPPipeline:
         """
         n = num_vars
 
+        if mode in ("Free", "2D_Free") and kwargs.get("init") == "grid":
+            # Grid-fill initialisation: tile the domain with grid_nx x grid_ny
+            # rectangles (squares when Lx/grid_nx == Ly/grid_ny), each at density
+            # = volfrac, so the design starts as a coarse but *feasible, uniform*
+            # block layout -- a far more informative guess than thin crossed bars.
+            Lx = kwargs.get("Lx", 60.0)
+            Ly = kwargs.get("Ly", 30.0)
+            lb = kwargs.get("lb", None)
+            ub = kwargs.get("ub", None)
+            nc = n // 6
+            gnx = kwargs.get("grid_nx") or _auto_grid(nc, Lx, Ly)[0]
+            gny = kwargs.get("grid_ny") or _auto_grid(nc, Lx, Ly)[1]
+            if gnx * gny != nc:
+                raise ValueError(
+                    f"grid_nx*grid_ny ({gnx}*{gny}) must equal num_components ({nc})")
+            vf = kwargs.get("volfrac", 0.5)
+            ii, jj = np.meshgrid(np.arange(gnx), np.arange(gny))   # (gny, gnx)
+            Xc = ((ii + 0.5) * Lx / gnx).flatten()                 # row-major: j*gnx+i
+            Yc = ((jj + 0.5) * Ly / gny).flatten()
+            Lc = np.full(nc, Lx / gnx)        # rectangle width
+            hc = np.full(nc, Ly / gny)        # rectangle height
+            Tc = np.zeros(nc)                 # axis-aligned
+            x = np.empty(n)
+            x[0::6] = np.clip((Xc - lb[0::6]) / (ub[0::6] - lb[0::6]), 0.0, 1.0)
+            x[1::6] = np.clip((Yc - lb[1::6]) / (ub[1::6] - lb[1::6]), 0.0, 1.0)
+            x[2::6] = np.clip((Lc - lb[2::6]) / (ub[2::6] - lb[2::6]), 0.0, 1.0)
+            x[3::6] = np.clip((hc - lb[3::6]) / (ub[3::6] - lb[3::6]), 0.0, 1.0)
+            x[4::6] = np.clip((Tc - lb[4::6]) / (ub[4::6] - lb[4::6]), 0.0, 1.0)
+            x[5::6] = vf
+            return x
+
         if mode in ("Free", "2D_Free"):
             # Matlab-style grid initialization (GGP_main.m lines 159-168)
             # ncx=1, ncy=1 → 3×3 grid of (ncx+2)×(ncy+2) positions
@@ -371,6 +418,8 @@ class GGPPipeline:
             "pp": 100.0,
             "method": self.spec.formulation.method,
             "r_gp": self.spec.formulation.r_gp,
+            "Ngp": self.spec.formulation.Ngp,
+            "min_thickness": self.spec.formulation.min_thickness,
         }
         # Apply per-run sharpness overrides (continuation strategy).
         for _k in ("ka", "pp", "r_gp", "gammac", "gammav"):
@@ -393,7 +442,11 @@ class GGPPipeline:
         # GP method: linear stiffness (p=1, no SIMP on top of KS saturation)
         # AMNA/MNA methods: SIMP with p=3
         method = self.spec.formulation.method or "GP"
-        p_penalty = 1.0 if method == "GP" else 3.0
+        # 'rect' (rectangle primitive) uses linear stiffness like 'GP', but keeps a
+        # small Emin floor below because rectangle densities can be exactly 0
+        # (the AMNA characteristic saturates to 0 outside the block) -> Emin=0 would
+        # make the FE system singular in fully-void regions.
+        p_penalty = 1.0 if method in ("GP", "rect") else 3.0
         # Emin: the reference Free GP branch (model_updateM.py) computes E = rho*E0
         # with NO Emin floor (void E -> ~0 via the smooth-saturation residual).
         # GGP-Topo's SIMP form adds Emin, which spuriously raises void E and, because
@@ -464,6 +517,10 @@ class GGPPipeline:
                 "Ly": Ly,
                 "lb": geom_discipline.lb,
                 "ub": geom_discipline.ub,
+                "init": self.spec.formulation.init,
+                "grid_nx": self.spec.formulation.grid_nx,
+                "grid_ny": self.spec.formulation.grid_ny,
+                "volfrac": self.spec.volfrac,
             }
             # Pass non-design origin for L-shape aware initialization
             for geom in self.spec.geometries:

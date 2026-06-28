@@ -1,0 +1,59 @@
+# Short Cantilever — rectangle primitives, grid-fill initial guess
+# Same problem as short_cantilever.yaml (60x30, fixed left, mid-right load, 40% vol)
+# but the design is built from *rectangle* primitives and the initial guess tiles the
+# domain with a 6x3 grid of 10x10 squares at density = volfrac, instead of the
+# Matlab-style thin crossed bars.
+
+geometries:
+  - type: fenics_rectangle
+    role: design
+    params:
+      Lx: 60.0
+      Ly: 30.0
+      nx: 60
+      ny: 30
+
+boundary_conditions:
+  - region: left
+    type: fixed
+
+loads:
+  - region: mid_right
+    type: point
+    value: [0.0, -1.0]
+
+formulation:
+  mode: Free
+  num_components: 18      # = grid_nx * grid_ny
+  method: rect            # rectangle primitive (quintic-smoothed AMNA characteristic)
+  init: grid              # tile the domain with grid_nx x grid_ny rectangles
+  grid_nx: 6              # 6 tiles across x  (60/6 = 10)  -> square tiles
+  grid_ny: 3              # 3 tiles across y  (30/3 = 10)
+  r_gp: 0.5
+  Ngp: 2
+
+objective:
+  name: compliance
+
+constraints:
+  - name: volume
+    type: ineq
+    bound: 0.0
+
+solver:
+  algorithm: MMA
+  max_iter: 320
+  fem_solver: direct
+  options:
+    max_optimization_step: 0.01
+    initial_asymptotes_distance: 0.01
+    max_asymptote_distance: 0.01
+    min_asymptote_distance: 0.0001
+    asymptotes_distance_amplification_coefficient: 1.2
+    asymptotes_distance_reduction_coefficient: 0.4
+    ftol_rel: 1.0e-20
+    ftol_abs: 1.0e-20
+    xtol_rel: 1.0e-20
+    xtol_abs: 1.0e-20
+
+volfrac: 0.4
