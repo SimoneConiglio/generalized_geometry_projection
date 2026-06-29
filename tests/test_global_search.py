@@ -223,6 +223,10 @@ def test_num_vars_matches_modes():
     assert gs._num_vars(_make_spec(mode="3D_Free", num_components=10)) == 80
     alm = _make_spec(mode="2D_ALM", num_layers=10, comp_per_layer=5)
     assert gs._num_vars(alm) == 2 * 10 * 5 + 2 * 5 + 2
+    # top-bottom symmetry halves the design vector (free half only)
+    symspec = _make_spec(mode="Free", num_components=18)
+    symspec.formulation.symmetry = "y"
+    assert gs._num_vars(symspec) == 54
 
 
 # --------------------------------------------------------------------------- #

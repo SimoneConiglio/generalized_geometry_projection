@@ -603,4 +603,8 @@ def _num_vars(spec) -> int:
     if mode == "3D_ALM" and f.num_layers:
         return 6 * f.comp_per_layer * f.num_layers
     per = 8 if mode == "3D_Free" else 6
-    return per * f.num_components
+    n = per * f.num_components
+    # top-bottom symmetry: the optimiser controls only the free half of the components
+    if getattr(f, "symmetry", None) == "y" and mode in ("Free", "2D_Free"):
+        n //= 2
+    return n
