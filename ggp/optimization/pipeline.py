@@ -18,6 +18,53 @@ from gemseo.mda.mda_chain import MDAChain
 from gemseo.core.discipline.discipline import Discipline
 
 
+class _SymmetryExpander(Discipline):
+    """Enforce top-bottom (y) symmetry by expanding ``num_free`` design components
+    into ``2*num_free`` geometry components: the free components plus their mirror
+    images about ``y = Ly/2``.
+
+    With the Free-2D bounds (Y symmetric about Ly/2, Theta symmetric about 0) the
+    mirror of a component ``[x, y, l, h, th, m]`` in the *normalised* [0,1] space is
+    exactly ``[x, 1-y, l, h, 1-th, m]`` -- a linear map with a constant Jacobian, so
+    GEMSEO composes the gradients and the geometry/physics code is untouched. The
+    optimiser sees only ``x_free`` (half the variables); every design is symmetric by
+    construction, which removes the entire family of symmetry-broken local minima.
+    """
+
+    _MIR_A = np.array([1.0, -1.0, 1.0, 1.0, -1.0, 1.0])   # multiplier (y, theta flip)
+    _MIR_B = np.array([0.0, 1.0, 0.0, 0.0, 1.0, 0.0])     # offset      (y->1-y, th->1-th)
+
+    def __init__(self, num_free: int, vpc: int = 6):
+        super().__init__("SymmetryExpander")
+        self.num_free = num_free
+        self.vpc = vpc
+        n_free = num_free * vpc
+        self.input_grammar.update_from_names(["x_free"])
+        self.output_grammar.update_from_names(["x_vars"])
+        self.default_inputs = {"x_free": np.full(n_free, 0.5)}
+        # Constant Jacobian d(x_vars)/d(x_free) = [[I];[diag(mir_a)]].
+        eye = np.eye(n_free)
+        diag = np.diag(np.tile(self._MIR_A, num_free))
+        self._jac = np.vstack([eye, diag])
+        if hasattr(self, "cache"):
+            self.cache = None
+        if hasattr(self, "cache_type"):
+            self.cache_type = Discipline.CacheType.NONE
+
+    def expand(self, x_free: np.ndarray) -> np.ndarray:
+        xf = np.asarray(x_free, float).reshape(self.num_free, self.vpc)
+        mir = xf * self._MIR_A + self._MIR_B
+        return np.concatenate([xf.flatten(), mir.flatten()])
+
+    def _run(self, input_data=None):
+        if input_data is not None:
+            self.local_data.update(input_data)
+        self.local_data["x_vars"] = self.expand(self.local_data["x_free"].flatten())
+
+    def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
+        self.jac = {"x_vars": {"x_free": self._jac}}
+
+
 def _auto_grid(nc: int, Lx: float, Ly: float) -> tuple[int, int]:
     """Factor *nc* into (gnx, gny) whose aspect ratio best matches Lx/Ly, so the
     tiles ``(Lx/gnx) x (Ly/gny)`` are as square as possible."""
@@ -499,6 +546,16 @@ class GGPPipeline:
                 * self.spec.formulation.num_components
             )
 
+        # Top-bottom symmetry: optimiser controls only the free half of the
+        # components; a _SymmetryExpander appends their mirror images.
+        _vpc = geom_discipline.mapper.num_vars_per_component()
+        sym = (self.spec.formulation.symmetry == "y" and mode in ("Free", "2D_Free"))
+        sym_expander = None
+        if sym:
+            num_free = self.spec.formulation.num_components // 2
+            num_vars = _vpc * num_free
+            sym_expander = _SymmetryExpander(num_free, vpc=_vpc)
+
         _init_kwargs = {}
         if mode in ["ALM", "2D_ALM"] and self.spec.formulation.num_layers:
             _oh = next((c for c in self.spec.constraints if c.name == "overhang"), None)
@@ -514,9 +571,9 @@ class GGPPipeline:
             # Pass domain extents and mapper bounds for Matlab-style grid init
             _init_kwargs = {
                 "Lx": Lx,
-                "Ly": Ly,
-                "lb": geom_discipline.lb,
-                "ub": geom_discipline.ub,
+                "Ly": (Ly / 2.0) if sym else Ly,   # free components live in the bottom half
+                "lb": geom_discipline.lb[:num_vars] if sym else geom_discipline.lb,
+                "ub": geom_discipline.ub[:num_vars] if sym else geom_discipline.ub,
                 "init": self.spec.formulation.init,
                 "grid_nx": self.spec.formulation.grid_nx,
                 "grid_ny": self.spec.formulation.grid_ny,
@@ -544,12 +601,16 @@ class GGPPipeline:
             x_init = np.clip(self.x0, 0.0, 1.0)
         else:
             x_init = self._make_init(mode, num_vars, **_init_kwargs)
+        # Under symmetry the design variable is the free half ("x_free"); the
+        # expander produces the full "x_vars" the geometry discipline consumes.
+        design_var = "x_free" if sym else "x_vars"
         design_space.add_variable(
-            "x_vars", size=num_vars, lower_bound=0.0, upper_bound=1.0, value=x_init
+            design_var, size=num_vars, lower_bound=0.0, upper_bound=1.0, value=x_init
         )
 
         # 6. MDA Chain
-        chain = MDAChain([geom_discipline, phys_discipline])
+        chain_disciplines = ([sym_expander] if sym else []) + [geom_discipline, phys_discipline]
+        chain = MDAChain(chain_disciplines)
         if hasattr(chain, "cache"):
             chain.cache = None
         if hasattr(chain, "cache_type"):
@@ -628,8 +689,10 @@ class GGPPipeline:
 
         # 9. Capture final density field at the optimal point
         x_opt = opt_result.x_opt
+        # Under symmetry x_opt is the free half -> expand to the full geometry vector.
+        x_opt_full = sym_expander.expand(x_opt) if sym else x_opt
         try:
-            geom_discipline.execute({"x_vars": x_opt})
+            geom_discipline.execute({"x_vars": x_opt_full})
             density_field = np.asarray(geom_discipline.local_data["rho_E"]).flatten().copy()
             if analysis.empty_elements:
                 density_field[analysis.empty_elements] = 0.0
@@ -643,7 +706,7 @@ class GGPPipeline:
         # so recompute the true compliance at the optimum from the geom+phys chain.
         if objective_name != "compliance":
             try:
-                chain.execute({"x_vars": x_opt})
+                chain.execute({design_var: x_opt})
                 objective_value = float(
                     np.asarray(chain.local_data["compliance"]).flatten()[0]
                 )

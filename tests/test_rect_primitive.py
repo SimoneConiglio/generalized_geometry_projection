@@ -117,6 +117,26 @@ def test_ngp_controls_gauss_point_count():
     assert m4.num_gp_per_el == 16     # 4x4
 
 
+def test_symmetry_expander_mirrors_components():
+    pytest.importorskip("gemseo")
+    from ggp.optimization.pipeline import _SymmetryExpander
+    ex = _SymmetryExpander(2)                      # 2 free comps -> 4 full
+    xf = np.array([0.5, 0.3, 0.4, 0.1, 0.2, 0.5,
+                   0.7, 0.8, 0.4, 0.1, 0.9, 0.5])
+    full = ex.expand(xf)
+    assert full.shape == (24,)
+    np.testing.assert_allclose(full[:12], xf)      # free copies unchanged
+    # mirror of comp0: y 0.3->0.7 (1-y), theta 0.2->0.8 (1-th), rest identical
+    np.testing.assert_allclose(full[12:18], [0.5, 0.7, 0.4, 0.1, 0.8, 0.5])
+    np.testing.assert_allclose(full[18:24], [0.7, 0.2, 0.4, 0.1, 0.1, 0.5])
+    # constant Jacobian matches a finite-difference of expand()
+    eps = 1e-6
+    for k in range(len(xf)):
+        xp = xf.copy(); xp[k] += eps
+        fd = (ex.expand(xp) - ex.expand(xf)) / eps
+        np.testing.assert_allclose(ex._jac[:, k], fd, atol=1e-7)
+
+
 def test_grid_fill_init_rejects_mismatched_counts():
     lb, ub = Free2DMapper(18).default_bounds((60.0, 30.0), 18)
     with pytest.raises(ValueError):

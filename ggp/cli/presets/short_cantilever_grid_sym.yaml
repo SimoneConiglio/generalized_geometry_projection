@@ -1,0 +1,60 @@
+# Short Cantilever — rectangle primitives, grid-fill, min length scale, SYMMETRY
+# Same as short_cantilever_grid_minlen.yaml but enforces top-bottom symmetry:
+# the optimiser controls 9 free components tiling the bottom half (grid_nx*grid_ny),
+# and a symmetry expander mirrors them about y=Ly/2 -> 18 components total.
+
+geometries:
+  - type: fenics_rectangle
+    role: design
+    params:
+      Lx: 60.0
+      Ly: 30.0
+      nx: 60
+      ny: 30
+
+boundary_conditions:
+  - region: left
+    type: fixed
+
+loads:
+  - region: mid_right
+    type: point
+    value: [0.0, -1.0]
+
+formulation:
+  mode: Free
+  num_components: 18      # 9 free + 9 mirror
+  method: rect
+  init: grid
+  grid_nx: 3              # free-half grid: 3 x 3 = 9 components tiling the bottom half
+  grid_ny: 3
+  min_thickness: 3.0
+  symmetry: y             # top-bottom mirror about Ly/2
+  r_gp: 0.5
+  Ngp: 3
+
+objective:
+  name: compliance
+
+constraints:
+  - name: volume
+    type: ineq
+    bound: 0.0
+
+solver:
+  algorithm: MMA
+  max_iter: 300
+  fem_solver: direct
+  options:
+    max_optimization_step: 0.01
+    initial_asymptotes_distance: 0.01
+    max_asymptote_distance: 0.01
+    min_asymptote_distance: 0.0001
+    asymptotes_distance_amplification_coefficient: 1.2
+    asymptotes_distance_reduction_coefficient: 0.4
+    ftol_rel: 1.0e-20
+    ftol_abs: 1.0e-20
+    xtol_rel: 1.0e-20
+    xtol_abs: 1.0e-20
+
+volfrac: 0.4

@@ -142,6 +142,10 @@ class FormulationSpec:
     # Raises the lower bound on the primitive thickness `h` so members are born thick
     # enough to threshold to a clean, connected 0/1 design. None -> framework default (1).
     min_thickness: Optional[float] = None
+    # Enforce a design symmetry by mirror-pairing components. "y" -> top-bottom
+    # symmetry about Ly/2 (the optimiser controls num_components/2 free components).
+    # None -> no symmetry. Free 2D only.
+    symmetry: Optional[str] = None
 
 
 # ── Optimisation ──────────────────────────────────────────────────────────────
