@@ -420,6 +420,23 @@ are immune to that, which is itself a useful robustness lesson.)
 
 ![budget-10 spread by strategy](_static/sc2d_grid_budget10_spread.png)
 
+**A single, *smoother-started* continuation matches the whole global search.** The
+single-start continuations above stalled at ~89 — but they started at `r_gp = 2.0`. A
+**single 5-step** continuation that starts *much* smoother, `r_gp = 3.0 → 1.8 → 1.1 →
+0.6 → 0.3`, reaches **C = 76.08** (gray 0.09, vol 0.40) — i.e. the *same* near-global
+optimum and the *same* design that ten restarts of multi-start / basin-hopping / chaotic
+search found (76.0–76.5), at a fraction of the cost. The trajectory tells the story: at
+`r_gp = 3.0` the rectangles blur into a smooth blob that reorganises freely (C = 85,
+gray 0.62), and each sharpening step settles it (73 → 74 → 75 → 76) into the good basin.
+The lesson is sharp: **the *initial smoothness* of the continuation is the decisive knob** —
+start smooth enough and a single trajectory anneals into the global basin (no exploration
+needed); start too sharp (`r_gp = 2.0`) and even a perfect optimiser is trapped by the
+grid start. This is exactly the chaotic-simulated-annealing picture of §2.6 (a high enough
+initial "temperature", annealed down) — and it is *why* continuation is the single most
+effective technique in this study.
+
+![single 5-step continuation, C = 76.08](_static/sc2d_grid_cont5.png)
+
 ## 5. Reproducing & extending
 
 * Run a single strategy: `ggp search --preset short_cantilever --strategy continuation`.
