@@ -1,0 +1,60 @@
+# Short Cantilever — NODE-BASED TRUSS parametrization.
+# Bars are parametrised by their two endpoints (X1,Y1,X2,Y2); bars that meet at a
+# node share that node's coordinates, so the design variables are the NODE
+# positions (the coincident joints) plus each bar's thickness h and mass Mc.
+# grid_nx x grid_ny is the node lattice; truss_radius sets which node pairs get a
+# bar (default ~1 tile-diagonal = 8-neighbour ground structure).
+
+geometries:
+  - type: fenics_rectangle
+    role: design
+    params:
+      Lx: 60.0
+      Ly: 30.0
+      nx: 60
+      ny: 30
+
+boundary_conditions:
+  - region: left
+    type: fixed
+
+loads:
+  - region: mid_right
+    type: point
+    value: [0.0, -1.0]
+
+formulation:
+  mode: Truss
+  method: GP            # rounded-end bars (capsules) join cleanly at shared nodes
+  grid_nx: 4            # node lattice: 4 x 3 = 12 nodes
+  grid_ny: 3
+  truss_radius: null    # null -> ~1 tile-diagonal (8-neighbour ground structure)
+  min_thickness: 3.0    # minimum bar thickness (length scale)
+  r_gp: 0.5
+  Ngp: 3
+
+objective:
+  name: compliance
+
+constraints:
+  - name: volume
+    type: ineq
+    bound: 0.0
+
+solver:
+  algorithm: MMA
+  max_iter: 300
+  fem_solver: direct
+  options:
+    max_optimization_step: 0.01
+    initial_asymptotes_distance: 0.01
+    max_asymptote_distance: 0.01
+    min_asymptote_distance: 0.0001
+    asymptotes_distance_amplification_coefficient: 1.2
+    asymptotes_distance_reduction_coefficient: 0.4
+    ftol_rel: 1.0e-20
+    ftol_abs: 1.0e-20
+    xtol_rel: 1.0e-20
+    xtol_abs: 1.0e-20
+
+volfrac: 0.4

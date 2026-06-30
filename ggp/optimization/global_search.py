@@ -42,7 +42,7 @@ from __future__ import annotations
 
 import dataclasses
 import time
-from typing import Any, Callable, Dict, List, Optional, Sequence
+from typing import Any, Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
@@ -121,10 +121,47 @@ def _run_once(
     return cls(spec, x0=x0, overrides=overrides, deflation=deflation).run()
 
 
+def _domain_extents(spec) -> Tuple[float, float]:
+    """(Lx, Ly) read from the design geometry's params."""
+    p = spec.geometries[0].params
+    return float(p.get("Lx", 1.0)), float(p.get("Ly", 1.0))
+
+
+def _truss_design_from_unit(spec, u: np.ndarray) -> np.ndarray:
+    """Build a normalised [0,1] truss design from a stream ``u`` of U(0,1) samples.
+
+    Node coordinates are jittered around their lattice sites (so the truss stays
+    roughly space-filling rather than collapsing to the domain centre), bars start
+    thin (near the minimum length scale) and at a moderate mass density. Shared by
+    the random- and chaotic-restart initialisers.
+    """
+    from ggp.projection.truss_2d import build_ground_structure
+
+    f = spec.formulation
+    Lx, Ly = _domain_extents(spec)
+    nodes, bars = build_ground_structure(f.grid_nx or 4, f.grid_ny or 3, Lx, Ly, f.truss_radius)
+    N, B = len(nodes), len(bars)
+    diag = float(np.hypot(Lx, Ly))
+    min_th = float(f.min_thickness or 1.0)
+    dx_tile = Lx / max((f.grid_nx or 4) - 1, 1)
+    dy_tile = Ly / max((f.grid_ny or 3) - 1, 1)
+
+    x = np.empty(2 * N + 2 * B)
+    jx = nodes[:, 0] + (u[0 : 2 * N : 2] - 0.5) * 0.7 * dx_tile
+    jy = nodes[:, 1] + (u[1 : 2 * N : 2] - 0.5) * 0.7 * dy_tile
+    x[0 : 2 * N : 2] = np.clip((jx - (-1.0)) / ((Lx + 1.0) - (-1.0)), 0.0, 1.0)
+    x[1 : 2 * N : 2] = np.clip((jy - (-1.0)) / ((Ly + 1.0) - (-1.0)), 0.0, 1.0)
+    h_phys = min_th + u[2 * N : 2 * N + B] * 0.15 * (diag - min_th)
+    x[2 * N : 2 * N + B] = (h_phys - min_th) / (diag - min_th)
+    x[2 * N + B :] = 0.4 + 0.2 * u[2 * N + B :]
+    return x
+
+
 def random_initial_design(
     num_vars: int,
     mode: str = "Free",
     rng: Optional[np.random.Generator] = None,
+    spec=None,
 ) -> np.ndarray:
     """Return a diverse normalised [0,1] initial design for a random restart.
 
@@ -134,6 +171,9 @@ def random_initial_design(
     moderate membership density. Unknown layouts fall back to ``U(0.3, 0.7)``.
     """
     rng = rng or np.random.default_rng()
+
+    if mode in ("Truss", "2D_Truss") and spec is not None:
+        return _truss_design_from_unit(spec, rng.uniform(0.0, 1.0, num_vars))
 
     if mode in ("Free", "2D_Free") and num_vars % 6 == 0:
         nc = num_vars // 6
@@ -248,12 +288,16 @@ def logistic_map(n: int, seed: float = 0.137, mu: float = 4.0,
 
 
 def chaotic_initial_design(num_vars: int, mode: str = "Free",
-                           seed: float = 0.137, mu: float = 4.0) -> np.ndarray:
+                           seed: float = 0.137, mu: float = 4.0,
+                           spec=None) -> np.ndarray:
     """Diverse initial design seeded by a chaotic (logistic-map) stream instead of
     an RNG. Same per-variable ranges as :func:`random_initial_design`, but the
     ergodicity of the chaotic orbit spreads successive restarts more evenly across
     the design space."""
     c = logistic_map(num_vars, seed=seed, mu=mu)
+
+    if mode in ("Truss", "2D_Truss") and spec is not None:
+        return _truss_design_from_unit(spec, c)
 
     if mode in ("Free", "2D_Free") and num_vars % 6 == 0:
         nc = num_vars // 6
@@ -354,7 +398,7 @@ def multi_start(
     if include_default:
         runs.append(None)                       # deterministic grid init
     for _ in range(n_starts):
-        runs.append(random_initial_design(num_vars, mode, rng))
+        runs.append(random_initial_design(num_vars, mode, rng, spec=spec))
 
     for i, x0 in enumerate(runs):
         result, _ = _local_solve(spec, x0=x0, schedule=schedule, pipeline_cls=pipeline_cls)
@@ -578,7 +622,7 @@ def chaotic_search(
     for k in range(n_starts):
         # distinct chaotic seed per restart -> distinct ergodic orbit
         s = (0.111 + 0.07 * (k + 1) + 0.013 * seed) % 1.0
-        runs.append(chaotic_initial_design(num_vars, mode, seed=s, mu=mu))
+        runs.append(chaotic_initial_design(num_vars, mode, seed=s, mu=mu, spec=spec))
 
     for i, x0 in enumerate(runs):
         result, _ = _local_solve(spec, x0=x0, schedule=schedule, pipeline_cls=pipeline_cls)
@@ -602,6 +646,14 @@ def _num_vars(spec) -> int:
         return 2 * f.num_layers * f.comp_per_layer + 2 * f.comp_per_layer + 2
     if mode == "3D_ALM" and f.num_layers:
         return 6 * f.comp_per_layer * f.num_layers
+    if mode in ("Truss", "2D_Truss"):
+        # 2 vars per node + 2 per bar; the connectivity fixes both counts.
+        from ggp.projection.truss_2d import build_ground_structure
+        Lx, Ly = _domain_extents(spec)
+        nodes, bars = build_ground_structure(
+            f.grid_nx or 4, f.grid_ny or 3, Lx, Ly, f.truss_radius
+        )
+        return 2 * len(nodes) + 2 * len(bars)
     per = 8 if mode == "3D_Free" else 6
     n = per * f.num_components
     # top-bottom symmetry: the optimiser controls only the free half of the components

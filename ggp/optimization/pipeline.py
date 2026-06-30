@@ -455,6 +455,21 @@ class GGPPipeline:
         Lz = domain.metadata.get("Lz", None)
         mesh_area = Lx * Ly * (Lz if Lz is not None else 1.0)
 
+        # Truss mode: build the node lattice + radius-based bar connectivity once,
+        # up-front, so the geometry discipline (KS aggregates over *bars*) and the
+        # design space (2 vars/node + 2 vars/bar) both get the right sizes.
+        mode = self.spec.formulation.mode
+        truss_nodes = truss_bars = None
+        num_components_eff = self.spec.formulation.num_components
+        if mode in ("Truss", "2D_Truss"):
+            from ggp.projection.truss_2d import build_ground_structure
+            gnx = self.spec.formulation.grid_nx or 4
+            gny = self.spec.formulation.grid_ny or 3
+            truss_nodes, truss_bars = build_ground_structure(
+                gnx, gny, Lx, Ly, self.spec.formulation.truss_radius
+            )
+            num_components_eff = len(truss_bars)
+
         # 3. Geometry Discipline
         # Use pp=100 to match Matlab smooth_sat.m (sharper binary saturation)
         geom_kwargs = {
@@ -473,9 +488,14 @@ class GGPPipeline:
             if _k in self.overrides and self.overrides[_k] is not None:
                 geom_kwargs[_k] = self.overrides[_k]
 
+        # Truss mode: hand the connectivity to the mapper via kwargs.
+        if truss_nodes is not None:
+            geom_kwargs["nodes"] = truss_nodes
+            geom_kwargs["bars"] = truss_bars
+
         geom_discipline = GGPGeometryDiscipline(
             mesh=analysis.mesh,
-            num_components=self.spec.formulation.num_components,
+            num_components=num_components_eff,
             mode=self.spec.formulation.mode,
             **{k: v for k, v in geom_kwargs.items() if v is not None}
         )
@@ -530,7 +550,11 @@ class GGPPipeline:
         design_space = create_design_space()
         mode = self.spec.formulation.mode
 
-        if mode in ["ALM", "2D_ALM"] and self.spec.formulation.num_layers:
+        if mode in ("Truss", "2D_Truss"):
+            # 2 vars per node (x, y) + 2 vars per bar (h, Mc); the mapper's bounds
+            # array already has the right total length.
+            num_vars = len(geom_discipline.lb)
+        elif mode in ["ALM", "2D_ALM"] and self.spec.formulation.num_layers:
             _np_val = self.spec.formulation.comp_per_layer
             _nY     = self.spec.formulation.num_layers
             num_vars = 2 * _nY * _np_val + 2 * _np_val + 2  # [Xc,L]+h+Mc+[y0,theta0]
@@ -599,6 +623,17 @@ class GGPPipeline:
                     f"{num_vars} design variables."
                 )
             x_init = np.clip(self.x0, 0.0, 1.0)
+        elif mode in ("Truss", "2D_Truss"):
+            # Start: every node on its lattice site, every ground-structure bar
+            # present with a modest thickness and Mc = volfrac (the optimizer then
+            # moves nodes, fattens load-paths and removes idle bars via h/Mc).
+            N, B = len(truss_nodes), len(truss_bars)
+            lb, ub = geom_discipline.lb, geom_discipline.ub
+            x_un = np.empty(num_vars)
+            x_un[: 2 * N] = truss_nodes.ravel()
+            x_un[2 * N : 2 * N + B] = max(self.spec.formulation.min_thickness or 1.0, 2.0)
+            x_un[2 * N + B :] = self.spec.volfrac
+            x_init = np.clip((x_un - lb) / (ub - lb), 0.0, 1.0)
         else:
             x_init = self._make_init(mode, num_vars, **_init_kwargs)
         # Under symmetry the design variable is the free half ("x_free"); the

@@ -127,7 +127,7 @@ class FormulationSpec:
         Number of tiles along x and y for the ``"grid"`` initialisation. Their
         product must equal ``num_components`` and both must be < the mesh resolution.
     """
-    mode: Literal["Free", "ALM", "3D_Free", "3D_ALM"] = "Free"
+    mode: Literal["Free", "ALM", "3D_Free", "3D_ALM", "Truss", "2D_Truss"] = "Free"
     num_components: int = 18
     num_layers: Optional[int] = None
     comp_per_layer: Optional[int] = None
@@ -146,6 +146,11 @@ class FormulationSpec:
     # symmetry about Ly/2 (the optimiser controls num_components/2 free components).
     # None -> no symmetry. Free 2D only.
     symmetry: Optional[str] = None
+    # Truss mode only: node-pair connection radius for the ground structure. A bar
+    # is created for every node pair within this distance. None -> ~1 tile-diagonal
+    # (each node connects to its 8 grid neighbours); larger -> denser, approaching
+    # the complete graph. grid_nx x grid_ny give the NODE lattice in Truss mode.
+    truss_radius: Optional[float] = None
 
 
 # ── Optimisation ──────────────────────────────────────────────────────────────
