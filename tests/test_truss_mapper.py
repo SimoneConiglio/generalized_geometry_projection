@@ -17,8 +17,27 @@ from ggp.projection.registry import get_mapper
 # --------------------------------------------------------------------------- #
 # Ground-structure connectivity
 # --------------------------------------------------------------------------- #
+def _passthrough_count(nodes, bars, tol=1e-6):
+    """Number of bars that pass through some other node (should be 0 when planar)."""
+    bad = 0
+    for (a, c) in bars:
+        pa, pc = nodes[a], nodes[c]
+        d = pc - pa
+        L2 = float(d @ d)
+        for k in range(len(nodes)):
+            if k in (a, c):
+                continue
+            t = float((nodes[k] - pa) @ d) / L2
+            if t <= tol or t >= 1.0 - tol:
+                continue
+            if np.hypot(*(nodes[k] - (pa + t * d))) < tol:
+                bad += 1
+                break
+    return bad
+
+
 def test_ground_structure_node_grid_is_row_major():
-    nodes, bars = build_ground_structure(3, 2, 60.0, 30.0)
+    nodes, bars = build_ground_structure(3, 2, 60.0, 30.0, planarize=False)
     assert nodes.shape == (6, 2)
     # x fastest: first row y=0 at x=0,30,60 ; second row y=30
     np.testing.assert_allclose(nodes[:3], [[0, 0], [30, 0], [60, 0]])
@@ -30,8 +49,9 @@ def test_ground_structure_node_grid_is_row_major():
 
 def test_ground_structure_radius_controls_density():
     # tiny radius -> only the closest neighbours; huge radius -> complete graph
-    _, sparse = build_ground_structure(3, 3, 60.0, 60.0, radius=21.0)   # only orthogonal (d=30)?
-    _, dense = build_ground_structure(3, 3, 60.0, 60.0, radius=1e6)
+    # (compare the raw radius graph, before planarization changes the counts)
+    _, sparse = build_ground_structure(3, 3, 60.0, 60.0, radius=21.0, planarize=False)
+    _, dense = build_ground_structure(3, 3, 60.0, 60.0, radius=1e6, planarize=False)
     n = 9
     assert len(dense) == n * (n - 1) // 2          # complete graph
     assert len(sparse) < len(dense)
@@ -39,10 +59,35 @@ def test_ground_structure_radius_controls_density():
 
 def test_default_radius_connects_eight_neighbours():
     # interior node of a 3x3 lattice should reach all 8 neighbours by default
-    nodes, bars = build_ground_structure(3, 3, 60.0, 60.0)
+    nodes, bars = build_ground_structure(3, 3, 60.0, 60.0, planarize=False)
     centre = 4                                       # middle node of row-major 3x3
     deg = np.sum((bars[:, 0] == centre) | (bars[:, 1] == centre))
     assert deg == 8
+
+
+# --------------------------------------------------------------------------- #
+# Planarization: crossings become nodes, no pass-through overlaps
+# --------------------------------------------------------------------------- #
+def test_planarize_adds_crossing_nodes_and_removes_passthrough():
+    raw_n, raw_b = build_ground_structure(4, 3, 60.0, 30.0, planarize=False)
+    pl_n, pl_b = build_ground_structure(4, 3, 60.0, 30.0, planarize=True)
+    # each of the 3x2 = 6 cells contributes one diagonal-crossing node
+    assert len(pl_n) == len(raw_n) + 6
+    assert len(pl_b) > len(raw_b)
+    # the planar truss has no bar passing through a node...
+    assert _passthrough_count(pl_n, pl_b) == 0
+    # ...whereas the raw complete graph does
+    cg_n, cg_b = build_ground_structure(4, 3, 60.0, 30.0, radius=1e6, planarize=False)
+    assert _passthrough_count(cg_n, cg_b) > 0
+
+
+def test_planarize_complete_graph_is_clean():
+    # even the complete graph planarizes to a pass-through-free truss
+    n, b = build_ground_structure(4, 3, 60.0, 30.0, radius=1e6, planarize=True)
+    assert _passthrough_count(n, b) == 0
+    # every bar is a real segment between two distinct existing nodes
+    assert np.all(b[:, 0] != b[:, 1])
+    assert len(np.unique(b, axis=0)) == len(b)
 
 
 # --------------------------------------------------------------------------- #
