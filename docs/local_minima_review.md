@@ -437,6 +437,58 @@ effective technique in this study.
 
 ![single 5-step continuation, C = 76.08](_static/sc2d_grid_cont5.png)
 
+### 4.6 Is the asymmetric optimum really better? Enforcing symmetry
+
+The best designs above (C ≈ 76) are **visibly asymmetric** about the horizontal mid-plane —
+which is suspicious, because the SC 2D problem *is* top–bottom symmetric (the load is central,
+the clamp is the full left edge). A natural hypothesis is that the asymmetric design is just a
+local minimum and that the *true* global optimum is a clean, symmetric X-truss. We tested this
+directly by **enforcing symmetry** and seeing whether it does better.
+
+Symmetry is imposed exactly (not via a penalty) by a linear **mirror-expander** discipline.
+The optimiser controls only the `grid_nx × grid_ny = 9` components that tile the **bottom half**
+of the domain (`x_free`, 54 design variables); a constant-Jacobian expander then appends their
+mirror images about `y = Ly/2`. In normalized coordinates the mirror of a component
+`[x, y, l, h, θ, m]` is `[x, 1−y, l, h, 1−θ, m]` (flip the vertical position and the orientation,
+keep length/thickness/mass), giving 18 components total that are symmetric **by construction**
+at every iteration. Preset: `short_cantilever_grid_sym.yaml`; the search reports a halved design
+vector (`_num_vars` divides by two when `symmetry: y`).
+
+The result is nuanced — and *against* the simple intuition:
+
+| Configuration | Best C | design |
+|---|---|---|
+| symmetric, single 5-step continuation | 82.67 | a poor local min (a thick central cross) |
+| symmetric, multi-start floor (best of 5) | **77.31** | clean symmetric truss |
+| **asymmetric**, single 5-step continuation (§4.5) | **76.08** | the global-search design |
+
+Two things stand out. First, the single symmetric continuation (82.67) is **not** the
+symmetric optimum — it is itself a poor local minimum; a symmetric multi-start pulls the
+symmetric floor down to **77.31**. So even *within* the symmetric subspace the problem is
+rugged and a single trajectory is not enough. Second, and more importantly, the symmetric
+floor (77.31) is still **marginally worse** than the asymmetric optimum (76.08) — by ~1.6 %.
+Enforcing the "obviously correct" symmetry did **not** find a better design; it found a
+slightly *worse* one.
+
+Why would a symmetric problem prefer a (slightly) asymmetric optimum? Two effects. (i) Symmetry
+**halves the effective degrees of freedom** — the optimiser has 9 free components instead of 18
+to place — so the symmetric design is genuinely less expressive. (ii) The `min_thickness = 3`
+bound makes a *symmetric* layout pay for a thick member crossing the mid-plane (where the two
+mirror halves meet), which is structurally inefficient; the asymmetric design routes material
+around that constraint. The 1.6 % gap is within the noise of this chaotic landscape (§2.6, where
+a 1e-13 perturbation already moves compliance ~0.1 %), so the honest reading is that the
+symmetric and asymmetric optima are **essentially equivalent**, with asymmetry buying a hair
+more efficiency under the length-scale constraint.
+
+![symmetric continuation design, C = 82.67](_static/sc2d_grid_symmetric.png)
+
+The practical lesson reinforces §4.5 and the chaotic-landscape framing: imposing a physically
+motivated symmetry is a reasonable *regularizer* (it shrinks the search space and guarantees a
+manufacturable, intuitive design), but it is **not** a free route to the global optimum, and in
+a problem this rugged it can cost a little. Cleaner insights ("the symmetric problem must have a
+symmetric optimum") simply do not survive contact with the discretized, length-scale-constrained,
+chaotic reality — which is the recurring theme of this study.
+
 ## 5. Reproducing & extending
 
 * Run a single strategy: `ggp search --preset short_cantilever --strategy continuation`.
