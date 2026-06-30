@@ -671,7 +671,11 @@ window.runMermaid = runMermaid;</script>
     <span class="c1"># Minimum member thickness (in physical/mesh units) -&gt; a minimum length scale.</span>
     <span class="c1"># Raises the lower bound on the primitive thickness `h` so members are born thick</span>
     <span class="c1"># enough to threshold to a clean, connected 0/1 design. None -&gt; framework default (1).</span>
-    <span class="n">min_thickness</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+    <span class="n">min_thickness</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># Enforce a design symmetry by mirror-pairing components. &quot;y&quot; -&gt; top-bottom</span>
+    <span class="c1"># symmetry about Ly/2 (the optimiser controls num_components/2 free components).</span>
+    <span class="c1"># None -&gt; no symmetry. Free 2D only.</span>
+    <span class="n">symmetry</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
 
 
 
