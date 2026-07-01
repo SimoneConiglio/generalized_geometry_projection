@@ -518,6 +518,32 @@ class GGPPipeline:
             x[7::8] = Mc
             return x
 
+        if mode in ("3D_Box", "Box3D"):
+            # Grid-fill: tile the domain with nc oriented boxes (axis-aligned start),
+            # each sized to a lattice cell, Mc = volfrac. The optimiser then moves,
+            # resizes, rotates and removes them.
+            Lx = kwargs.get("Lx", 60.0); Ly = kwargs.get("Ly", 30.0); Lz = kwargs.get("Lz", 30.0)
+            lb = kwargs.get("lb"); ub = kwargs.get("ub"); vf = kwargs.get("volfrac", 0.3)
+            nc = n // 9
+            c = int(np.ceil(nc ** (1.0 / 3.0)))
+            xs = (np.arange(c) + 0.5) * Lx / c
+            ys = (np.arange(c) + 0.5) * Ly / c
+            zs = (np.arange(c) + 0.5) * Lz / c
+            XX, YY, ZZ = np.meshgrid(xs, ys, zs, indexing="ij")
+            Xc = XX.ravel()[:nc]; Yc = YY.ravel()[:nc]; Zc = ZZ.ravel()[:nc]
+            sx, sy, sz = Lx / c, Ly / c, Lz / c
+            x = np.empty(n)
+            x[0::9] = np.clip((Xc - lb[0::9]) / (ub[0::9] - lb[0::9]), 0.0, 1.0)
+            x[1::9] = np.clip((Yc - lb[1::9]) / (ub[1::9] - lb[1::9]), 0.0, 1.0)
+            x[2::9] = np.clip((Zc - lb[2::9]) / (ub[2::9] - lb[2::9]), 0.0, 1.0)
+            x[3::9] = np.clip((sx - lb[3::9]) / (ub[3::9] - lb[3::9]), 0.0, 1.0)
+            x[4::9] = np.clip((sy - lb[4::9]) / (ub[4::9] - lb[4::9]), 0.0, 1.0)
+            x[5::9] = np.clip((sz - lb[5::9]) / (ub[5::9] - lb[5::9]), 0.0, 1.0)
+            x[6::9] = np.clip((0.0 - lb[6::9]) / (ub[6::9] - lb[6::9]), 0.0, 1.0)  # theta
+            x[7::9] = np.clip((0.0 - lb[7::9]) / (ub[7::9] - lb[7::9]), 0.0, 1.0)  # phi
+            x[8::9] = vf
+            return x
+
         # Fallback for other modes
         return np.random.default_rng(42).uniform(0.4, 0.6, n)
 
@@ -606,7 +632,7 @@ class GGPPipeline:
         # small Emin floor below because rectangle densities can be exactly 0
         # (the AMNA characteristic saturates to 0 outside the block) -> Emin=0 would
         # make the FE system singular in fully-void regions.
-        p_penalty = 1.0 if method in ("GP", "rect") else 3.0
+        p_penalty = 1.0 if method in ("GP", "rect", "box") else 3.0
         # Emin: the reference Free GP branch (model_updateM.py) computes E = rho*E0
         # with NO Emin floor (void E -> ~0 via the smooth-saturation residual).
         # GGP-Topo's SIMP form adds Emin, which spuriously raises void E and, because
@@ -704,13 +730,14 @@ class GGPPipeline:
                 if geom.role == "non_design" and geom.type == "box":
                     _init_kwargs["non_design_origin"] = geom.params.get("origin", None)
                     break
-        elif mode == "3D_Free":
+        elif mode in ("3D_Free", "3D_Box", "Box3D"):
             _init_kwargs = {
                 "Lx": Lx,
                 "Ly": Ly,
                 "Lz": Lz if Lz is not None else 30.0,
                 "lb": geom_discipline.lb,
                 "ub": geom_discipline.ub,
+                "volfrac": self.spec.volfrac,
             }
         if self.x0 is not None:
             if self.x0.shape[0] != num_vars:

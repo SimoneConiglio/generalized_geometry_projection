@@ -1,0 +1,58 @@
+# 3D Cantilever — oriented BOX primitives (solid analogue of the 2D rectangle).
+# Each component is a box [Xc,Yc,Zc,Lx,Ly,Lz,theta,phi,Mc] (9 vars); the
+# characteristic is a product of six quintic-smoothed faces, gradients via JAX.
+# Grid-fill start tiles the domain with boxes.
+
+geometries:
+  - type: fenics_box
+    role: design
+    params:
+      Lx: 60.0
+      Ly: 30.0
+      Lz: 30.0
+      nx: 24
+      ny: 12
+      nz: 12
+
+boundary_conditions:
+  - region: left
+    type: fixed
+
+loads:
+  - region: mid_right
+    type: point
+    value: [0.0, -1.0]
+
+formulation:
+  mode: 3D_Box
+  num_components: 8      # 8 boxes (2x2x2 grid-fill start)
+  method: box
+  r_gp: 0.5
+  Ngp: 2
+  min_thickness: 3.0
+
+objective:
+  name: compliance
+
+constraints:
+  - name: volume
+    type: ineq
+    bound: 0.0
+
+solver:
+  algorithm: MMA
+  max_iter: 150
+  fem_solver: direct
+  options:
+    max_optimization_step: 0.05
+    initial_asymptotes_distance: 0.05
+    max_asymptote_distance: 0.05
+    min_asymptote_distance: 0.00001
+    asymptotes_distance_amplification_coefficient: 1.2
+    asymptotes_distance_reduction_coefficient: 0.4
+    ftol_rel: 1.0e-20
+    ftol_abs: 1.0e-20
+    xtol_rel: 1.0e-20
+    xtol_abs: 1.0e-20
+
+volfrac: 0.15

@@ -61,3 +61,53 @@ def capsule_batch(pts, P1, P2, h, r_gp):
         jnp.asarray(pts), jnp.asarray(P1, dtype=float), jnp.asarray(P2, dtype=float),
         float(h), float(r_gp))
     return np.asarray(W), np.asarray(dP1), np.asarray(dP2), np.asarray(dh)
+
+
+# --------------------------------------------------------------------------- #
+# 3-D box primitive (solid analogue of the 2-D rectangle: six quintic faces)
+# --------------------------------------------------------------------------- #
+def _wval(z, sigma):
+    """Quintic-smoothed half-plane: 1 inside (z<-σ), 0 outside (z>σ). Matches the 2-D rect."""
+    val = (0.5 - (15.0 / (16.0 * sigma)) * z + (5.0 / (8.0 * sigma ** 3)) * z ** 3
+           - (3.0 / (16.0 * sigma ** 5)) * z ** 5)
+    return jnp.where(z < -sigma, 1.0, jnp.where(z > sigma, 0.0, val))
+
+
+def _box_W(p, center, sizes, theta, phi, sigma):
+    """Characteristic of an oriented box: product of six quintic-smoothed faces.
+
+    Long axis n1 points along (θ,φ); n2 is the horizontal perpendicular
+    ``(-sinθ, cosθ, 0)`` (fixes the roll deterministically, no singularity); n3 = n1×n2.
+    """
+    ct, st, cp, sp = jnp.cos(theta), jnp.sin(theta), jnp.cos(phi), jnp.sin(phi)
+    n1 = jnp.array([cp * ct, cp * st, sp])
+    n2 = jnp.array([-st, ct, 0.0])
+    n3 = jnp.array([n1[1] * n2[2] - n1[2] * n2[1],
+                    n1[2] * n2[0] - n1[0] * n2[2],
+                    n1[0] * n2[1] - n1[1] * n2[0]])
+    d = p - center
+    xl, yl, zl = jnp.dot(d, n1), jnp.dot(d, n2), jnp.dot(d, n3)
+    ax, ay, az = sizes[0] / 2.0, sizes[1] / 2.0, sizes[2] / 2.0
+    zetas = jnp.array([-ax - xl, xl - ax, -ay - yl, yl - ay, -az - zl, zl - az])
+    return jnp.prod(_wval(zetas, sigma))
+
+
+if _HAVE_JAX:
+    _grad_box = jax.grad(_box_W, argnums=(1, 2, 3, 4))    # d/dcenter, dsizes, dtheta, dphi
+
+    @jax.jit
+    def _box_batch(pts, center, sizes, theta, phi, sigma):
+        W = jax.vmap(lambda p: _box_W(p, center, sizes, theta, phi, sigma))(pts)
+        dC, dS, dT, dP = jax.vmap(
+            lambda p: _grad_box(p, center, sizes, theta, phi, sigma))(pts)
+        return W, dC, dS, dT, dP
+
+
+def box_batch(pts, center, sizes, theta, phi, sigma):
+    """``(W, dW/dcenter(M,3), dW/dsizes(M,3), dW/dtheta(M,), dW/dphi(M,))`` for one box."""
+    if not _HAVE_JAX:
+        raise ImportError("jax is required for the 3-D box primitive")
+    W, dC, dS, dT, dP = _box_batch(
+        jnp.asarray(pts), jnp.asarray(center, dtype=float), jnp.asarray(sizes, dtype=float),
+        float(theta), float(phi), float(sigma))
+    return np.asarray(W), np.asarray(dC), np.asarray(dS), np.asarray(dT), np.asarray(dP)
