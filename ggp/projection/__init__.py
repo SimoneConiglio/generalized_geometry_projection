@@ -8,6 +8,7 @@ from .free_3d import Free3DMapper
 from .alm_2d import ALM2DMapper
 from .alm_3d import ALM3DMapper
 from .truss_2d import Truss2DMapper, build_ground_structure
+from .truss_3d import Truss3DMapper, build_ground_structure_3d
 
 __all__ = [
     "ProjectionMapper",
@@ -20,4 +21,6 @@ __all__ = [
     "ALM3DMapper",
     "Truss2DMapper",
     "build_ground_structure",
+    "Truss3DMapper",
+    "build_ground_structure_3d",
 ]

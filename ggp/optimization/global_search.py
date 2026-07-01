@@ -654,6 +654,14 @@ def _num_vars(spec) -> int:
             f.grid_nx or 4, f.grid_ny or 3, Lx, Ly, f.truss_radius
         )
         return 2 * len(nodes) + 2 * len(bars)
+    if mode in ("Truss3D", "3D_Truss"):
+        from ggp.projection.truss_3d import build_ground_structure_3d
+        p = spec.geometries[0].params
+        Lx, Ly, Lz = float(p.get("Lx", 1.0)), float(p.get("Ly", 1.0)), float(p.get("Lz", 1.0))
+        nodes, bars = build_ground_structure_3d(
+            f.grid_nx or 3, f.grid_ny or 2, f.grid_nz or 2, Lx, Ly, Lz, f.truss_radius
+        )
+        return 3 * len(nodes) + 2 * len(bars)
     per = 8 if mode == "3D_Free" else 6
     n = per * f.num_components
     # top-bottom symmetry: the optimiser controls only the free half of the components

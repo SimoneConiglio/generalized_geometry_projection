@@ -127,7 +127,8 @@ class FormulationSpec:
         Number of tiles along x and y for the ``"grid"`` initialisation. Their
         product must equal ``num_components`` and both must be < the mesh resolution.
     """
-    mode: Literal["Free", "ALM", "3D_Free", "3D_ALM", "Truss", "2D_Truss"] = "Free"
+    mode: Literal["Free", "ALM", "3D_Free", "3D_ALM", "Truss", "2D_Truss",
+                  "Truss3D", "3D_Truss"] = "Free"
     num_components: int = 18
     num_layers: Optional[int] = None
     comp_per_layer: Optional[int] = None
@@ -151,6 +152,8 @@ class FormulationSpec:
     # (each node connects to its 8 grid neighbours); larger -> denser, approaching
     # the complete graph. grid_nx x grid_ny give the NODE lattice in Truss mode.
     truss_radius: Optional[float] = None
+    # 3-D truss only: number of nodes along z (grid_nx x grid_ny x grid_nz lattice).
+    grid_nz: Optional[int] = None
 
 
 # ── Optimisation ──────────────────────────────────────────────────────────────

@@ -1,0 +1,64 @@
+# 3D Cantilever — NODE-BASED TRUSS parametrization.
+# Bars are parametrised by their endpoints; bars meeting at a node share its
+# coordinates, so the design variables are the 3D NODE positions plus each bar's
+# thickness h and mass Mc. grid_nx x grid_ny x grid_nz is the node lattice;
+# truss_radius sets which node pairs get a bar (default ~1 cell-diagonal =
+# 26-neighbour ground structure). Vertical/axis-aligned bars are handled via the
+# segment-distance capsule primitive (no theta/phi singularity).
+
+geometries:
+  - type: fenics_box
+    role: design
+    params:
+      Lx: 60.0
+      Ly: 30.0
+      Lz: 30.0
+      nx: 24
+      ny: 12
+      nz: 12
+
+boundary_conditions:
+  - region: left
+    type: fixed
+
+loads:
+  - region: mid_right
+    type: point
+    value: [0.0, -1.0]
+
+formulation:
+  mode: 3D_Truss
+  method: GP
+  grid_nx: 4            # node lattice 4 x 2 x 2 = 16 nodes
+  grid_ny: 2
+  grid_nz: 2
+  truss_radius: null    # null -> ~1 cell-diagonal (26-neighbour ground structure)
+  min_thickness: 3.0
+  r_gp: 0.5
+  Ngp: 2
+
+objective:
+  name: compliance
+
+constraints:
+  - name: volume
+    type: ineq
+    bound: 0.0
+
+solver:
+  algorithm: MMA
+  max_iter: 150
+  fem_solver: direct
+  options:
+    max_optimization_step: 0.05
+    initial_asymptotes_distance: 0.05
+    max_asymptote_distance: 0.05
+    min_asymptote_distance: 0.00001
+    asymptotes_distance_amplification_coefficient: 1.2
+    asymptotes_distance_reduction_coefficient: 0.4
+    ftol_rel: 1.0e-20
+    ftol_abs: 1.0e-20
+    xtol_rel: 1.0e-20
+    xtol_abs: 1.0e-20
+
+volfrac: 0.15

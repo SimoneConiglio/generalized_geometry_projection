@@ -181,7 +181,9 @@ class FEMDiscretiser:
             voigt_idx = [(0, 0), (1, 1), (0, 1)]                       # σxx, σyy, τxy
         else:
             voigt_idx = [(0, 0), (1, 1), (2, 2), (0, 1), (1, 2), (0, 2)]
-        vol = cell.volume()
+        # Cell volume in a cell-type-agnostic way (cell.volume() is unimplemented for
+        # hexahedra): integrate the DG0 test function over the reference cell.
+        vol = float(np.sum(np.asarray(df.assemble_local(df.TestFunction(V_dg) * df.dx, cell))))
         se_rows = []
         for (ii, jj) in voigt_idx:
             M = np.zeros((domain.dim, domain.dim))
