@@ -136,6 +136,46 @@ class _OverhangDiscipline(Discipline):
         }
 
 
+class _DisplacementConstraintDiscipline(Discipline):
+    """Point/DOF displacement constraint ``|ℓᵀu| / u_max - 1 <= 0``.
+
+    Not self-adjoint, so the sensitivity needs one adjoint solve reusing the physics
+    discipline's cached, BC-eliminated ``K``:  with ``K λ = ∂g/∂u`` and ``∂g/∂u = sign·ℓ/u_max``,
+    the total design sensitivity is ``dg/dρ_e = -λ_eᵀ (dE_drho_e · ke_ref) u_e`` (there is no
+    explicit ρ-dependence — displacement enters only through ``u``).
+    """
+
+    def __init__(self, phys_discipline, ell, u_max, num_elements, volfrac=0.5,
+                 name="DisplacementConstraint"):
+        super().__init__(name=name)
+        self.phys = phys_discipline
+        self.ell = np.asarray(ell, dtype=float).flatten()   # DOF selector (n_dofs,)
+        self.u_max = float(u_max)
+        self.num_elements = num_elements
+        self._sign = 1.0
+        self.input_grammar.update_from_names(["rho_E"])
+        self.output_grammar.update_from_names(["displacement"])
+        self.default_inputs = {"rho_E": np.full(num_elements, volfrac)}
+        if hasattr(self, "cache"):
+            self.cache = None
+        if hasattr(self, "cache_type"):
+            self.cache_type = Discipline.CacheType.NONE
+
+    def _run(self, input_data=None):
+        if input_data is not None:
+            self.local_data.update(input_data)
+        u = self.phys.last_u
+        val = float(self.ell @ u)
+        self._sign = 1.0 if val >= 0.0 else -1.0
+        self.local_data["displacement"] = np.array([abs(val) / self.u_max - 1.0])
+
+    def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
+        dg_du = self._sign * self.ell / self.u_max
+        lam = self.phys.adjoint_solve(dg_du)
+        dg_drho = self.phys.dstiffness_sensitivity(lam)     # -λ_eᵀ (dE_drho ke_ref) u_e
+        self.jac = {"displacement": {"rho_E": dg_drho.reshape(1, -1)}}
+
+
 class _DeflatedObjectiveDiscipline(Discipline):
     """Deflated-objective discipline used by the deflation global-search strategy.
 
@@ -669,6 +709,27 @@ class GGPPipeline:
             )
             extra_disciplines.append(oh_disc)
 
+        # 7a2. Displacement constraint: bound |u| at a tracked DOF (adjoint-based).
+        disp_spec = next((c for c in self.spec.constraints if c.name == "displacement"), None)
+        if disp_spec is not None:
+            V_u = analysis.function_spaces["u"]
+            dof_coords = V_u.tabulate_dof_coordinates()
+            axis = int(disp_spec.params.get("axis", 1))
+            u_max = float(disp_spec.params.get("u_max", 1.0))
+            sub_dofs_axis = np.asarray(V_u.sub(axis).dofmap().dofs())
+            pt = disp_spec.params.get("point", None)
+            if pt is None:                                  # default: the loaded (mid-right) point
+                pt = [Lx, Ly / 2.0] + ([(Lz or 30.0) / 2.0] if analysis.dim == 3 else [])
+            target = np.asarray(pt[:analysis.dim], dtype=float)
+            nearest = int(sub_dofs_axis[np.argmin(
+                np.linalg.norm(dof_coords[sub_dofs_axis] - target, axis=1))])
+            ell = np.zeros(V_u.dim()); ell[nearest] = 1.0
+            disp_disc = _DisplacementConstraintDiscipline(
+                phys_discipline, ell, u_max,
+                num_elements=phys_discipline.num_elements, volfrac=self.spec.volfrac,
+            )
+            extra_disciplines.append(disp_disc)
+
         # 7b. Deflation: repel known minima by deflating the objective.
         objective_name = "compliance"
         if self.deflation and self.deflation.get("roots"):
@@ -700,6 +761,10 @@ class GGPPipeline:
             elif c.name == "overhang" and extra_disciplines:
                 scenario.add_constraint(
                     "overhang", constraint_type="ineq", positive=False, value=0.0
+                )
+            elif c.name == "displacement":
+                scenario.add_constraint(
+                    "displacement", constraint_type="ineq", positive=False, value=0.0
                 )
 
         # NOTE on overhang aggregation: the Matlab reference (ALM_constraint.m)

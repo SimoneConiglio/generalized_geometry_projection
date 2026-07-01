@@ -61,6 +61,12 @@ class GGPPhysicsDiscipline(Discipline):
         self.input_grammar.update_from_names(["rho_E", "rho_V"])
         self.output_grammar.update_from_names(["compliance", "volume"])
         self.last_u = None
+        # State kept for adjoint-based constraint sensitivities (stress/displacement).
+        # The primal K is symmetric and BC-eliminated, so the same operator/factorization
+        # serves every adjoint solve K λ = ∂g/∂u.
+        self._K_lu = None          # cached scipy LU factorization (direct solver)
+        self._K_global = None      # BC-applied CSR (fallback for iterative/amjax adjoints)
+        self.dE_drho = None        # d E / d rho_E per element (for λᵀ ∂K/∂ρ u)
         
         if hasattr(self, 'cache'):
             self.cache = None
@@ -106,6 +112,10 @@ class GGPPhysicsDiscipline(Discipline):
             if len(diag_idx) > 0:
                 K_global.data[dof_start + diag_idx[0]] = 1.0
         
+        # Keep the BC-applied operator so adjoint solves reuse the exact same K.
+        self._K_global = K_global
+        self._K_lu = None
+
         # Solve K U = F
         if self.fem_solver == "amjax":
             from ggp.physics.amjax_solver import solve_amjax
@@ -126,9 +136,12 @@ class GGPPhysicsDiscipline(Discipline):
             ksp.solve(b, x)
             u_vec = x.getArray().copy()
         else:
-            from scipy.sparse.linalg import spsolve
-            u_vec = spsolve(K_global, self.f_vec)
-            
+            # Direct: factorize once and cache — reused for the primal *and* every
+            # adjoint solve (stress/displacement constraint sensitivities).
+            from scipy.sparse.linalg import splu
+            self._K_lu = splu(K_global.tocsc())
+            u_vec = self._K_lu.solve(self.f_vec)
+
         self.last_u = u_vec
         
         # Compliance
@@ -144,6 +157,7 @@ class GGPPhysicsDiscipline(Discipline):
 
         # Gradients
         dE_drho = self.p_penalty * (rho_E ** (self.p_penalty - 1.0)) * (self.E0 - self.Emin)
+        self.dE_drho = dE_drho          # kept for adjoint constraint sensitivities
         grad_C = np.zeros(self.num_elements)
         for i in range(self.num_elements):
             u_e = u_vec[self.cell_dofs[i]]
@@ -163,3 +177,40 @@ class GGPPhysicsDiscipline(Discipline):
             "compliance": {"rho_E": self.dj_drhoE.reshape(1, -1), "rho_V": np.zeros((1, self.num_elements))},
             "volume": {"rho_E": np.zeros((1, self.num_elements)), "rho_V": self.dv_drhoV.reshape(1, -1)}
         }
+
+    # ------------------------------------------------------------------ #
+    # Adjoint machinery for non-self-adjoint constraints (stress / displacement)
+    # ------------------------------------------------------------------ #
+    def adjoint_solve(self, rhs: np.ndarray) -> np.ndarray:
+        """Solve the adjoint system ``K λ = rhs`` with the *same* BC-eliminated ``K``.
+
+        ``K`` is symmetric, so the cached primal factorization (direct solver) is reused
+        directly; iterative/amjax backends re-solve with the same operator. The RHS is
+        zeroed on fixed DOFs to stay consistent with the BC elimination (``λ = 0`` there).
+        """
+        b = np.asarray(rhs, dtype=np.float64).flatten().copy()
+        b[self.fixed_dofs] = 0.0
+        if self._K_lu is not None:
+            return self._K_lu.solve(b)
+        if self.fem_solver == "amjax":
+            from ggp.physics.amjax_solver import solve_amjax
+            return solve_amjax(self._K_global, b)
+        # iterative / fallback: reuse the same operator via a direct factorization
+        from scipy.sparse.linalg import spsolve
+        return spsolve(self._K_global, b)
+
+    def dstiffness_sensitivity(self, lam: np.ndarray) -> np.ndarray:
+        """Return the element-wise ``-λᵀ (∂K/∂ρ_e) u`` term for an adjoint vector ``lam``.
+
+        For SIMP ``K = Σ_e E(ρ_e) kₑ`` so ``∂K/∂ρ_e = dE_drho_e · ke_ref`` acting on element
+        ``e``'s DOFs only; the implicit-``u`` part of any constraint sensitivity is then
+        ``dg/dρ_e |_implicit = -λ_eᵀ (dE_drho_e ke_ref) u_e``.
+        """
+        u_vec = self.last_u
+        out = np.zeros(self.num_elements)
+        for e in range(self.num_elements):
+            dofs = self.cell_dofs[e]
+            u_e = u_vec[dofs]
+            lam_e = lam[dofs]
+            out[e] = -self.dE_drho[e] * (lam_e @ (self.ke_ref @ u_e))
+        return out
