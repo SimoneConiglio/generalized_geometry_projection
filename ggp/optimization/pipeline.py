@@ -176,6 +176,49 @@ class _DisplacementConstraintDiscipline(Discipline):
         self.jac = {"displacement": {"rho_E": dg_drho.reshape(1, -1)}}
 
 
+class _StressConstraintDiscipline(Discipline):
+    """Aggregated von Mises stress constraint (unified aggregation-relaxation).
+
+    The nonlinear algebra (stress recovery, von Mises, relaxation, aggregation) and its
+    partials ``∂G/∂ρ|explicit`` and ``∂G/∂u`` come from the JAX kernel
+    (:class:`ggp.utils.jax_sensitivity.StressConstraintKernel`); the implicit-``u`` part is
+    one adjoint solve reusing the physics discipline's factorized ``K``:
+        ``dG/dρ_e = ∂G/∂ρ_e − λ_eᵀ (dE_drho_e · ke_ref) u_e``,  ``K λ = ∂G/∂u``.
+    """
+
+    def __init__(self, phys_discipline, se_ref, sigma_lim, num_elements, dim,
+                 q=0.5, P=8.0, kind="pmean", volfrac=0.5, name="StressConstraint"):
+        super().__init__(name=name)
+        from ggp.utils.jax_sensitivity import StressConstraintKernel
+        self.phys = phys_discipline
+        cell_dofs = np.asarray([np.asarray(phys_discipline.cell_dofs[e])
+                                for e in range(num_elements)], dtype=np.int64)
+        self.kernel = StressConstraintKernel(cell_dofs, se_ref, sigma_lim,
+                                             q=q, P=P, kind=kind, dim=dim)
+        self.num_elements = num_elements
+        self._rho = None
+        self.input_grammar.update_from_names(["rho_E"])
+        self.output_grammar.update_from_names(["stress"])
+        self.default_inputs = {"rho_E": np.full(num_elements, volfrac)}
+        if hasattr(self, "cache"):
+            self.cache = None
+        if hasattr(self, "cache_type"):
+            self.cache_type = Discipline.CacheType.NONE
+
+    def _run(self, input_data=None):
+        if input_data is not None:
+            self.local_data.update(input_data)
+        self._rho = self.local_data["rho_E"].flatten()
+        G = self.kernel.value(self._rho, self.phys.last_u)
+        self.local_data["stress"] = np.array([G])
+
+    def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
+        _, dG_drho_expl, dG_du = self.kernel.value_and_grads(self._rho, self.phys.last_u)
+        lam = self.phys.adjoint_solve(dG_du)
+        dG_drho = dG_drho_expl + self.phys.dstiffness_sensitivity(lam)
+        self.jac = {"stress": {"rho_E": dG_drho.reshape(1, -1)}}
+
+
 class _DeflatedObjectiveDiscipline(Discipline):
     """Deflated-objective discipline used by the deflation global-search strategy.
 
@@ -730,6 +773,21 @@ class GGPPipeline:
             )
             extra_disciplines.append(disp_disc)
 
+        # 7a3. Stress constraint: aggregated von Mises (adjoint via JAX kernel).
+        stress_spec = next((c for c in self.spec.constraints if c.name == "stress"), None)
+        if stress_spec is not None:
+            if analysis.se_ref is None:
+                raise ValueError("stress constraint requires se_ref from the discretiser")
+            sp = stress_spec.params
+            stress_disc = _StressConstraintDiscipline(
+                phys_discipline, analysis.se_ref,
+                sigma_lim=float(sp.get("sigma_limit", 1.0)),
+                num_elements=phys_discipline.num_elements, dim=analysis.dim,
+                q=float(sp.get("q", 0.5)), P=float(sp.get("P", sp.get("ka", 8.0))),
+                kind=sp.get("aggregation", "pmean"), volfrac=self.spec.volfrac,
+            )
+            extra_disciplines.append(stress_disc)
+
         # 7b. Deflation: repel known minima by deflating the objective.
         objective_name = "compliance"
         if self.deflation and self.deflation.get("roots"):
@@ -765,6 +823,10 @@ class GGPPipeline:
             elif c.name == "displacement":
                 scenario.add_constraint(
                     "displacement", constraint_type="ineq", positive=False, value=0.0
+                )
+            elif c.name == "stress":
+                scenario.add_constraint(
+                    "stress", constraint_type="ineq", positive=False, value=0.0
                 )
 
         # NOTE on overhang aggregation: the Matlab reference (ALM_constraint.m)

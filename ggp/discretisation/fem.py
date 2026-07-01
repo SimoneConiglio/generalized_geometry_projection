@@ -49,6 +49,10 @@ class AnalysisDomain:
         self.load_vector = None
         self.empty_elements = []
         self.ke_ref = None
+        # Reference (unit-E) element stress-extraction operator: cell-average Voigt
+        # stress = se_ref @ u_e. Shape (n_stress, dofs_per_cell); n_stress = 3 (2D
+        # plane stress: σxx,σyy,τxy) or 6 (3D: σxx,σyy,σzz,τxy,τyz,τxz).
+        self.se_ref = None
 
 
 class FEMDiscretiser:
@@ -169,5 +173,21 @@ class FEMDiscretiser:
 
         cell = next(df.cells(mesh))
         analysis.ke_ref = df.assemble_local(a, cell)
+
+        # Reference stress-extraction operator (unit E), consistent with ke_ref:
+        # for each Voigt component k, ∫_cell σ_k(u) dx / |cell| is a linear form in u,
+        # so assemble_local returns the row of se_ref acting on the element DOFs.
+        if domain.dim == 2:
+            voigt_idx = [(0, 0), (1, 1), (0, 1)]                       # σxx, σyy, τxy
+        else:
+            voigt_idx = [(0, 0), (1, 1), (2, 2), (0, 1), (1, 2), (0, 2)]
+        vol = cell.volume()
+        se_rows = []
+        for (ii, jj) in voigt_idx:
+            M = np.zeros((domain.dim, domain.dim))
+            M[ii, jj] = 1.0
+            a_k = ufl.inner(sig_f(u_trial), df.Constant(M)) * df.dx
+            se_rows.append(np.asarray(df.assemble_local(a_k, cell)) / vol)
+        analysis.se_ref = np.array(se_rows)      # (n_stress, dofs_per_cell)
 
         return analysis

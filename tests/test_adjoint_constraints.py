@@ -83,3 +83,30 @@ def test_displacement_adjoint_matches_fd():
         # rtol loose because FD on a stiff solve is noisy on small-magnitude entries;
         # atol covers those. The adjoint is exact.
         assert abs(fd - g_an[e]) < 1e-3 * abs(fd) + 5e-5, (e, fd, g_an[e])
+
+
+def test_stress_adjoint_matches_fd():
+    pytest.importorskip("jax")
+    from ggp.optimization.pipeline import _StressConstraintDiscipline
+
+    _, _, analysis, phys = _build()
+    n = phys.num_elements
+    rng = np.random.default_rng(3)
+    rho = np.clip(0.5 + 0.2 * rng.standard_normal(n), 0.05, 1.0)
+    phys._run({"rho_E": rho, "rho_V": rho})
+
+    sd = _StressConstraintDiscipline(phys, analysis.se_ref, sigma_lim=2.0,
+                                     num_elements=n, dim=2, q=0.5, P=8.0, kind="pmean")
+    sd._run({"rho_E": rho}); sd._compute_jacobian()
+    g_an = sd.jac["stress"]["rho_E"].flatten()
+
+    def Gval(rho_in):
+        phys._run({"rho_E": rho_in, "rho_V": rho_in})
+        return sd.kernel.value(rho_in, phys.last_u)
+
+    eps = 1e-6
+    for e in rng.choice(n, size=15, replace=False):
+        rp = rho.copy(); rp[e] += eps
+        rm = rho.copy(); rm[e] -= eps
+        fd = (Gval(rp) - Gval(rm)) / (2 * eps)
+        assert abs(fd - g_an[e]) < 3e-3 * abs(fd) + 5e-5, (e, fd, g_an[e])
