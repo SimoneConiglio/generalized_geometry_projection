@@ -489,6 +489,74 @@ a problem this rugged it can cost a little. Cleaner insights ("the symmetric pro
 symmetric optimum") simply do not survive contact with the discretized, length-scale-constrained,
 chaotic reality — which is the recurring theme of this study.
 
+### 4.7 Reformulating the design space: a node-based planar truss
+
+Every technique up to here tries to reach a better minimum of a *fixed* parametrization —
+the free bar layout of §4.1–4.6. We threw the whole arsenal at it (continuation, multi-start,
+basin-hopping, deflation, tunnelling, chaotic search) and they all converged on the *same*
+`C ≈ 76` wall (§4.5). The last experiment asks a different question: **what if we change the
+parametrization itself?**
+
+Instead of parametrising each bar independently by its centre, length and angle
+(`[Xc, Yc, L, θ, h, Mc]`), we parametrise it by its **two endpoints**, and require bars to
+**share** those endpoints — a *truss*. The design variables become the **node (joint)
+positions** plus, per bar, a thickness `h` and mass density `Mc` (the topology knobs: a bar
+vanishes when either hits its lower bound). This is the classic ground-structure idea, with
+*movable* nodes. Implementation: `Truss2DMapper` (registered `Truss`) converts each bar's
+endpoints to the centre/length/angle the existing GGP kernels expect and chains the endpoint
+Jacobian into the *shared* node columns (the `is_continuous` global-column convention);
+`build_ground_structure()` lays a `grid_nx × grid_ny` node lattice and connects node pairs
+within a tunable `truss_radius` (default ≈ 1 tile-diagonal = 8-neighbour stencil; larger →
+denser, → the complete graph). Preset: `short_cantilever_truss.yaml`.
+
+**Planarize the ground structure.** A raw radius graph has two modelling defects: bars that
+*cross* without a joint there, and long bars that pass *through* an intermediate node without
+connecting to it (both appear as soon as `truss_radius` exceeds the neighbour stencil — the
+complete graph has 20 such pass-through bars on a 4×3 lattice). Both mean material overlapping
+with no real connection, so a moving node decouples from a member it visually touches. We fix
+this by making the structure a **planar truss**: a node is inserted at every bar-bar crossing
+and the bars are split there, and any bar through an existing node is split at it. Each diagonal
+`X` becomes a real 4-way joint. On the default 4×3 stencil this takes **12 → 18 nodes** (one
+crossing node per cell) and **29 → 41 bars**, and yields zero pass-through / zero unjointed
+crossings at any radius.
+
+![planar truss starting guess](_static/sc2d_truss_init.png)
+
+The payoff is the best result in this study:
+
+| Parametrization | vars | baseline (sharp start) | + 5-step continuation |
+|---|---|---|---|
+| free bars (§4.5) | 108 | — | 76.08 |
+| non-planar truss (12 nodes, 29 bars) | 82 | 91.2 | 79.3 |
+| **planar truss (18 nodes, 41 bars)** | 118 | 89.8 | **74.25** |
+
+A **single** continuation trajectory on the planar truss reaches **C = 74.25** — *below* the
+free-bar optimum (76.08) and below everything the full global search reached on the free bars
+(§4.5). The reasons are structural, not algorithmic:
+
+* **Connectivity is free.** In the free formulation, "is the structure connected?" is something
+  the optimizer must discover, and is the source of most bad basins. In the truss it holds by
+  construction (bars share joints), so that entire class of traps disappears.
+* **Crossings are real joints.** Planarizing removes the phantom-intersection degrees of freedom
+  the optimizer would otherwise waste reconciling overlapping-but-unconnected members.
+* **Fewer, better-conditioned variables.** Every variable is a joint position or a member size
+  with a clear structural role, rather than a free-floating bar parameter with many degenerate
+  configurations.
+* **Continuation still does the annealing** (89.8 sharp → 74.25 smooth-started), exactly as in
+  §4.5 — the initial smoothness remains the decisive knob.
+
+| planar truss + continuation, C = 74.25 | optimized joints & bars |
+|---|---|
+| ![density](_static/sc2d_truss_continuation.png) | ![schematic](_static/sc2d_truss_continuation_schematic.png) |
+
+<!-- ROBUSTNESS -->
+
+The lesson closes the study. After all the escape heuristics, **the minimum that beat the wall
+came from reformulating the design space, not from a cleverer search of a fixed one.** In a
+landscape this chaotic (§2.6), the highest-leverage move is to *remove* the ill-conditioned and
+degenerate degrees of freedom — connectivity, phantom crossings — so that an ordinary
+continuation can anneal cleanly into a good basin. Better conditioning beats harder searching.
+
 ## 5. Reproducing & extending
 
 * Run a single strategy: `ggp search --preset short_cantilever --strategy continuation`.
@@ -497,6 +565,11 @@ chaotic reality — which is the recurring theme of this study.
 * New strategies plug in the same way (construct `GGPPipeline(spec, x0=..., overrides=...,
   deflation=...)`, read back `OptimisationResult`); the orchestration is FEniCS-free and
   unit-tested in `tests/test_global_search.py`.
+* Run the node-based planar truss: `ggp optimize --preset short_cantilever_truss`. Change the
+  node lattice with `grid_nx`/`grid_ny` and the ground-structure density with `truss_radius`
+  in the preset; the connectivity (with crossing-node planarization) is built by
+  `ggp.projection.truss_2d.build_ground_structure` and unit-tested in
+  `tests/test_truss_mapper.py`.
 
 ## References
 1. M. P. Bendsøe, O. Sigmund. *Topology Optimization: Theory, Methods, and
