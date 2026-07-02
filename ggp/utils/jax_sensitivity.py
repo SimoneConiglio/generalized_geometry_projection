@@ -13,16 +13,19 @@ partials the discipline needs:
 
 and the discipline forms the total ``dG/dρ_e = ∂G/∂ρ_e − λ_eᵀ(dE_drho_e·ke_ref)u_e``.
 
-Stress model (documented default — **Verbart-style unified aggregation-relaxation**):
-  * element (unit-E) Voigt stress   ``σ0_e = se_ref · u_e``
-  * relaxation                      ``σ_e = ρ_e^q · σ0_e``          (q < p removes the
-                                     stress singularity; void ⇒ stress → 0)
-  * local stress ratio              ``s_e = σvm(σ_e) / σ_lim``
-  * aggregated constraint           ``G = Π_P(s) − 1``              (lower-bound aggregation
-                                     ⇒ relaxes the feasible set; one parameter P controls
-                                     both aggregation sharpness and relaxation)
-The exact per-element `g_e`/relaxation of the Coniglio thesis can be dropped in by editing
-`_stress_ratio` / `_aggregate` only; everything downstream (autodiff, adjoint) is unchanged.
+Stress model (default ``kind="verbart"`` — the **canonical unified aggregation-relaxation** of
+Verbart, Langelaar & van Keulen 2017, SMO 55:663-679, adopted by the Coniglio thesis's Eulerian
+chapter):
+  * solid-material (unit-E) stress  ``σ̂_e = se_ref · u_e``            (NOT scaled by density)
+  * reformulated local constraint   ``g_e = ρ_e (σvm(σ̂_e)/σ_lim − 1) ≤ 0``  — the density
+                                     multiplies the *constraint*, making the constraint set
+                                     design-independent (void elements trivially feasible),
+                                     which is what makes singular optima accessible
+  * lower-bound KS aggregation      ``G = (1/P) ln( (1/N) Σ_e exp(P g_e) ) ≤ 0``
+    One parameter ``P`` controls both aggregation sharpness and the induced relaxation;
+    P → ∞ recovers ``max_e g_e ≤ 0``, i.e. the original local constraints.
+A legacy qp-style path (``σ_e = ρ_e^q σ̂_e`` + p-norm/p-mean/KS of the stress ratios) remains
+selectable via ``kind in ("pnorm", "pmean", "ks")``.
 """
 from __future__ import annotations
 
@@ -65,7 +68,11 @@ def _aggregate(s, P: float, kind: str):
 
 
 def _stress_ratio(rho, u, cell_dofs, se_ref, sigma_lim, q, dim):
-    """Per-element relaxed von Mises stress ratio ``s_e = σvm(ρ_e^q σ0_e)/σ_lim``."""
+    """Per-element relaxed von Mises stress ratio ``s_e = σvm(ρ_e^q σ0_e)/σ_lim``.
+
+    With ``q = 0`` this is the solid-material (unit-E) stress ratio used by the
+    Verbart formulation.
+    """
     U = u[cell_dofs]                     # (n_elem, dofs_per_cell)
     sig0 = U @ se_ref.T                  # (n_elem, n_stress) — unit-E stress
     sig = (rho**q)[:, None] * sig0       # relaxed stress
@@ -73,6 +80,13 @@ def _stress_ratio(rho, u, cell_dofs, se_ref, sigma_lim, q, dim):
 
 
 def _agg_constraint(rho, u, cell_dofs, se_ref, sigma_lim, q, dim, P, kind):
+    if kind == "verbart":
+        # Unified aggregation-relaxation (Verbart 2017): solid-material stress ratio,
+        # density multiplies the reformulated local constraint, lower-bound KS over g_e.
+        s = _stress_ratio(rho, u, cell_dofs, se_ref, sigma_lim, 0.0, dim)
+        g = rho * (s - 1.0)
+        m = jnp.max(P * g)               # log-sum-exp shift (g_e is O(1))
+        return (m + jnp.log(jnp.mean(jnp.exp(P * g - m)))) / P
     s = _stress_ratio(rho, u, cell_dofs, se_ref, sigma_lim, q, dim)
     return _aggregate(s, P, kind) - 1.0
 
@@ -80,7 +94,7 @@ def _agg_constraint(rho, u, cell_dofs, se_ref, sigma_lim, q, dim, P, kind):
 class StressConstraintKernel:
     """Jitted evaluator of the aggregated stress constraint value and its partials."""
 
-    def __init__(self, cell_dofs, se_ref, sigma_lim, q=0.5, P=8.0, kind="pmean", dim=2):
+    def __init__(self, cell_dofs, se_ref, sigma_lim, q=0.5, P=8.0, kind="verbart", dim=2):
         if not _HAVE_JAX:
             raise ImportError("jax is required for the stress constraint kernel")
         self.cell_dofs = jnp.asarray(np.asarray(cell_dofs), dtype=jnp.int32)
@@ -111,7 +125,12 @@ class StressConstraintKernel:
         return g, dgr, dgu
 
     def elem_stress_ratio(self, rho, u):
-        """Per-element von Mises stress ratio ``σvm/σ_lim`` (for post-processing)."""
+        """Per-element von Mises stress ratio ``σvm/σ_lim`` (for post-processing).
+
+        Under the Verbart formulation the stress itself is unrelaxed (solid-material),
+        so the ratio is reported with ``q = 0`` there.
+        """
+        q = 0.0 if self.kind == "verbart" else self.q
         s = _stress_ratio(jnp.asarray(rho), jnp.asarray(u), self.cell_dofs, self.se_ref,
-                          self.sigma_lim, self.q, self.dim)
+                          self.sigma_lim, q, self.dim)
         return np.asarray(s)

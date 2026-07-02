@@ -1,9 +1,12 @@
 # Short Cantilever with an aggregated von Mises STRESS constraint (adjoint via JAX).
-# Unified aggregation-relaxation: relaxed element stress rho^q * (se_ref @ u_e),
-# von Mises, aggregated with a lower-bound aggregation; constraint  agg - 1 <= 0.
+# Canonical UNIFIED AGGREGATION-RELAXATION (Verbart, Langelaar & van Keulen 2017 --
+# the formulation adopted in the Coniglio thesis's Eulerian chapter):
+#   g_e = rho_e * (vm(se_ref @ u_e)/sigma_lim - 1)      (solid-material stress)
+#   G   = (1/P) ln( mean_e exp(P g_e) ) <= 0            (lower-bound KS)
+# One parameter P controls both aggregation sharpness and relaxation.
 # NB a point load gives a stress singularity at the loaded node, so this preset is a
-# wiring/convergence demonstration; the L-bracket (l_bracket_stress) is the sharper
-# stress benchmark (re-entrant corner concentration).
+# wiring/convergence demonstration; the L-bracket (re-entrant corner) is the sharper
+# stress benchmark.
 
 geometries:
   - type: fenics_rectangle
@@ -42,9 +45,8 @@ constraints:
     bound: 0.0
     params:
       sigma_limit: 40.0     # von Mises limit (unit E, unit load)
-      q: 0.5                # relaxation exponent (q < p removes the singularity)
-      aggregation: pmean    # lower-bound aggregation (pmean | ks | pnorm)
-      P: 8.0                # aggregation/relaxation sharpness
+      aggregation: verbart  # unified aggregation-relaxation (also: pmean | ks | pnorm + q)
+      P: 8.0                # single aggregation/relaxation parameter
 
 solver:
   algorithm: MMA

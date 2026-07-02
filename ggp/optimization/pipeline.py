@@ -187,7 +187,7 @@ class _StressConstraintDiscipline(Discipline):
     """
 
     def __init__(self, phys_discipline, se_ref, sigma_lim, num_elements, dim,
-                 q=0.5, P=8.0, kind="pmean", volfrac=0.5, name="StressConstraint"):
+                 q=0.5, P=8.0, kind="verbart", volfrac=0.5, name="StressConstraint"):
         super().__init__(name=name)
         from ggp.utils.jax_sensitivity import StressConstraintKernel
         self.phys = phys_discipline
@@ -825,7 +825,7 @@ class GGPPipeline:
                 sigma_lim=float(sp.get("sigma_limit", 1.0)),
                 num_elements=phys_discipline.num_elements, dim=analysis.dim,
                 q=float(sp.get("q", 0.5)), P=float(sp.get("P", sp.get("ka", 8.0))),
-                kind=sp.get("aggregation", "pmean"), volfrac=self.spec.volfrac,
+                kind=sp.get("aggregation", "verbart"), volfrac=self.spec.volfrac,
             )
             extra_disciplines.append(stress_disc)
 

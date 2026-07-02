@@ -33,18 +33,19 @@ def test_von_mises_3d_known_values():
                - np.sqrt(3.0) * 2.0) < 1e-9
 
 
-def _synthetic_kernel(dim=2, n_elem=20, dpc=8, n_stress=3, seed=0):
+def _synthetic_kernel(dim=2, n_elem=20, dpc=8, n_stress=3, seed=0, kind="pmean"):
     rng = np.random.default_rng(seed)
     n_dofs = 40
     cell_dofs = rng.integers(0, n_dofs, size=(n_elem, dpc))
     se_ref = rng.standard_normal((n_stress, dpc))
     k = StressConstraintKernel(cell_dofs, se_ref, sigma_lim=1.5, q=0.5, P=8.0,
-                               kind="pmean", dim=dim)
+                               kind=kind, dim=dim)
     return k, rng, n_dofs, n_elem
 
 
-def test_kernel_drho_matches_fd():
-    k, rng, n_dofs, n_elem = _synthetic_kernel()
+@pytest.mark.parametrize("kind", ["verbart", "pmean"])
+def test_kernel_drho_matches_fd(kind):
+    k, rng, n_dofs, n_elem = _synthetic_kernel(kind=kind)
     rho = rng.uniform(0.1, 1.0, n_elem)
     u = rng.standard_normal(n_dofs)
     _, dgr, _ = k.value_and_grads(rho, u)
@@ -56,8 +57,9 @@ def test_kernel_drho_matches_fd():
         assert abs(fd - dgr[e]) < 1e-5 + 1e-4 * abs(fd)
 
 
-def test_kernel_du_matches_fd():
-    k, rng, n_dofs, n_elem = _synthetic_kernel()
+@pytest.mark.parametrize("kind", ["verbart", "pmean"])
+def test_kernel_du_matches_fd(kind):
+    k, rng, n_dofs, n_elem = _synthetic_kernel(kind=kind)
     rho = rng.uniform(0.1, 1.0, n_elem)
     u = rng.standard_normal(n_dofs)
     _, _, dgu = k.value_and_grads(rho, u)
@@ -67,6 +69,33 @@ def test_kernel_du_matches_fd():
         um = u.copy(); um[d] -= eps
         fd = (k.value(rho, up) - k.value(rho, um)) / (2 * eps)
         assert abs(fd - dgu[d]) < 1e-6 + 1e-4 * abs(fd)
+
+
+def test_verbart_is_lower_bound_of_max_local_constraint():
+    # G = (1/P) ln(mean exp(P g_e)) is a LOWER bound of max_e g_e (relaxes the
+    # feasible set), and approaches it as P grows.
+    k, rng, n_dofs, n_elem = _synthetic_kernel(kind="verbart")
+    rho = rng.uniform(0.1, 1.0, n_elem)
+    u = rng.standard_normal(n_dofs)
+    s = k.elem_stress_ratio(rho, u)          # solid-material ratio (q=0)
+    g = rho * (s - 1.0)
+    G = k.value(rho, u)
+    assert G <= g.max() + 1e-9
+    k40 = StressConstraintKernel(np.asarray(k.cell_dofs), np.asarray(k.se_ref), 1.5,
+                                 P=40.0, kind="verbart", dim=2)
+    assert G - 1e-9 <= k40.value(rho, u) <= g.max() + 1e-9
+
+
+def test_verbart_void_elements_are_trivially_feasible():
+    # rho_e = 0 kills the local constraint regardless of how high the (solid) stress
+    # is there -- the design-independent reformulation that admits singular optima.
+    k, rng, n_dofs, n_elem = _synthetic_kernel(kind="verbart")
+    u = 10.0 * rng.standard_normal(n_dofs)   # large stresses everywhere
+    rho = np.zeros(n_elem)
+    assert k.value(rho, u) <= 0.0 + 1e-12    # all g_e = 0 -> G = 0
+    # and the gradient wrt u vanishes (no dependence through void elements)
+    _, _, dgu = k.value_and_grads(rho, u)
+    np.testing.assert_allclose(dgu, 0.0, atol=1e-12)
 
 
 def test_aggregation_lower_bound_property():

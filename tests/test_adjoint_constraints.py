@@ -85,7 +85,8 @@ def test_displacement_adjoint_matches_fd():
         assert abs(fd - g_an[e]) < 1e-3 * abs(fd) + 5e-5, (e, fd, g_an[e])
 
 
-def test_stress_adjoint_matches_fd():
+@pytest.mark.parametrize("kind", ["verbart", "pmean"])
+def test_stress_adjoint_matches_fd(kind):
     pytest.importorskip("jax")
     from ggp.optimization.pipeline import _StressConstraintDiscipline
 
@@ -96,7 +97,7 @@ def test_stress_adjoint_matches_fd():
     phys._run({"rho_E": rho, "rho_V": rho})
 
     sd = _StressConstraintDiscipline(phys, analysis.se_ref, sigma_lim=2.0,
-                                     num_elements=n, dim=2, q=0.5, P=8.0, kind="pmean")
+                                     num_elements=n, dim=2, q=0.5, P=8.0, kind=kind)
     sd._run({"rho_E": rho}); sd._compute_jacobian()
     g_an = sd.jac["stress"]["rho_E"].flatten()
 
