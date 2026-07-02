@@ -1,0 +1,77 @@
+# L-Shape Bracket with an aggregated von Mises STRESS constraint (Verbart unified
+# aggregation-relaxation, adjoint via JAX). The re-entrant corner at (30,30) produces
+# a genuine stress concentration (unlike the point-load singularity in
+# short_cantilever_stress.yaml), so this is the sharper stress benchmark: the
+# constrained optimum should visibly round/thicken material around the corner
+# relative to the unconstrained compliance-only baseline (l_shape.yaml).
+
+geometries:
+  - type: fenics_rectangle
+    role: design
+    params:
+      Lx: 60.0
+      Ly: 60.0
+      nx: 60
+      ny: 60
+  - type: box
+    role: non_design
+    params:
+      origin: [30.0, 30.0]
+      extent: [60.0, 60.0]
+
+boundary_conditions:
+  - region: top
+    type: fixed
+
+loads:
+  - region: mid_right
+    type: point
+    value: [0.0, -1.0]
+
+formulation:
+  mode: Free
+  num_components: 18
+  method: GP
+  r_gp: 0.5
+  Ngp: 2
+
+objective:
+  name: compliance
+
+constraints:
+  - name: volume
+    type: ineq
+    bound: 0.0
+  - name: stress
+    type: ineq
+    bound: 0.0
+    params:
+      sigma_limit: 2.5      # von Mises limit (unit E, unit load). NB the natural stress
+                            # scale here is much lower than short_cantilever_stress.yaml
+                            # (different domain/BCs); this value was tuned from a probe run
+                            # of the unconstrained baseline (structural-region p99 ~1.9) so
+                            # the constraint is meaningfully active at convergence. The
+                            # Verbart density-weighting (g_e = rho_e*(s_e-1)) means the
+                            # point-load stress singularity (which the optimizer can starve
+                            # of material) does not dominate the aggregate.
+      aggregation: verbart  # unified aggregation-relaxation
+      P: 8.0
+
+solver:
+  algorithm: MMA
+  max_iter: 400
+  fem_solver: direct        # deterministic + required for the stress adjoint's
+                            # cached LU factorization
+  options:
+    max_optimization_step: 0.01
+    initial_asymptotes_distance: 0.01
+    max_asymptote_distance: 0.01
+    min_asymptote_distance: 0.0001
+    asymptotes_distance_amplification_coefficient: 1.2
+    asymptotes_distance_reduction_coefficient: 0.4
+    ftol_rel: 1.0e-20
+    ftol_abs: 1.0e-20
+    xtol_rel: 1.0e-20
+    xtol_abs: 1.0e-20
+
+volfrac: 0.4

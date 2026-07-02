@@ -79,6 +79,6 @@ performance_history.json
 GGP-Matlab/
 Optimization_history_*/
 
-# Truss benchmark scratch (temporary working files)
+# Benchmark scratch (temporary working files)
 scratch_truss/
-scratch_truss/
+scratch_bench/
