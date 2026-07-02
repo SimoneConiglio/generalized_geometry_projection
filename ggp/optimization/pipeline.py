@@ -793,15 +793,21 @@ class GGPPipeline:
             )
             extra_disciplines.append(oh_disc)
 
-        # 7a2. Displacement constraint: bound |u| at a tracked DOF (adjoint-based).
+        # A response's discipline is built whenever it's needed as a CONSTRAINT or as the
+        # OBJECTIVE; when only the latter, its params come from spec.objective.params
+        # (mirrors ConstraintSpec.params) instead of a ConstraintSpec.
+        needed_responses = {c.name for c in self.spec.constraints} | {self.spec.objective.name}
+
+        # 7a2. Displacement constraint/objective: bound or optimize |u| at a tracked DOF.
         disp_spec = next((c for c in self.spec.constraints if c.name == "displacement"), None)
-        if disp_spec is not None:
+        if "displacement" in needed_responses:
+            dp = disp_spec.params if disp_spec is not None else self.spec.objective.params
             V_u = analysis.function_spaces["u"]
             dof_coords = V_u.tabulate_dof_coordinates()
-            axis = int(disp_spec.params.get("axis", 1))
-            u_max = float(disp_spec.params.get("u_max", 1.0))
+            axis = int(dp.get("axis", 1))
+            u_max = float(dp.get("u_max", 1.0))
             sub_dofs_axis = np.asarray(V_u.sub(axis).dofmap().dofs())
-            pt = disp_spec.params.get("point", None)
+            pt = dp.get("point", None)
             if pt is None:                                  # default: the loaded (mid-right) point
                 pt = [Lx, Ly / 2.0] + ([(Lz or 30.0) / 2.0] if analysis.dim == 3 else [])
             target = np.asarray(pt[:analysis.dim], dtype=float)
@@ -814,12 +820,12 @@ class GGPPipeline:
             )
             extra_disciplines.append(disp_disc)
 
-        # 7a3. Stress constraint: aggregated von Mises (adjoint via JAX kernel).
+        # 7a3. Stress constraint/objective: aggregated von Mises (adjoint via JAX kernel).
         stress_spec = next((c for c in self.spec.constraints if c.name == "stress"), None)
-        if stress_spec is not None:
+        if "stress" in needed_responses:
             if analysis.se_ref is None:
-                raise ValueError("stress constraint requires se_ref from the discretiser")
-            sp = stress_spec.params
+                raise ValueError("stress constraint/objective requires se_ref from the discretiser")
+            sp = stress_spec.params if stress_spec is not None else self.spec.objective.params
             stress_disc = _StressConstraintDiscipline(
                 phys_discipline, analysis.se_ref,
                 sigma_lim=float(sp.get("sigma_limit", 1.0)),
@@ -829,9 +835,17 @@ class GGPPipeline:
             )
             extra_disciplines.append(stress_disc)
 
-        # 7b. Deflation: repel known minima by deflating the objective.
-        objective_name = "compliance"
-        if self.deflation and self.deflation.get("roots"):
+        # 7b. Deflation: repel known minima by deflating the objective. Deflation wraps the
+        # "compliance" discipline output specifically, so it only composes with a compliance
+        # objective; other objectives would need _DeflatedObjectiveDiscipline generalized.
+        objective_name = self.spec.objective.name
+        deflation_active = bool(self.deflation and self.deflation.get("roots"))
+        if deflation_active:
+            if objective_name != "compliance":
+                raise ValueError(
+                    "Deflation currently only supports a 'compliance' objective "
+                    f"(got '{objective_name}')."
+                )
             defl_disc = _DeflatedObjectiveDiscipline(
                 roots=self.deflation["roots"],
                 num_vars=num_vars,
@@ -848,7 +862,7 @@ class GGPPipeline:
             all_disciplines,
             objective_name=objective_name,
             design_space=design_space,
-            maximize_objective=False,
+            maximize_objective=(self.spec.objective.sense == "maximize"),
             formulation_name="MDF"
         )
 
@@ -904,10 +918,11 @@ class GGPPipeline:
 
         n_iter = len(scenario.formulation.optimization_problem.database)
 
-        # objective_value is always the *raw* log(C+1), so it is comparable across
-        # strategies. Under deflation the scenario objective is the deflated value,
-        # so recompute the true compliance at the optimum from the geom+phys chain.
-        if objective_name != "compliance":
+        # Under deflation the scenario's objective is the *deflated* value, so recompute
+        # the true "compliance" at the optimum from the geom+phys chain. Otherwise
+        # opt_result.f_opt is already the raw, correctly-signed value of whatever
+        # response is the objective (GEMSEO un-negates internally for maximize).
+        if deflation_active:
             try:
                 chain.execute({design_var: x_opt})
                 objective_value = float(
@@ -925,6 +940,7 @@ class GGPPipeline:
             status=opt_result.status,
             iterations=n_iter,
             objective_value=objective_value,
+            objective_name=self.spec.objective.name,
             max_constraint_violation=0.0,
             design_variables=x_opt,
             history={},

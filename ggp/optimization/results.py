@@ -19,6 +19,7 @@ class OptimisationResult:
     max_constraint_violation: float
     design_variables: np.ndarray
     history: Dict[str, List[float]]
+    objective_name: str = "compliance"
     mesh_path: Optional[str] = None
     execution_time_s: Optional[float] = None
     density_field: Optional[np.ndarray] = None
@@ -33,6 +34,7 @@ class OptimisationResult:
             "status": self.status,
             "iterations": self.iterations,
             "objective_value": self.objective_value,
+            "objective_name": self.objective_name,
             "max_constraint_violation": self.max_constraint_violation,
             "execution_time_s": self.execution_time_s,
         }

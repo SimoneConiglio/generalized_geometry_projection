@@ -158,16 +158,31 @@ class FormulationSpec:
 
 # ── Optimisation ──────────────────────────────────────────────────────────────
 
+# Discipline outputs ("responses") that can be selected as the objective or as a
+# constraint. compliance/volume always exist; displacement/stress disciplines are
+# built on demand (see GGPPipeline.run) whenever they're needed by either role.
+KNOWN_RESPONSES = ("compliance", "volume", "displacement", "stress")
+
+
 @dataclass(frozen=True)
 class ObjectiveSpec:
-    """Objective function to minimise.
+    """Objective function to minimise or maximise.
 
     Parameters
     ----------
     name : str
-        Objective identifier (e.g. ``"compliance"``).
+        Response identifier — one of :data:`KNOWN_RESPONSES`
+        (``"compliance"``, ``"volume"``, ``"displacement"``, ``"stress"``).
+    sense : {"minimize", "maximize"}
+        Optimisation direction.
+    params : dict
+        Extra parameters for responses that need them when used as the objective
+        without also being a constraint (e.g. ``P``/``aggregation`` for ``"stress"``,
+        ``axis``/``point`` for ``"displacement"``) — mirrors :attr:`ConstraintSpec.params`.
     """
     name: str = "compliance"
+    sense: Literal["minimize", "maximize"] = "minimize"
+    params: Dict[str, Any] = field(default_factory=dict)
 
 
 @dataclass(frozen=True)

@@ -1,0 +1,69 @@
+# Short Cantilever — MINIMUM-WEIGHT stress-constrained design.
+# The classical stress-constrained topology optimization problem:
+#   minimize   volume
+#   subject to stress(x) <= sigma_limit   (unified aggregation-relaxation, Verbart 2017)
+# Demonstrates the CONFIGURABLE OBJECTIVE: any defined response (compliance, volume,
+# displacement, stress) can be the objective (minimize/maximize) OR a constraint, and
+# both roles can be mixed freely. Here 'volume' is the objective and there is no
+# separate volume constraint -- material is removed until the stress bound becomes
+# active, so the optimum volume fraction is discovered by the solver rather than
+# fixed a priori (contrast with short_cantilever_stress.yaml, which fixes volfrac and
+# minimizes compliance subject to both volume and stress).
+
+geometries:
+  - type: fenics_rectangle
+    role: design
+    params:
+      Lx: 60.0
+      Ly: 30.0
+      nx: 60
+      ny: 30
+
+boundary_conditions:
+  - region: left
+    type: fixed
+
+loads:
+  - region: mid_right
+    type: point
+    value: [0.0, -1.0]
+
+formulation:
+  mode: Free
+  num_components: 18
+  method: GP
+  r_gp: 0.5
+  Ngp: 2
+
+objective:
+  name: volume
+  sense: minimize
+
+constraints:
+  - name: stress
+    type: ineq
+    bound: 0.0
+    params:
+      sigma_limit: 40.0     # von Mises limit (unit E, unit load)
+      aggregation: verbart  # unified aggregation-relaxation
+      P: 8.0                # single aggregation/relaxation parameter
+
+solver:
+  algorithm: MMA
+  max_iter: 320
+  fem_solver: direct
+  options:
+    max_optimization_step: 0.01
+    initial_asymptotes_distance: 0.01
+    max_asymptote_distance: 0.01
+    min_asymptote_distance: 0.0001
+    asymptotes_distance_amplification_coefficient: 1.2
+    asymptotes_distance_reduction_coefficient: 0.4
+    ftol_rel: 1.0e-20
+    ftol_abs: 1.0e-20
+    xtol_rel: 1.0e-20
+    xtol_abs: 1.0e-20
+
+# Reference volume fraction the 'volume' response is normalized against
+# ((v - volfrac)/volfrac * 100); also used for the initial design's fill level.
+volfrac: 0.5

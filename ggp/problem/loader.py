@@ -13,6 +13,7 @@ from .spec import (
     ConstraintSpec,
     FormulationSpec,
     GeometrySpec,
+    KNOWN_RESPONSES,
     Load,
     MaterialSpec,
     ObjectiveSpec,
@@ -77,6 +78,18 @@ def _build_constraint(raw: Dict[str, Any]) -> ConstraintSpec:
     )
 
 
+def _build_objective(raw: Dict[str, Any]) -> ObjectiveSpec:
+    name = raw.get("name", "compliance")
+    if name not in KNOWN_RESPONSES:
+        raise ValueError(
+            f"Unknown objective '{name}'; must be one of {KNOWN_RESPONSES}."
+        )
+    sense = raw.get("sense", "minimize")
+    if sense not in ("minimize", "maximize"):
+        raise ValueError(f"objective.sense must be 'minimize' or 'maximize', got '{sense}'.")
+    return ObjectiveSpec(name=name, sense=sense, params=raw.get("params", {}))
+
+
 def _build_solver(raw: Dict[str, Any]) -> SolverSpec:
     return SolverSpec(
         algorithm=raw.get("algorithm", "MMA"),
@@ -125,8 +138,7 @@ def load_problem(source: Union[str, Path, Dict[str, Any]]) -> ProblemSpec:
     loads = [_build_load(ld) for ld in data.get("loads", [])]
     formulation = _build_formulation(data.get("formulation", {}))
 
-    objective_raw = data.get("objective", {})
-    objective = ObjectiveSpec(name=objective_raw.get("name", "compliance"))
+    objective = _build_objective(data.get("objective", {}))
 
     constraints = [_build_constraint(c) for c in data.get("constraints", [])]
     if not constraints:

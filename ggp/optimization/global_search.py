@@ -96,7 +96,12 @@ class GlobalSearchResult:
 # Helpers
 # --------------------------------------------------------------------------- #
 def compliance_of(result: OptimisationResult) -> float:
-    """Recover the true compliance C from the pipeline objective ``log(C+1)``."""
+    """Recover the true compliance C from the pipeline objective ``log(C+1)``.
+
+    Assumes ``result.objective_name == "compliance"`` (the default, and the objective
+    used by every strategy in this module); results from a run configured with a
+    different objective (volume/displacement/stress) should not be passed here.
+    """
     val = result.objective_value
     if val is None or not np.isfinite(val):
         return float("inf")
