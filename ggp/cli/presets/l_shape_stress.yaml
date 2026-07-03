@@ -62,6 +62,10 @@ constraints:
                             # converged design stops exactly at max sigma_vm = sigma_limit.
       alpha: 0.5            # damping of the allowable update
       rho_solid: 0.5        # density threshold defining "material" elements for sigma_max
+      exclude_radius: 3.0   # exclude elements within this distance of the point load from
+                            # the stress measure (FE point-load stress is singular; no
+                            # finite allowable can hold it)
+      max_correction: 4.0   # clamp sigma_allow within [sigma_lim/4, 4*sigma_lim]
 
 solver:
   algorithm: MMA

@@ -115,6 +115,26 @@ def test_max_true_stress_thresholds_on_density():
     assert k.max_true_stress(np.zeros(n_elem), u) == 0.0
 
 
+def test_active_mask_excludes_elements_from_aggregate_and_max():
+    # excluding the max-stress element must lower both the aggregate and the true max
+    k, rng, n_dofs, n_elem = _synthetic_kernel(kind="verbart")
+    rho = np.full(n_elem, 0.9)
+    u = rng.standard_normal(n_dofs)
+    s = k.elem_stress_ratio(rho, u)
+    worst = int(np.argmax(s))
+    mask = np.ones(n_elem); mask[worst] = 0.0
+    km = StressConstraintKernel(np.asarray(k.cell_dofs), np.asarray(k.se_ref),
+                                k.sigma_lim, P=8.0, kind="verbart", dim=2,
+                                active_mask=mask)
+    assert km.value(rho, u) < k.value(rho, u)
+    assert km.max_true_stress(rho, u) < k.max_true_stress(rho, u)
+    # no-mask kernel behaves exactly as before (all-ones default)
+    k_ones = StressConstraintKernel(np.asarray(k.cell_dofs), np.asarray(k.se_ref),
+                                    k.sigma_lim, P=8.0, kind="verbart", dim=2,
+                                    active_mask=np.ones(n_elem))
+    assert k_ones.value(rho, u) == pytest.approx(k.value(rho, u), rel=1e-12)
+
+
 def test_adaptive_update_rule_fixed_point():
     # sigma_allow <- alpha*(sigma_allow*sigma_lim/sigma_max) + (1-alpha)*sigma_allow.
     # If the design responds proportionally (sigma_max proportional to 1/margin), the

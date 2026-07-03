@@ -176,6 +176,26 @@ class _DisplacementConstraintDiscipline(Discipline):
         self.jac = {"displacement": {"rho_E": dg_drho.reshape(1, -1)}}
 
 
+def _stress_exclusion_mask(analysis, eval_coords, exclude_radius):
+    """Element mask excluding the load-introduction vicinity from the stress measure.
+
+    A point load's FE stress is singular (it grows without bound under mesh refinement),
+    so elements within ``exclude_radius`` of any loaded DOF are removed from both the
+    aggregation and the true-max measure — standard practice in stress-constrained TO
+    (Le et al. 2010 spread or exclude the load region for the same reason). Returns
+    ``None`` (no mask) when ``exclude_radius <= 0`` or nothing is loaded.
+    """
+    if exclude_radius <= 0.0:
+        return None
+    loaded = np.nonzero(np.asarray(analysis.load_vector).flatten())[0]
+    if len(loaded) == 0:
+        return None
+    dof_coords = analysis.function_spaces["u"].tabulate_dof_coordinates()
+    pts = dof_coords[loaded]
+    d = np.linalg.norm(eval_coords[:, None, :] - pts[None, :, :], axis=2).min(axis=1)
+    return (d > exclude_radius).astype(float)
+
+
 class _StressConstraintDiscipline(Discipline):
     """Aggregated von Mises stress constraint (unified aggregation-relaxation).
 
@@ -199,19 +219,26 @@ class _StressConstraintDiscipline(Discipline):
 
     def __init__(self, phys_discipline, se_ref, sigma_lim, num_elements, dim,
                  q=0.5, P=8.0, kind="verbart", volfrac=0.5,
-                 adaptive=False, alpha=0.5, rho_solid=0.5, name="StressConstraint"):
+                 adaptive=False, alpha=0.5, rho_solid=0.5, max_correction=4.0,
+                 active_mask=None, name="StressConstraint"):
         super().__init__(name=name)
         from ggp.utils.jax_sensitivity import StressConstraintKernel
         self.phys = phys_discipline
         cell_dofs = np.asarray([np.asarray(phys_discipline.cell_dofs[e])
                                 for e in range(num_elements)], dtype=np.int64)
         self.kernel = StressConstraintKernel(cell_dofs, se_ref, sigma_lim,
-                                             q=q, P=P, kind=kind, dim=dim)
+                                             q=q, P=P, kind=kind, dim=dim,
+                                             active_mask=active_mask)
         self.num_elements = num_elements
         self._rho = None
         self.adaptive = bool(adaptive)
         self.alpha = float(alpha)
         self.rho_solid = float(rho_solid)
+        # Safety clamp: sigma_allow stays in [sigma_lim/max_correction,
+        # sigma_lim*max_correction] so an unachievable target (e.g. a stress raiser the
+        # optimizer cannot remove) can never ratchet the allowable to zero and blow up
+        # the constraint.
+        self.max_correction = float(max_correction)
         self.sigma_lim = float(sigma_lim)
         self.sigma_allow = float(sigma_lim)     # effective allowable (adapted when enabled)
         self._last_sigma_max = None             # true max stress at the previous design
@@ -230,9 +257,13 @@ class _StressConstraintDiscipline(Discipline):
 
         # Le-Norato update: adapt the allowable from the PREVIOUS design's true max
         # stress, then hold it fixed for this whole iteration (value + jacobian).
+        # Clamped so an unremovable stress raiser cannot ratchet the allowable to zero.
         if self.adaptive and self._last_sigma_max is not None and self._last_sigma_max > 0.0:
             target = self.sigma_allow * self.sigma_lim / self._last_sigma_max
-            self.sigma_allow = self.alpha * target + (1.0 - self.alpha) * self.sigma_allow
+            sa = self.alpha * target + (1.0 - self.alpha) * self.sigma_allow
+            self.sigma_allow = float(np.clip(
+                sa, self.sigma_lim / self.max_correction,
+                self.sigma_lim * self.max_correction))
 
         G = self.kernel.value(self._rho, self.phys.last_u, sigma_allow=self.sigma_allow)
         self.local_data["stress"] = np.array([G])
@@ -864,6 +895,10 @@ class GGPPipeline:
                 adaptive=bool(sp.get("adaptive", False)),
                 alpha=float(sp.get("alpha", 0.5)),
                 rho_solid=float(sp.get("rho_solid", 0.5)),
+                max_correction=float(sp.get("max_correction", 4.0)),
+                active_mask=_stress_exclusion_mask(
+                    analysis, geom_discipline.eval_coords,
+                    float(sp.get("exclude_radius", 0.0))),
             )
             extra_disciplines.append(stress_disc)
 

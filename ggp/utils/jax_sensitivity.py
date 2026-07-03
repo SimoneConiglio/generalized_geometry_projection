@@ -79,22 +79,25 @@ def _stress_ratio(rho, u, cell_dofs, se_ref, sigma_lim, q, dim):
     return von_mises(sig, dim) / sigma_lim
 
 
-def _agg_constraint(rho, u, cell_dofs, se_ref, sigma_lim, q, dim, P, kind):
+def _agg_constraint(rho, u, cell_dofs, se_ref, sigma_lim, q, dim, P, kind, active):
     if kind == "verbart":
         # Unified aggregation-relaxation (Verbart 2017): solid-material stress ratio,
         # density multiplies the reformulated local constraint, lower-bound KS over g_e.
+        # Excluded elements (active=0, e.g. the load-introduction singularity) enter
+        # with g_e = 0 — exactly the trivially-feasible role void elements already play.
         s = _stress_ratio(rho, u, cell_dofs, se_ref, sigma_lim, 0.0, dim)
-        g = rho * (s - 1.0)
+        g = (rho * active) * (s - 1.0)
         m = jnp.max(P * g)               # log-sum-exp shift (g_e is O(1))
         return (m + jnp.log(jnp.mean(jnp.exp(P * g - m)))) / P
-    s = _stress_ratio(rho, u, cell_dofs, se_ref, sigma_lim, q, dim)
+    s = _stress_ratio(rho, u, cell_dofs, se_ref, sigma_lim, q, dim) * active
     return _aggregate(s, P, kind) - 1.0
 
 
 class StressConstraintKernel:
     """Jitted evaluator of the aggregated stress constraint value and its partials."""
 
-    def __init__(self, cell_dofs, se_ref, sigma_lim, q=0.5, P=8.0, kind="verbart", dim=2):
+    def __init__(self, cell_dofs, se_ref, sigma_lim, q=0.5, P=8.0, kind="verbart", dim=2,
+                 active_mask=None):
         if not _HAVE_JAX:
             raise ImportError("jax is required for the stress constraint kernel")
         self.cell_dofs = jnp.asarray(np.asarray(cell_dofs), dtype=jnp.int32)
@@ -104,13 +107,22 @@ class StressConstraintKernel:
         self.P = float(P)
         self.kind = kind
         self.dim = int(dim)
+        # Elements the stress measure applies to. Excluding the load-introduction
+        # vicinity is standard for point loads: the FE stress there is singular
+        # (grows unboundedly with mesh refinement), so no finite allowable can hold it.
+        n_elem = int(self.cell_dofs.shape[0])
+        if active_mask is None:
+            self.active_mask = jnp.ones(n_elem)
+        else:
+            self.active_mask = jnp.asarray(np.asarray(active_mask, dtype=float))
 
         # The allowable is a *runtime* argument so an adaptive scheme (Le-Norato 2010)
         # can move it between iterations without retracing: jit treats the scalar as a
         # weak-typed traced value.
         def G(rho, u, sigma_allow):
             return _agg_constraint(rho, u, self.cell_dofs, self.se_ref,
-                                   sigma_allow, self.q, self.dim, self.P, self.kind)
+                                   sigma_allow, self.q, self.dim, self.P, self.kind,
+                                   self.active_mask)
 
         self._G = jax.jit(G)
         self._dG_drho = jax.jit(jax.grad(G, argnums=0))   # explicit ρ-partial (u fixed)
@@ -148,13 +160,14 @@ class StressConstraintKernel:
     def max_true_stress(self, rho, u, rho_solid: float = 0.5) -> float:
         """True (unrelaxed, solid-material) max von Mises stress over material elements.
 
-        Only elements with ``ρ_e >= rho_solid`` count — the physically meaningful maximum
-        the Le-Norato adaptive allowable drives to ``sigma_lim``. Returns 0.0 when no
-        element qualifies (e.g. a near-void design early in a run) so callers can skip
-        the adaptive update.
+        Only *active* elements with ``ρ_e >= rho_solid`` count — the physically meaningful
+        maximum the Le-Norato adaptive allowable drives to ``sigma_lim`` (excluded
+        load-introduction elements are outside the stress measure by construction).
+        Returns 0.0 when no element qualifies (e.g. a near-void design early in a run)
+        so callers can skip the adaptive update.
         """
         s = _stress_ratio(jnp.asarray(rho), jnp.asarray(u), self.cell_dofs, self.se_ref,
                           1.0, 0.0, self.dim)          # unit allowable, q=0 -> raw σvm
         s = np.asarray(s)
-        mask = np.asarray(rho) >= rho_solid
+        mask = (np.asarray(rho) >= rho_solid) & (np.asarray(self.active_mask) > 0.5)
         return float(s[mask].max()) if np.any(mask) else 0.0
