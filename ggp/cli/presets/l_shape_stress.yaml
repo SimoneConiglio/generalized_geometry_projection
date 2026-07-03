@@ -65,7 +65,8 @@ constraints:
       exclude_radius: 3.0   # exclude elements within this distance of the point load from
                             # the stress measure (FE point-load stress is singular; no
                             # finite allowable can hold it)
-      max_correction: 4.0   # clamp sigma_allow within [sigma_lim/4, 4*sigma_lim]
+      max_correction: 4.0   # one-sided clamp: sigma_allow >= sigma_lim/4 (tightening is
+                            # bounded; relaxing is free so sigma_max can reach sigma_lim)
 
 solver:
   algorithm: MMA

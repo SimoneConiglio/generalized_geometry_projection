@@ -265,13 +265,18 @@ class _StressConstraintDiscipline(Discipline):
 
         # Le-Norato update: adapt the allowable from the PREVIOUS design's true max
         # stress, then hold it fixed for this whole iteration (value + jacobian).
-        # Clamped so an unremovable stress raiser cannot ratchet the allowable to zero.
+        # One-sided safety clamp: TIGHTENING is bounded by max_correction (a singular,
+        # unremovable stress raiser must not ratchet the allowable to zero), but
+        # RELAXING is essentially free — when the aggregate is held active by
+        # intermediate-density boundary artifacts rather than by the true material
+        # maximum, the allowable must keep growing until sigma_max genuinely reaches
+        # sigma_lim (otherwise the design ends over-conservative). A loose 1e3 cap
+        # only guards numerics for near-unloaded designs.
         if self.adaptive and self._last_sigma_max is not None and self._last_sigma_max > 0.0:
             target = self.sigma_allow * self.sigma_lim / self._last_sigma_max
             sa = self.alpha * target + (1.0 - self.alpha) * self.sigma_allow
             self.sigma_allow = float(np.clip(
-                sa, self.sigma_lim / self.max_correction,
-                self.sigma_lim * self.max_correction))
+                sa, self.sigma_lim / self.max_correction, self.sigma_lim * 1e3))
 
         G = self.kernel.value(self._rho, self.phys.last_u, sigma_allow=self.sigma_allow)
         self.local_data["stress"] = np.array([G])
