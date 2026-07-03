@@ -215,14 +215,20 @@ class _StressConstraintDiscipline(Discipline):
 
     Adaptive allowable (Le, Norato, Bruns, Ha & Tortorelli 2010): aggregation is a lower
     bound of the true max stress, so a converged ``G <= 0`` design can still violate
-    ``σ_max <= σ_lim`` pointwise. With ``adaptive=True`` the constraint is evaluated
-    against an *effective* allowable updated between iterations with damping α:
+    ``σ_max <= σ_lim`` pointwise (or, with a fixed loose allowable, end over-conservative).
+    With ``adaptive=True`` the constraint is evaluated against an *effective* allowable
+    set — like Le's ``c = σ_max/σ_PN`` — from a **fresh, state-free ratio** each iteration:
 
-        σ_allow <- α · (σ_allow · σ_lim / σ_max) + (1-α) · σ_allow
+        σ_allow <- α · σ_a* · (σ_lim / σ_max) + (1-α) · σ_allow
 
-    where ``σ_max`` is the previous design's true max von Mises over material elements
-    (ρ >= rho_solid). Fixed point: ``σ_max = σ_lim``. The allowable is frozen within each
-    iteration, so the adjoint sensitivity is unchanged (it is a constant there).
+    where, at the previous design, ``σ_a*`` is the *critical allowable* (the root of
+    ``G(σ_a*) = 0``, the g-space analogue of the aggregate measure σ_PN) and ``σ_max`` is
+    the true max von Mises over material elements (ρ >= rho_solid). Fixed point: the
+    aggregate binds exactly when ``σ_max = σ_lim`` — margin leaves the constraint
+    feasible (removal continues), overshoot makes it violated (material returns). The
+    target involves no accumulated state, so it cannot ratchet/run away; damping α only
+    smooths it. The allowable is frozen within each iteration, so the adjoint
+    sensitivity is unchanged (it is a constant there).
     """
 
     def __init__(self, phys_discipline, se_ref, sigma_lim, num_elements, dim,
@@ -250,6 +256,7 @@ class _StressConstraintDiscipline(Discipline):
         self.sigma_lim = float(sigma_lim)
         self.sigma_allow = float(sigma_lim)     # effective allowable (adapted when enabled)
         self._last_sigma_max = None             # true max stress at the previous design
+        self._last_sa_star = None               # critical allowable at the previous design
         self.input_grammar.update_from_names(["rho_E"])
         self.output_grammar.update_from_names(["stress"])
         self.default_inputs = {"rho_E": np.full(num_elements, volfrac)}
@@ -263,17 +270,16 @@ class _StressConstraintDiscipline(Discipline):
             self.local_data.update(input_data)
         self._rho = self.local_data["rho_E"].flatten()
 
-        # Le-Norato update: adapt the allowable from the PREVIOUS design's true max
-        # stress, then hold it fixed for this whole iteration (value + jacobian).
-        # One-sided safety clamp: TIGHTENING is bounded by max_correction (a singular,
-        # unremovable stress raiser must not ratchet the allowable to zero), but
-        # RELAXING is essentially free — when the aggregate is held active by
-        # intermediate-density boundary artifacts rather than by the true material
-        # maximum, the allowable must keep growing until sigma_max genuinely reaches
-        # sigma_lim (otherwise the design ends over-conservative). A loose 1e3 cap
-        # only guards numerics for near-unloaded designs.
-        if self.adaptive and self._last_sigma_max is not None and self._last_sigma_max > 0.0:
-            target = self.sigma_allow * self.sigma_lim / self._last_sigma_max
+        # Le-Norato update from the PREVIOUS design, then frozen for this whole
+        # iteration (value + jacobian). The target σ_a*·(σ_lim/σ_max) is a fresh,
+        # state-free ratio (both factors recomputed at the same design) — the direct
+        # analogue of Le's c = σ_max/σ_PN — so it cannot ratchet away like an
+        # integrated update would. Clamps: tightening bounded by max_correction (an
+        # unremovable stress raiser must not drive the allowable to zero), loose 1e3
+        # relax cap purely for numerics.
+        if (self.adaptive and self._last_sigma_max is not None
+                and self._last_sigma_max > 0.0 and self._last_sa_star is not None):
+            target = self._last_sa_star * self.sigma_lim / self._last_sigma_max
             sa = self.alpha * target + (1.0 - self.alpha) * self.sigma_allow
             self.sigma_allow = float(np.clip(
                 sa, self.sigma_lim / self.max_correction, self.sigma_lim * 1e3))
@@ -281,8 +287,15 @@ class _StressConstraintDiscipline(Discipline):
         G = self.kernel.value(self._rho, self.phys.last_u, sigma_allow=self.sigma_allow)
         self.local_data["stress"] = np.array([G])
         if self.adaptive:
-            self._last_sigma_max = self.kernel.max_true_stress(
-                self._rho, self.phys.last_u, rho_solid=self.rho_solid)
+            # rho-weighted (Verbart-consistent) max — NOT thresholded on density: a
+            # thresholded max is blind to a load path fading through intermediate
+            # densities (its stress rises while it drops out of the rho >= rho_solid
+            # set), which lets mass-minimization collapse the design "feasibly".
+            self._last_sigma_max = self.kernel.weighted_max_stress(
+                self._rho, self.phys.last_u)
+            self._last_sa_star = self.kernel.critical_allowable(
+                self._rho, self.phys.last_u,
+                lo=self.sigma_lim / self.max_correction, hi=self.sigma_lim * 1e3)
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
         _, dG_drho_expl, dG_du = self.kernel.value_and_grads(
@@ -290,6 +303,41 @@ class _StressConstraintDiscipline(Discipline):
         lam = self.phys.adjoint_solve(dG_du)
         dG_drho = dG_drho_expl + self.phys.dstiffness_sensitivity(lam)
         self.jac = {"stress": {"rho_E": dG_drho.reshape(1, -1)}}
+
+
+class _ShiftedObjectiveDiscipline(Discipline):
+    """Add a constant shift to a response used as the objective.
+
+    A constant offset changes neither the minimizer nor any gradient — it exists purely
+    because gemseo-mma's stopping test divides by the *initial* objective value without
+    taking its absolute value (``change_relative_f = change_f / f_ref``), so a response
+    that starts negative (e.g. the volume response ``(v - volfrac)/volfrac*100`` below
+    the reference fill, or the displacement/stress residual forms) makes the relative
+    change negative and stops MMA at the first iteration. The shift keeps the objective
+    positive; the pipeline subtracts it back when reporting.
+    """
+
+    def __init__(self, base_name: str, shift: float):
+        super().__init__(f"Shifted_{base_name}")
+        self.base_name = base_name
+        self.out_name = f"{base_name}_shifted"
+        self.shift = float(shift)
+        self.input_grammar.update_from_names([base_name])
+        self.output_grammar.update_from_names([self.out_name])
+        self.default_inputs = {base_name: np.zeros(1)}
+        if hasattr(self, "cache"):
+            self.cache = None
+        if hasattr(self, "cache_type"):
+            self.cache_type = Discipline.CacheType.NONE
+
+    def _run(self, input_data=None):
+        if input_data is not None:
+            self.local_data.update(input_data)
+        val = np.asarray(self.local_data[self.base_name]).flatten()
+        self.local_data[self.out_name] = val + self.shift
+
+    def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
+        self.jac = {self.out_name: {self.base_name: np.eye(1)}}
 
 
 class _DeflatedObjectiveDiscipline(Discipline):
@@ -936,6 +984,16 @@ class GGPPipeline:
             extra_disciplines.append(defl_disc)
             objective_name = "compliance_deflated"
 
+        # 7c. Optional constant objective shift (objective.params.shift): keeps a
+        # negative-valued response (volume below the reference fill, residual-form
+        # displacement/stress) positive so gemseo-mma's relative-change stopping test
+        # (which divides by the *signed* initial objective) doesn't fire spuriously.
+        obj_shift = float(self.spec.objective.params.get("shift", 0.0))
+        if obj_shift != 0.0 and not deflation_active:
+            shift_disc = _ShiftedObjectiveDiscipline(objective_name, obj_shift)
+            extra_disciplines.append(shift_disc)
+            objective_name = shift_disc.out_name
+
         # 8. Scenario
         all_disciplines = [chain] + extra_disciplines
         scenario = create_scenario(
@@ -1013,6 +1071,7 @@ class GGPPipeline:
         else:
             f_opt = opt_result.f_opt
             objective_value = float(f_opt) if f_opt is not None else float("nan")
+            objective_value -= obj_shift        # report the unshifted response value
 
         result = OptimisationResult(
             problem_name="optimization_run",

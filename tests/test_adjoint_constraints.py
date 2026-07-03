@@ -179,12 +179,21 @@ def test_adaptive_allowable_moves_in_the_right_direction():
     sd = _StressConstraintDiscipline(phys, analysis.se_ref, sigma_lim=2.0,
                                      num_elements=n, dim=2, P=8.0, kind="verbart",
                                      adaptive=True, alpha=0.5)
-    sd._run({"rho_E": rho})                     # records sigma_max, allowable untouched yet
+    sd._run({"rho_E": rho})             # records sigma_max/sa_star, allowable untouched yet
     assert sd.sigma_allow == sd.sigma_lim
-    smax = sd._last_sigma_max
-    assert smax > 0.0
-    sd._run({"rho_E": rho})                     # applies the update from the recorded smax
+    smax, sa_star = sd._last_sigma_max, sd._last_sa_star
+    assert smax > 0.0 and sa_star > 0.0
+    sd._run({"rho_E": rho})             # applies the state-free damped update
+    target = np.clip(sa_star * sd.sigma_lim / smax,
+                     sd.sigma_lim / sd.max_correction, sd.sigma_lim * 1e3)
+    expected = 0.5 * target + 0.5 * sd.sigma_lim
+    assert sd.sigma_allow == pytest.approx(
+        float(np.clip(expected, sd.sigma_lim / sd.max_correction, sd.sigma_lim * 1e3)))
+    # fixed-point semantics at the FIXED design: allowable relative to the critical
+    # allowable follows the margin/overshoot of the true max stress
+    for _ in range(40):
+        sd._run({"rho_E": rho})
     if smax > sd.sigma_lim:
-        assert sd.sigma_allow < sd.sigma_lim    # overshoot -> tighten
+        assert sd.sigma_allow < sa_star * 1.01      # overshoot -> binds/violated
     else:
-        assert sd.sigma_allow > sd.sigma_lim    # undershoot -> relax
+        assert sd.sigma_allow > sa_star * 0.99      # margin -> feasible, removal allowed

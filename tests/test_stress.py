@@ -135,24 +135,35 @@ def test_active_mask_excludes_elements_from_aggregate_and_max():
     assert k_ones.value(rho, u) == pytest.approx(k.value(rho, u), rel=1e-12)
 
 
+def test_critical_allowable_is_the_root_of_G():
+    # G is monotone decreasing in the allowable; critical_allowable returns its root.
+    k, rng, n_dofs, n_elem = _synthetic_kernel(kind="verbart")
+    rho = rng.uniform(0.3, 1.0, n_elem)
+    u = rng.standard_normal(n_dofs)
+    sa_star = k.critical_allowable(rho, u, lo=1e-3, hi=1e4)
+    assert abs(k.value(rho, u, sigma_allow=sa_star)) < 1e-3
+    # margin/violation sides of the root
+    assert k.value(rho, u, sigma_allow=2.0 * sa_star) < 0.0
+    assert k.value(rho, u, sigma_allow=0.5 * sa_star) > 0.0
+
+
 def test_adaptive_update_rule_fixed_point():
-    # sigma_allow <- alpha*(sigma_allow*sigma_lim/sigma_max) + (1-alpha)*sigma_allow.
-    # If the design responds proportionally (sigma_max proportional to 1/margin), the
-    # iteration drives sigma_max -> sigma_lim. Simulate the simplest proportional model:
-    # sigma_max = kappa * sigma_allow (tightening the allowable scales the stress down).
-    sigma_lim, kappa, alpha = 2.5, 1.4, 0.5
+    # State-free Le-Norato form: target = sa_star * sigma_lim / sigma_max, both factors
+    # fresh each iteration. At a FIXED design (sa_star, sigma_max constant) the damped
+    # iteration converges geometrically to the target — no integration, no runaway.
+    sigma_lim, alpha = 2.5, 0.5
+    sa_star, sigma_max = 7.0, 1.9          # design has margin: sigma_max < sigma_lim
+    target = sa_star * sigma_lim / sigma_max
     sigma_allow = sigma_lim
     for _ in range(60):
-        sigma_max = kappa * sigma_allow
-        target = sigma_allow * sigma_lim / sigma_max
         sigma_allow = alpha * target + (1 - alpha) * sigma_allow
-    assert kappa * sigma_allow == pytest.approx(sigma_lim, rel=1e-6)   # sigma_max -> limit
-    # directionality: overshoot shrinks the allowable, undershoot grows it
-    sa = 2.5
-    tgt = sa * sigma_lim / 3.0     # sigma_max=3.0 > limit
-    assert alpha * tgt + (1 - alpha) * sa < sa
-    tgt = sa * sigma_lim / 2.0     # sigma_max=2.0 < limit
-    assert alpha * tgt + (1 - alpha) * sa > sa
+    assert sigma_allow == pytest.approx(target, rel=1e-9)
+    # the fixed point binds the aggregate exactly when sigma_max = sigma_lim:
+    # margin -> sigma_allow > sa_star (G < 0, removal continues);
+    # overshoot -> sigma_allow < sa_star (G > 0, material returns).
+    assert target > sa_star                                 # sigma_max < sigma_lim
+    assert sa_star * sigma_lim / 3.1 < sa_star              # sigma_max = 3.1 > sigma_lim
+    assert sa_star * sigma_lim / sigma_lim == pytest.approx(sa_star)   # exactly at limit
 
 
 def test_verbart_void_elements_are_trivially_feasible():

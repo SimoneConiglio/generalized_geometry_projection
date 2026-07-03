@@ -33,27 +33,51 @@ loads:
 
 formulation:
   mode: Free
-  num_components: 18
+  num_components: 36
   method: GP
+  # Material-rich, stress-FEASIBLE start (Le et al. start from full material): a 6x6
+  # grid of domain-filling bars at Mc = volfrac = 1. Mass-min under a Verbart stress
+  # constraint from an infeasible/thin start collapses to the degenerate empty design
+  # (a homogeneous Emin body has moderate, E-independent solid stress, so g_e -> 0);
+  # from a feasible solid start the load path cannot be dismantled feasibly.
+  init: grid
+  grid_nx: 6
+  grid_ny: 6
   r_gp: 0.5
   Ngp: 2
 
 objective:
   name: volume
   sense: minimize
+  params:
+    shift: 200.0    # constant offset keeping the objective positive: gemseo-mma's
+                    # relative-change stop test divides by the SIGNED initial objective,
+                    # so a negative-starting response stops MMA at iteration 1. The
+                    # shift changes no gradient/minimizer and is removed in reporting.
 
 constraints:
   - name: stress
     type: ineq
     bound: 0.0
     params:
-      sigma_limit: 2.5      # von Mises limit (unit E, unit load)
+      sigma_limit: 0.8      # von Mises limit (unit E, unit load). NB on this 60x60 mesh
+                            # a 1-element-wide member carrying the unit load runs at
+                            # sigma_vm ~ 1.15, so the limit must sit BELOW that mesh cap
+                            # for the stress constraint to genuinely size the members
+                            # (sigma_lim above ~1.15 can never bind: mass-min then stops
+                            # at the mesh's minimum feature, not at the stress limit).
       aggregation: verbart
       P: 8.0
       adaptive: true        # Le-Norato adaptive allowable -> stop at max sigma = limit
       alpha: 0.5
       rho_solid: 0.5
-      exclude_radius: 3.0   # point-load region excluded (singular FE stress)
+      exclude_radius: 0.0   # do NOT exclude the load region here: under mass
+                            # minimization the load-adjacent stress is what anchors
+                            # load-carrying (fading it makes rho*sigma_hat blow up);
+                            # excluding it lets the design "hide" all stress inside the
+                            # excluded ball and collapse to void. On this mesh the
+                            # load-element stress of a good design (~1.3) is below
+                            # sigma_limit, so no exclusion is needed.
       max_correction: 4.0   # one-sided: tightening bounded, relaxing free
 
 solver:
@@ -72,5 +96,6 @@ solver:
     xtol_rel: 1.0e-20
     xtol_abs: 1.0e-20
 
-# Reference volume fraction: normalizes the 'volume' response and sets the initial fill.
-volfrac: 0.4
+# Reference volume fraction: normalizes the 'volume' response, and sets the grid
+# init's Mc -> 1.0 = solid, stress-feasible starting material.
+volfrac: 1.0

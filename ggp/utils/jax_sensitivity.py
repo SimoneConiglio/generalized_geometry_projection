@@ -157,6 +157,46 @@ class StressConstraintKernel:
                           self.sigma_lim, q, self.dim)
         return np.asarray(s)
 
+    def critical_allowable(self, rho, u, lo: float, hi: float, tol: float = 1e-4) -> float:
+        """The allowable ``σ_a*`` at which the aggregate is exactly active: ``G(σ_a*) = 0``.
+
+        ``G`` is monotone decreasing in the allowable, so a bisection on the jitted
+        kernel suffices (~40 cheap evaluations). Clipped to ``[lo, hi]`` when the root
+        lies outside the bracket (all-margin or all-violated designs). This is the
+        state-free reference the Le-Norato correction is applied to — the analogue of
+        ``σ_PN`` in the original ``c = σ_max/σ_PN`` normalization.
+        """
+        r = jnp.asarray(rho); uu = jnp.asarray(u)
+        g_lo = float(self._G(r, uu, lo))
+        if g_lo <= 0.0:          # feasible even at the tightest allowable
+            return float(lo)
+        g_hi = float(self._G(r, uu, hi))
+        if g_hi >= 0.0:          # violated even at the loosest allowable
+            return float(hi)
+        a, b = float(lo), float(hi)
+        for _ in range(60):
+            mid = 0.5 * (a + b)
+            if float(self._G(r, uu, mid)) > 0.0:
+                a = mid
+            else:
+                b = mid
+            if b - a < tol * b:
+                break
+        return 0.5 * (a + b)
+
+    def weighted_max_stress(self, rho, u) -> float:
+        """Verbart-consistent max stress measure: ``max_e active_e · ρ_e · σ̂vm_e``.
+
+        No density threshold — this is what the adaptive allowable must track. A design
+        fading through intermediate densities has ``σ̂ ~ 1/ρ^p`` so ``ρ·σ̂`` *grows*,
+        blocking the gray-band collapse corridor that a thresholded max is blind to;
+        at a near-binary design it coincides with the physical max over material.
+        """
+        s = _stress_ratio(jnp.asarray(rho), jnp.asarray(u), self.cell_dofs, self.se_ref,
+                          1.0, 0.0, self.dim)          # raw σvm (unit allowable, q=0)
+        w = np.asarray(self.active_mask) * np.asarray(rho) * np.asarray(s)
+        return float(w.max()) if w.size else 0.0
+
     def max_true_stress(self, rho, u, rho_solid: float = 0.5) -> float:
         """True (unrelaxed, solid-material) max von Mises stress over material elements.
 
