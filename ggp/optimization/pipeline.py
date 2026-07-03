@@ -261,8 +261,11 @@ class _StressConstraintDiscipline(Discipline):
         self.sigma_lim = float(sigma_lim)
         self.sigma_allow = float(sigma_lim)     # allowable the raw G is evaluated at
         self._c = None                          # lagged Le ratio sigma_max/sigma_a*
+        self._c_next = None                     # ratio recorded at the current design
         self._mode = "raw"                      # 'le' (adaptive interior) or 'raw'
         self._sa_star = None                    # current critical allowable (adaptive)
+        self._prev_rho = None                   # design of the last _run (idempotency)
+        self._cached_out = None
         self.input_grammar.update_from_names(["rho_E"])
         self.output_grammar.update_from_names(["stress"])
         self.default_inputs = {"rho_E": np.full(num_elements, volfrac)}
@@ -283,6 +286,17 @@ class _StressConstraintDiscipline(Discipline):
             self.local_data["stress"] = np.array([G])
             return
 
+        # IDEMPOTENT per design: GEMSEO's chain evaluates the discipline more than once
+        # per optimizer iteration (value pass + linearization pass). Advancing the
+        # lagged ratio on every call would make the constraint's value and gradient
+        # correspond to *different* constraints within one MMA iteration — the update
+        # must advance only when the design actually changes (Le's update is
+        # per-design-iteration, not per-evaluation).
+        if self._prev_rho is not None and np.array_equal(self._rho, self._prev_rho):
+            self.local_data["stress"] = np.array([self._cached_out])
+            return
+        self._prev_rho = self._rho.copy()
+
         lo = self.sigma_lim / self.max_correction
         hi = self.sigma_lim * 1e3
         sa_star = self.kernel.critical_allowable(self._rho, u, lo=lo, hi=hi)
@@ -292,9 +306,13 @@ class _StressConstraintDiscipline(Discipline):
         wmax = self.kernel.weighted_max_stress(self._rho, u)
         interior = (sa_star > lo * 1.0001) and (sa_star < hi * 0.9999) and wmax > 0.0
 
+        # Advance the lag: the ratio recorded at the previous design becomes current.
+        if self._c_next is not None:
+            self._c = self._c_next
+
         if interior:
             # Le's normalized constraint c·S(x)/σ_lim - 1 with S(x) = σ_a*(x) fresh at
-            # the current design and c the LAGGED (previous-iterate) O(1) ratio. First
+            # the current design and c the LAGGED (previous-design) O(1) ratio. First
             # evaluation has no lag available -> use the current ratio (output then
             # equals σ_max/σ_lim - 1 exactly).
             c = self._c if self._c is not None else wmax / sa_star
@@ -303,17 +321,15 @@ class _StressConstraintDiscipline(Discipline):
             self._c_used = c
             self.sigma_allow = sa_star          # introspection: current critical allowable
             out = c * sa_star / self.sigma_lim - 1.0
+            self._c_next = wmax / sa_star       # ratio of THIS design, for the next one
         else:
             # No interior root (all-margin or fully violated design): emit the raw
             # aggregate at the clipped allowable so a usable gradient survives.
             self._mode = "raw"
             self.sigma_allow = float(np.clip(sa_star, lo, hi))
             out = self.kernel.value(self._rho, u, sigma_allow=self.sigma_allow)
+        self._cached_out = float(out)
         self.local_data["stress"] = np.array([out])
-
-        # Lag the ratio for the next iterate (kept when the current one is degenerate).
-        if interior:
-            self._c = wmax / sa_star
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
         u = self.phys.last_u
