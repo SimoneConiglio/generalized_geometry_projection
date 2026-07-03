@@ -266,9 +266,17 @@ class _StressConstraintDiscipline(Discipline):
         self._sa_star = None                    # current critical allowable (adaptive)
         self._prev_rho = None                   # design of the last _run (idempotency)
         self._cached_out = None
-        self.input_grammar.update_from_names(["rho_E"])
+        # The Verbart weight must be the MASS density rho_V, not the penalized
+        # stiffness density rho_E: with rho_E ~ Mc^gammac (gammac=3) a gray design
+        # cuts the stress weight cubically while its mass falls only linearly, so
+        # mass-minimization can park in a feasible zero-stiffness "gray haze". With
+        # the rho_V weight the haze is infeasible (sigma_hat ~ 1/rho^3 vs weight
+        # rho^1 -> g ~ 1/rho^2 grows), as in the SIMP-literature formulation.
+        # rho_E stays an input for the implicit u-path (adjoint through K(rho_E)).
+        self.input_grammar.update_from_names(["rho_E", "rho_V"])
         self.output_grammar.update_from_names(["stress"])
-        self.default_inputs = {"rho_E": np.full(num_elements, volfrac)}
+        self.default_inputs = {"rho_E": np.full(num_elements, volfrac),
+                               "rho_V": np.full(num_elements, volfrac)}
         if hasattr(self, "cache"):
             self.cache = None
         if hasattr(self, "cache_type"):
@@ -277,7 +285,9 @@ class _StressConstraintDiscipline(Discipline):
     def _run(self, input_data=None):
         if input_data is not None:
             self.local_data.update(input_data)
-        self._rho = self.local_data["rho_E"].flatten()
+        # rho_V is the Verbart weight (mass density); rho_E enters only implicitly
+        # through the displacement u = u(K(rho_E)), handled by the adjoint.
+        self._rho = self.local_data["rho_V"].flatten()
         u = self.phys.last_u
 
         if not self.adaptive:
@@ -340,15 +350,17 @@ class _StressConstraintDiscipline(Discipline):
                 self._rho, u, sigma_allow=self._sa_star)
             G_sa = self.kernel.dG_dsigma_allow(self._rho, u, self._sa_star)
             lam = self.phys.adjoint_solve(dG_du)
-            dG_total = dG_drho_expl + self.phys.dstiffness_sensitivity(lam)
             scale = -self._c_used / (self.sigma_lim * G_sa)
-            dout = scale * dG_total
+            d_rhoV = scale * dG_drho_expl                              # explicit weight path
+            d_rhoE = scale * self.phys.dstiffness_sensitivity(lam)     # implicit u-path
         else:
             _, dG_drho_expl, dG_du = self.kernel.value_and_grads(
                 self._rho, u, sigma_allow=self.sigma_allow)
             lam = self.phys.adjoint_solve(dG_du)
-            dout = dG_drho_expl + self.phys.dstiffness_sensitivity(lam)
-        self.jac = {"stress": {"rho_E": dout.reshape(1, -1)}}
+            d_rhoV = dG_drho_expl
+            d_rhoE = self.phys.dstiffness_sensitivity(lam)
+        self.jac = {"stress": {"rho_E": d_rhoE.reshape(1, -1),
+                               "rho_V": d_rhoV.reshape(1, -1)}}
 
 
 class _ShiftedObjectiveDiscipline(Discipline):

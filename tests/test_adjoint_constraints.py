@@ -98,8 +98,10 @@ def test_stress_adjoint_matches_fd(kind):
 
     sd = _StressConstraintDiscipline(phys, analysis.se_ref, sigma_lim=2.0,
                                      num_elements=n, dim=2, q=0.5, P=8.0, kind=kind)
-    sd._run({"rho_E": rho}); sd._compute_jacobian()
-    g_an = sd.jac["stress"]["rho_E"].flatten()
+    sd._run({"rho_E": rho, "rho_V": rho}); sd._compute_jacobian()
+    # the test perturbs a single density used for both rho_E (u-path) and rho_V
+    # (weight path), so the FD equals the SUM of the two jacobian blocks
+    g_an = (sd.jac["stress"]["rho_E"] + sd.jac["stress"]["rho_V"]).flatten()
 
     def Gval(rho_in):
         phys._run({"rho_E": rho_in, "rho_V": rho_in})
@@ -130,12 +132,12 @@ def test_adaptive_stress_adjoint_matches_fd_at_frozen_ratio():
     sd = _StressConstraintDiscipline(phys, analysis.se_ref, sigma_lim=1.0,
                                      num_elements=n, dim=2, P=8.0, kind="verbart",
                                      adaptive=True, max_correction=20.0)
-    sd._run({"rho_E": rho})
+    sd._run({"rho_E": rho, "rho_V": rho})
     assert sd._mode == "le"
     c = sd._c_used
     lo, hi = sd.sigma_lim / sd.max_correction, sd.sigma_lim * 1e3
     sd._compute_jacobian()
-    g_an = sd.jac["stress"]["rho_E"].flatten()
+    g_an = (sd.jac["stress"]["rho_E"] + sd.jac["stress"]["rho_V"]).flatten()
 
     def out_val(rho_in):
         phys._run({"rho_E": rho_in, "rho_V": rho_in})
@@ -183,12 +185,12 @@ def test_adaptive_allowable_moves_in_the_right_direction():
                                      adaptive=True, max_correction=20.0)
     # At a FIXED design the Le output equals the true weighted-max stress ratio exactly:
     # c = sigma_max/sigma_a* (lagged == current here), out = c*sigma_a*/sigma_lim - 1.
-    sd._run({"rho_E": rho})
+    sd._run({"rho_E": rho, "rho_V": rho})
     assert sd._mode == "le"
     wmax = sd.kernel.weighted_max_stress(rho, phys.last_u)
     expected = wmax / sd.sigma_lim - 1.0
     assert sd.local_data["stress"][0] == pytest.approx(expected, rel=1e-6)
-    sd._run({"rho_E": rho})             # lagged ratio at the same design -> identical
+    sd._run({"rho_E": rho, "rho_V": rho})   # lagged ratio at the same design -> identical
     assert sd.local_data["stress"][0] == pytest.approx(expected, rel=1e-6)
     # sign semantics: feasible iff the true weighted max is below the limit
     assert (sd.local_data["stress"][0] <= 0.0) == (wmax <= sd.sigma_lim)
