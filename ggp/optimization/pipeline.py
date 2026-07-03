@@ -184,10 +184,22 @@ class _StressConstraintDiscipline(Discipline):
     (:class:`ggp.utils.jax_sensitivity.StressConstraintKernel`); the implicit-``u`` part is
     one adjoint solve reusing the physics discipline's factorized ``K``:
         ``dG/dρ_e = ∂G/∂ρ_e − λ_eᵀ (dE_drho_e · ke_ref) u_e``,  ``K λ = ∂G/∂u``.
+
+    Adaptive allowable (Le, Norato, Bruns, Ha & Tortorelli 2010): aggregation is a lower
+    bound of the true max stress, so a converged ``G <= 0`` design can still violate
+    ``σ_max <= σ_lim`` pointwise. With ``adaptive=True`` the constraint is evaluated
+    against an *effective* allowable updated between iterations with damping α:
+
+        σ_allow <- α · (σ_allow · σ_lim / σ_max) + (1-α) · σ_allow
+
+    where ``σ_max`` is the previous design's true max von Mises over material elements
+    (ρ >= rho_solid). Fixed point: ``σ_max = σ_lim``. The allowable is frozen within each
+    iteration, so the adjoint sensitivity is unchanged (it is a constant there).
     """
 
     def __init__(self, phys_discipline, se_ref, sigma_lim, num_elements, dim,
-                 q=0.5, P=8.0, kind="verbart", volfrac=0.5, name="StressConstraint"):
+                 q=0.5, P=8.0, kind="verbart", volfrac=0.5,
+                 adaptive=False, alpha=0.5, rho_solid=0.5, name="StressConstraint"):
         super().__init__(name=name)
         from ggp.utils.jax_sensitivity import StressConstraintKernel
         self.phys = phys_discipline
@@ -197,6 +209,12 @@ class _StressConstraintDiscipline(Discipline):
                                              q=q, P=P, kind=kind, dim=dim)
         self.num_elements = num_elements
         self._rho = None
+        self.adaptive = bool(adaptive)
+        self.alpha = float(alpha)
+        self.rho_solid = float(rho_solid)
+        self.sigma_lim = float(sigma_lim)
+        self.sigma_allow = float(sigma_lim)     # effective allowable (adapted when enabled)
+        self._last_sigma_max = None             # true max stress at the previous design
         self.input_grammar.update_from_names(["rho_E"])
         self.output_grammar.update_from_names(["stress"])
         self.default_inputs = {"rho_E": np.full(num_elements, volfrac)}
@@ -209,11 +227,22 @@ class _StressConstraintDiscipline(Discipline):
         if input_data is not None:
             self.local_data.update(input_data)
         self._rho = self.local_data["rho_E"].flatten()
-        G = self.kernel.value(self._rho, self.phys.last_u)
+
+        # Le-Norato update: adapt the allowable from the PREVIOUS design's true max
+        # stress, then hold it fixed for this whole iteration (value + jacobian).
+        if self.adaptive and self._last_sigma_max is not None and self._last_sigma_max > 0.0:
+            target = self.sigma_allow * self.sigma_lim / self._last_sigma_max
+            self.sigma_allow = self.alpha * target + (1.0 - self.alpha) * self.sigma_allow
+
+        G = self.kernel.value(self._rho, self.phys.last_u, sigma_allow=self.sigma_allow)
         self.local_data["stress"] = np.array([G])
+        if self.adaptive:
+            self._last_sigma_max = self.kernel.max_true_stress(
+                self._rho, self.phys.last_u, rho_solid=self.rho_solid)
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
-        _, dG_drho_expl, dG_du = self.kernel.value_and_grads(self._rho, self.phys.last_u)
+        _, dG_drho_expl, dG_du = self.kernel.value_and_grads(
+            self._rho, self.phys.last_u, sigma_allow=self.sigma_allow)
         lam = self.phys.adjoint_solve(dG_du)
         dG_drho = dG_drho_expl + self.phys.dstiffness_sensitivity(lam)
         self.jac = {"stress": {"rho_E": dG_drho.reshape(1, -1)}}
@@ -832,6 +861,9 @@ class GGPPipeline:
                 num_elements=phys_discipline.num_elements, dim=analysis.dim,
                 q=float(sp.get("q", 0.5)), P=float(sp.get("P", sp.get("ka", 8.0))),
                 kind=sp.get("aggregation", "verbart"), volfrac=self.spec.volfrac,
+                adaptive=bool(sp.get("adaptive", False)),
+                alpha=float(sp.get("alpha", 0.5)),
+                rho_solid=float(sp.get("rho_solid", 0.5)),
             )
             extra_disciplines.append(stress_disc)
 

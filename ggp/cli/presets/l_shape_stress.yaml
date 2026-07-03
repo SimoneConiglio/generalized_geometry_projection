@@ -56,6 +56,12 @@ constraints:
                             # of material) does not dominate the aggregate.
       aggregation: verbart  # unified aggregation-relaxation
       P: 8.0
+      adaptive: true        # Le-Norato (2010) adaptive allowable: the aggregation is a
+                            # lower bound of the true max stress, so the effective
+                            # allowable is updated each iteration (damping alpha) so the
+                            # converged design stops exactly at max sigma_vm = sigma_limit.
+      alpha: 0.5            # damping of the allowable update
+      rho_solid: 0.5        # density threshold defining "material" elements for sigma_max
 
 solver:
   algorithm: MMA

@@ -86,6 +86,55 @@ def test_verbart_is_lower_bound_of_max_local_constraint():
     assert G - 1e-9 <= k40.value(rho, u) <= g.max() + 1e-9
 
 
+# --------------------------------------------------------------------------- #
+# Adaptive allowable (Le-Norato 2010)
+# --------------------------------------------------------------------------- #
+def test_kernel_value_with_sigma_allow_matches_rebuilt_kernel():
+    # evaluating at a runtime allowable == building a kernel with that allowable nominal
+    k, rng, n_dofs, n_elem = _synthetic_kernel(kind="verbart")
+    rho = rng.uniform(0.1, 1.0, n_elem)
+    u = rng.standard_normal(n_dofs)
+    k2 = StressConstraintKernel(np.asarray(k.cell_dofs), np.asarray(k.se_ref),
+                                sigma_lim=2.75, P=8.0, kind="verbart", dim=2)
+    assert k.value(rho, u, sigma_allow=2.75) == pytest.approx(k2.value(rho, u), rel=1e-12)
+    # default argument path is the nominal limit (bit-identical to the old behavior)
+    assert k.value(rho, u) == pytest.approx(k.value(rho, u, sigma_allow=k.sigma_lim))
+
+
+def test_max_true_stress_thresholds_on_density():
+    k, rng, n_dofs, n_elem = _synthetic_kernel(kind="verbart")
+    u = rng.standard_normal(n_dofs)
+    rho = np.full(n_elem, 0.9)
+    full = k.max_true_stress(rho, u, rho_solid=0.5)
+    assert full > 0.0
+    # knocking out the max-stress element from the "material" set lowers the max
+    s = k.elem_stress_ratio(rho, u) * k.sigma_lim     # raw sigma_vm
+    rho2 = rho.copy(); rho2[int(np.argmax(s))] = 0.1
+    assert k.max_true_stress(rho2, u, rho_solid=0.5) < full
+    # void design -> no material elements -> 0.0 sentinel
+    assert k.max_true_stress(np.zeros(n_elem), u) == 0.0
+
+
+def test_adaptive_update_rule_fixed_point():
+    # sigma_allow <- alpha*(sigma_allow*sigma_lim/sigma_max) + (1-alpha)*sigma_allow.
+    # If the design responds proportionally (sigma_max proportional to 1/margin), the
+    # iteration drives sigma_max -> sigma_lim. Simulate the simplest proportional model:
+    # sigma_max = kappa * sigma_allow (tightening the allowable scales the stress down).
+    sigma_lim, kappa, alpha = 2.5, 1.4, 0.5
+    sigma_allow = sigma_lim
+    for _ in range(60):
+        sigma_max = kappa * sigma_allow
+        target = sigma_allow * sigma_lim / sigma_max
+        sigma_allow = alpha * target + (1 - alpha) * sigma_allow
+    assert kappa * sigma_allow == pytest.approx(sigma_lim, rel=1e-6)   # sigma_max -> limit
+    # directionality: overshoot shrinks the allowable, undershoot grows it
+    sa = 2.5
+    tgt = sa * sigma_lim / 3.0     # sigma_max=3.0 > limit
+    assert alpha * tgt + (1 - alpha) * sa < sa
+    tgt = sa * sigma_lim / 2.0     # sigma_max=2.0 < limit
+    assert alpha * tgt + (1 - alpha) * sa > sa
+
+
 def test_verbart_void_elements_are_trivially_feasible():
     # rho_e = 0 kills the local constraint regardless of how high the (solid) stress
     # is there -- the design-independent reformulation that admits singular optima.

@@ -111,3 +111,62 @@ def test_stress_adjoint_matches_fd(kind):
         rm = rho.copy(); rm[e] -= eps
         fd = (Gval(rp) - Gval(rm)) / (2 * eps)
         assert abs(fd - g_an[e]) < 3e-3 * abs(fd) + 5e-5, (e, fd, g_an[e])
+
+
+def test_adaptive_stress_adjoint_matches_fd_at_frozen_allowable():
+    # With the Le-Norato adaptive allowable, sigma_allow is FROZEN within an iteration,
+    # so the adjoint gradient at the current sigma_allow must still match a finite
+    # difference of G evaluated at that same (fixed) allowable.
+    pytest.importorskip("jax")
+    from ggp.optimization.pipeline import _StressConstraintDiscipline
+
+    _, _, analysis, phys = _build()
+    n = phys.num_elements
+    rng = np.random.default_rng(5)
+    rho = np.clip(0.5 + 0.2 * rng.standard_normal(n), 0.05, 1.0)
+    phys._run({"rho_E": rho, "rho_V": rho})
+
+    sd = _StressConstraintDiscipline(phys, analysis.se_ref, sigma_lim=2.0,
+                                     num_elements=n, dim=2, P=8.0, kind="verbart",
+                                     adaptive=True, alpha=0.5)
+    # two runs so the allowable has actually moved off the nominal limit
+    sd._run({"rho_E": rho})
+    sd._run({"rho_E": rho})
+    assert sd.sigma_allow != sd.sigma_lim
+    sa = sd.sigma_allow
+    sd._compute_jacobian()
+    g_an = sd.jac["stress"]["rho_E"].flatten()
+
+    def Gval(rho_in):
+        phys._run({"rho_E": rho_in, "rho_V": rho_in})
+        return sd.kernel.value(rho_in, phys.last_u, sigma_allow=sa)
+
+    eps = 1e-6
+    for e in rng.choice(n, size=10, replace=False):
+        rp = rho.copy(); rp[e] += eps
+        rm = rho.copy(); rm[e] -= eps
+        fd = (Gval(rp) - Gval(rm)) / (2 * eps)
+        assert abs(fd - g_an[e]) < 3e-3 * abs(fd) + 5e-5, (e, fd, g_an[e])
+
+
+def test_adaptive_allowable_moves_in_the_right_direction():
+    pytest.importorskip("jax")
+    from ggp.optimization.pipeline import _StressConstraintDiscipline
+
+    _, _, analysis, phys = _build()
+    n = phys.num_elements
+    rho = np.full(n, 0.9)
+    phys._run({"rho_E": rho, "rho_V": rho})
+
+    sd = _StressConstraintDiscipline(phys, analysis.se_ref, sigma_lim=2.0,
+                                     num_elements=n, dim=2, P=8.0, kind="verbart",
+                                     adaptive=True, alpha=0.5)
+    sd._run({"rho_E": rho})                     # records sigma_max, allowable untouched yet
+    assert sd.sigma_allow == sd.sigma_lim
+    smax = sd._last_sigma_max
+    assert smax > 0.0
+    sd._run({"rho_E": rho})                     # applies the update from the recorded smax
+    if smax > sd.sigma_lim:
+        assert sd.sigma_allow < sd.sigma_lim    # overshoot -> tighten
+    else:
+        assert sd.sigma_allow > sd.sigma_lim    # undershoot -> relax

@@ -105,23 +105,33 @@ class StressConstraintKernel:
         self.kind = kind
         self.dim = int(dim)
 
-        def G(rho, u):
+        # The allowable is a *runtime* argument so an adaptive scheme (Le-Norato 2010)
+        # can move it between iterations without retracing: jit treats the scalar as a
+        # weak-typed traced value.
+        def G(rho, u, sigma_allow):
             return _agg_constraint(rho, u, self.cell_dofs, self.se_ref,
-                                   self.sigma_lim, self.q, self.dim, self.P, self.kind)
+                                   sigma_allow, self.q, self.dim, self.P, self.kind)
 
         self._G = jax.jit(G)
         self._dG_drho = jax.jit(jax.grad(G, argnums=0))   # explicit ρ-partial (u fixed)
         self._dG_du = jax.jit(jax.grad(G, argnums=1))     # ∂G/∂u (ρ fixed)
 
-    def value(self, rho, u) -> float:
-        return float(self._G(jnp.asarray(rho), jnp.asarray(u)))
+    def value(self, rho, u, sigma_allow=None) -> float:
+        sa = self.sigma_lim if sigma_allow is None else float(sigma_allow)
+        return float(self._G(jnp.asarray(rho), jnp.asarray(u), sa))
 
-    def value_and_grads(self, rho, u):
-        """Return ``(G, ∂G/∂ρ_explicit, ∂G/∂u)`` as NumPy arrays."""
+    def value_and_grads(self, rho, u, sigma_allow=None):
+        """Return ``(G, ∂G/∂ρ_explicit, ∂G/∂u)`` as NumPy arrays.
+
+        ``sigma_allow`` (default: the nominal ``sigma_lim``) is the effective allowable the
+        constraint is evaluated against; under the adaptive scheme it is frozen within an
+        iteration, so it is a plain constant here (no derivative wrt it is needed).
+        """
+        sa = self.sigma_lim if sigma_allow is None else float(sigma_allow)
         r = jnp.asarray(rho); uu = jnp.asarray(u)
-        g = float(self._G(r, uu))
-        dgr = np.asarray(self._dG_drho(r, uu))
-        dgu = np.asarray(self._dG_du(r, uu))
+        g = float(self._G(r, uu, sa))
+        dgr = np.asarray(self._dG_drho(r, uu, sa))
+        dgu = np.asarray(self._dG_du(r, uu, sa))
         return g, dgr, dgu
 
     def elem_stress_ratio(self, rho, u):
@@ -134,3 +144,17 @@ class StressConstraintKernel:
         s = _stress_ratio(jnp.asarray(rho), jnp.asarray(u), self.cell_dofs, self.se_ref,
                           self.sigma_lim, q, self.dim)
         return np.asarray(s)
+
+    def max_true_stress(self, rho, u, rho_solid: float = 0.5) -> float:
+        """True (unrelaxed, solid-material) max von Mises stress over material elements.
+
+        Only elements with ``ρ_e >= rho_solid`` count — the physically meaningful maximum
+        the Le-Norato adaptive allowable drives to ``sigma_lim``. Returns 0.0 when no
+        element qualifies (e.g. a near-void design early in a run) so callers can skip
+        the adaptive update.
+        """
+        s = _stress_ratio(jnp.asarray(rho), jnp.asarray(u), self.cell_dofs, self.se_ref,
+                          1.0, 0.0, self.dim)          # unit allowable, q=0 -> raw σvm
+        s = np.asarray(s)
+        mask = np.asarray(rho) >= rho_solid
+        return float(s[mask].max()) if np.any(mask) else 0.0
