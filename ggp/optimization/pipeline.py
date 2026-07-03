@@ -364,22 +364,29 @@ class _StressConstraintDiscipline(Discipline):
 
 
 class _ShiftedObjectiveDiscipline(Discipline):
-    """Add a constant shift to a response used as the objective.
+    """Affine-rescale a response used as the objective: ``(base + shift) * scale``.
 
-    A constant offset changes neither the minimizer nor any gradient — it exists purely
-    because gemseo-mma's stopping test divides by the *initial* objective value without
-    taking its absolute value (``change_relative_f = change_f / f_ref``), so a response
-    that starts negative (e.g. the volume response ``(v - volfrac)/volfrac*100`` below
-    the reference fill, or the displacement/stress residual forms) makes the relative
-    change negative and stops MMA at the first iteration. The shift keeps the objective
-    positive; the pipeline subtracts it back when reporting.
+    An affine map changes neither the minimizer nor the gradient direction — it exists
+    for two gemseo-mma reasons:
+    * ``shift``: the stopping test divides by the *signed* initial objective
+      (``change_relative_f = change_f / f_ref``), so a response that starts negative
+      (e.g. the volume response below the reference fill) stops MMA at iteration 1.
+      The shift keeps the objective positive.
+    * ``scale``: MMA weighs constraint violation against the objective via a fixed
+      penalty (c = 1000); a ×100-scaled response (volume in percent) leaves only ~10×
+      authority for feasibility, and MMA will happily descend the objective while
+      infeasible. Scaling the objective to O(1) restores the usual ~1000× feasibility
+      priority. (E.g. shift=200, scale=0.01 turns the volume response into v + 1.)
+
+    The pipeline inverts the map when reporting (``f_opt/scale - shift``).
     """
 
-    def __init__(self, base_name: str, shift: float):
+    def __init__(self, base_name: str, shift: float, scale: float = 1.0):
         super().__init__(f"Shifted_{base_name}")
         self.base_name = base_name
         self.out_name = f"{base_name}_shifted"
         self.shift = float(shift)
+        self.scale = float(scale)
         self.input_grammar.update_from_names([base_name])
         self.output_grammar.update_from_names([self.out_name])
         self.default_inputs = {base_name: np.zeros(1)}
@@ -392,10 +399,10 @@ class _ShiftedObjectiveDiscipline(Discipline):
         if input_data is not None:
             self.local_data.update(input_data)
         val = np.asarray(self.local_data[self.base_name]).flatten()
-        self.local_data[self.out_name] = val + self.shift
+        self.local_data[self.out_name] = (val + self.shift) * self.scale
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
-        self.jac = {self.out_name: {self.base_name: np.eye(1)}}
+        self.jac = {self.out_name: {self.base_name: self.scale * np.eye(1)}}
 
 
 class _DeflatedObjectiveDiscipline(Discipline):
@@ -1042,13 +1049,14 @@ class GGPPipeline:
             extra_disciplines.append(defl_disc)
             objective_name = "compliance_deflated"
 
-        # 7c. Optional constant objective shift (objective.params.shift): keeps a
-        # negative-valued response (volume below the reference fill, residual-form
-        # displacement/stress) positive so gemseo-mma's relative-change stopping test
-        # (which divides by the *signed* initial objective) doesn't fire spuriously.
+        # 7c. Optional affine objective rescale (objective.params.shift/scale): keeps a
+        # negative-valued response positive for gemseo-mma's relative-change stopping
+        # test, and normalizes a large-scaled response (volume in percent) to O(1) so
+        # MMA's fixed constraint penalty retains its usual feasibility authority.
         obj_shift = float(self.spec.objective.params.get("shift", 0.0))
-        if obj_shift != 0.0 and not deflation_active:
-            shift_disc = _ShiftedObjectiveDiscipline(objective_name, obj_shift)
+        obj_scale = float(self.spec.objective.params.get("scale", 1.0))
+        if (obj_shift != 0.0 or obj_scale != 1.0) and not deflation_active:
+            shift_disc = _ShiftedObjectiveDiscipline(objective_name, obj_shift, obj_scale)
             extra_disciplines.append(shift_disc)
             objective_name = shift_disc.out_name
 
@@ -1129,7 +1137,10 @@ class GGPPipeline:
         else:
             f_opt = opt_result.f_opt
             objective_value = float(f_opt) if f_opt is not None else float("nan")
-            objective_value -= obj_shift        # report the unshifted response value
+            # report the raw response value (invert the affine objective rescale)
+            if obj_scale != 1.0:
+                objective_value = objective_value / obj_scale
+            objective_value -= obj_shift
 
         result = OptimisationResult(
             problem_name="optimization_run",

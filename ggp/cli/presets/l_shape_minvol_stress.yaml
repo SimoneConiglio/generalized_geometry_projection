@@ -56,8 +56,12 @@ objective:
   params:
     shift: 200.0    # constant offset keeping the objective positive: gemseo-mma's
                     # relative-change stop test divides by the SIGNED initial objective,
-                    # so a negative-starting response stops MMA at iteration 1. The
-                    # shift changes no gradient/minimizer and is removed in reporting.
+                    # so a negative-starting response stops MMA at iteration 1.
+    scale: 0.01     # normalize the x100 'percent' volume response to O(1) (the
+                    # objective becomes literally v+1): MMA's fixed constraint penalty
+                    # (c=1000) then keeps its usual ~1000x feasibility authority --
+                    # without it MMA descends the huge objective while infeasible.
+                    # Both are affine, change no minimizer, and are undone in reporting.
 
 constraints:
   - name: stress
