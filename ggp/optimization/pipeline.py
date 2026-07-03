@@ -177,23 +177,31 @@ class _DisplacementConstraintDiscipline(Discipline):
 
 
 def _stress_exclusion_mask(analysis, eval_coords, exclude_radius):
-    """Element mask excluding the load-introduction vicinity from the stress measure.
+    """Element mask excluding non-stress-measured elements.
 
-    A point load's FE stress is singular (it grows without bound under mesh refinement),
-    so elements within ``exclude_radius`` of any loaded DOF are removed from both the
-    aggregation and the true-max measure — standard practice in stress-constrained TO
-    (Le et al. 2010 spread or exclude the load region for the same reason). Returns
-    ``None`` (no mask) when ``exclude_radius <= 0`` or nothing is loaded.
+    Two exclusions, both required for a meaningful stress measure:
+    * the **load-introduction vicinity** (within ``exclude_radius`` of any loaded DOF):
+      a point load's FE stress is singular (grows without bound under mesh refinement),
+      so no finite allowable can hold it — standard practice in stress-constrained TO
+      (Le et al. 2010 spread or exclude the load region for the same reason);
+    * **non-design (empty) elements**: the physics discipline forces ``rho -> 0`` there,
+      but the geometry's raw ``rho_E`` (which this discipline consumes) can be ~1 when a
+      component overlaps the void region — combined with the ``Emin`` stiffness the
+      recovered "solid stress" is enormous and fictitious.
+
+    Returns ``None`` (no mask) when neither exclusion applies.
     """
-    if exclude_radius <= 0.0:
-        return None
-    loaded = np.nonzero(np.asarray(analysis.load_vector).flatten())[0]
-    if len(loaded) == 0:
-        return None
-    dof_coords = analysis.function_spaces["u"].tabulate_dof_coordinates()
-    pts = dof_coords[loaded]
-    d = np.linalg.norm(eval_coords[:, None, :] - pts[None, :, :], axis=2).min(axis=1)
-    return (d > exclude_radius).astype(float)
+    active = np.ones(eval_coords.shape[0])
+    if exclude_radius > 0.0:
+        loaded = np.nonzero(np.asarray(analysis.load_vector).flatten())[0]
+        if len(loaded):
+            dof_coords = analysis.function_spaces["u"].tabulate_dof_coordinates()
+            pts = dof_coords[loaded]
+            d = np.linalg.norm(eval_coords[:, None, :] - pts[None, :, :], axis=2).min(axis=1)
+            active[d <= exclude_radius] = 0.0
+    if analysis.empty_elements:
+        active[np.asarray(analysis.empty_elements, dtype=int)] = 0.0
+    return active if np.any(active == 0.0) else None
 
 
 class _StressConstraintDiscipline(Discipline):

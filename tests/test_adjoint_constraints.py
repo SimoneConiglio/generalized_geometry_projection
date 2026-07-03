@@ -149,6 +149,24 @@ def test_adaptive_stress_adjoint_matches_fd_at_frozen_allowable():
         assert abs(fd - g_an[e]) < 3e-3 * abs(fd) + 5e-5, (e, fd, g_an[e])
 
 
+def test_stress_exclusion_mask_covers_load_region_and_voids():
+    pytest.importorskip("jax")
+    from ggp.optimization.pipeline import _stress_exclusion_mask
+
+    _, _, analysis, phys = _build()
+    V_dg = analysis.function_spaces["dg"]
+    ec = V_dg.tabulate_dof_coordinates()
+    # no exclusions requested and no voids on the plain SC -> None
+    assert _stress_exclusion_mask(analysis, ec, 0.0) is None
+    # load-region exclusion masks a small neighbourhood of the loaded DOF
+    m = _stress_exclusion_mask(analysis, ec, 3.0)
+    assert m is not None and 0 < int((m == 0).sum()) < 40
+    # non-design (empty) elements are always excluded, even with radius 0
+    analysis.empty_elements = [0, 1, 2]
+    m2 = _stress_exclusion_mask(analysis, ec, 0.0)
+    assert m2 is not None and np.all(m2[[0, 1, 2]] == 0.0) and m2.sum() == len(ec) - 3
+
+
 def test_adaptive_allowable_moves_in_the_right_direction():
     pytest.importorskip("jax")
     from ggp.optimization.pipeline import _StressConstraintDiscipline
