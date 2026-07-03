@@ -113,10 +113,11 @@ def test_stress_adjoint_matches_fd(kind):
         assert abs(fd - g_an[e]) < 3e-3 * abs(fd) + 5e-5, (e, fd, g_an[e])
 
 
-def test_adaptive_stress_adjoint_matches_fd_at_frozen_allowable():
-    # With the Le-Norato adaptive allowable, sigma_allow is FROZEN within an iteration,
-    # so the adjoint gradient at the current sigma_allow must still match a finite
-    # difference of G evaluated at that same (fixed) allowable.
+def test_adaptive_stress_adjoint_matches_fd_at_frozen_ratio():
+    # Le form: out = c * sigma_a*(rho)/sigma_lim - 1 with the ratio c FROZEN within an
+    # iteration. The analytic jacobian (implicit-function theorem through the critical
+    # allowable + one adjoint solve) must match a finite difference of that expression
+    # with c held fixed and sigma_a* recomputed at each perturbed design.
     pytest.importorskip("jax")
     from ggp.optimization.pipeline import _StressConstraintDiscipline
 
@@ -126,27 +127,28 @@ def test_adaptive_stress_adjoint_matches_fd_at_frozen_allowable():
     rho = np.clip(0.5 + 0.2 * rng.standard_normal(n), 0.05, 1.0)
     phys._run({"rho_E": rho, "rho_V": rho})
 
-    sd = _StressConstraintDiscipline(phys, analysis.se_ref, sigma_lim=2.0,
+    sd = _StressConstraintDiscipline(phys, analysis.se_ref, sigma_lim=1.0,
                                      num_elements=n, dim=2, P=8.0, kind="verbart",
-                                     adaptive=True, alpha=0.5)
-    # two runs so the allowable has actually moved off the nominal limit
+                                     adaptive=True, max_correction=20.0)
     sd._run({"rho_E": rho})
-    sd._run({"rho_E": rho})
-    assert sd.sigma_allow != sd.sigma_lim
-    sa = sd.sigma_allow
+    assert sd._mode == "le"
+    c = sd._c_used
+    lo, hi = sd.sigma_lim / sd.max_correction, sd.sigma_lim * 1e3
     sd._compute_jacobian()
     g_an = sd.jac["stress"]["rho_E"].flatten()
 
-    def Gval(rho_in):
+    def out_val(rho_in):
         phys._run({"rho_E": rho_in, "rho_V": rho_in})
-        return sd.kernel.value(rho_in, phys.last_u, sigma_allow=sa)
+        # tol far below the FD perturbation of sigma_a*, else the FD is bisection noise
+        sa = sd.kernel.critical_allowable(rho_in, phys.last_u, lo=lo, hi=hi, tol=1e-13)
+        return c * sa / sd.sigma_lim - 1.0
 
-    eps = 1e-6
+    eps = 1e-5
     for e in rng.choice(n, size=10, replace=False):
         rp = rho.copy(); rp[e] += eps
         rm = rho.copy(); rm[e] -= eps
-        fd = (Gval(rp) - Gval(rm)) / (2 * eps)
-        assert abs(fd - g_an[e]) < 3e-3 * abs(fd) + 5e-5, (e, fd, g_an[e])
+        fd = (out_val(rp) - out_val(rm)) / (2 * eps)
+        assert abs(fd - g_an[e]) < 5e-3 * abs(fd) + 5e-5, (e, fd, g_an[e])
 
 
 def test_stress_exclusion_mask_covers_load_region_and_voids():
@@ -176,24 +178,17 @@ def test_adaptive_allowable_moves_in_the_right_direction():
     rho = np.full(n, 0.9)
     phys._run({"rho_E": rho, "rho_V": rho})
 
-    sd = _StressConstraintDiscipline(phys, analysis.se_ref, sigma_lim=2.0,
+    sd = _StressConstraintDiscipline(phys, analysis.se_ref, sigma_lim=1.0,
                                      num_elements=n, dim=2, P=8.0, kind="verbart",
-                                     adaptive=True, alpha=0.5)
-    sd._run({"rho_E": rho})             # records sigma_max/sa_star, allowable untouched yet
-    assert sd.sigma_allow == sd.sigma_lim
-    smax, sa_star = sd._last_sigma_max, sd._last_sa_star
-    assert smax > 0.0 and sa_star > 0.0
-    sd._run({"rho_E": rho})             # applies the state-free damped update
-    target = np.clip(sa_star * sd.sigma_lim / smax,
-                     sd.sigma_lim / sd.max_correction, sd.sigma_lim * 1e3)
-    expected = 0.5 * target + 0.5 * sd.sigma_lim
-    assert sd.sigma_allow == pytest.approx(
-        float(np.clip(expected, sd.sigma_lim / sd.max_correction, sd.sigma_lim * 1e3)))
-    # fixed-point semantics at the FIXED design: allowable relative to the critical
-    # allowable follows the margin/overshoot of the true max stress
-    for _ in range(40):
-        sd._run({"rho_E": rho})
-    if smax > sd.sigma_lim:
-        assert sd.sigma_allow < sa_star * 1.01      # overshoot -> binds/violated
-    else:
-        assert sd.sigma_allow > sa_star * 0.99      # margin -> feasible, removal allowed
+                                     adaptive=True, max_correction=20.0)
+    # At a FIXED design the Le output equals the true weighted-max stress ratio exactly:
+    # c = sigma_max/sigma_a* (lagged == current here), out = c*sigma_a*/sigma_lim - 1.
+    sd._run({"rho_E": rho})
+    assert sd._mode == "le"
+    wmax = sd.kernel.weighted_max_stress(rho, phys.last_u)
+    expected = wmax / sd.sigma_lim - 1.0
+    assert sd.local_data["stress"][0] == pytest.approx(expected, rel=1e-6)
+    sd._run({"rho_E": rho})             # lagged ratio at the same design -> identical
+    assert sd.local_data["stress"][0] == pytest.approx(expected, rel=1e-6)
+    # sign semantics: feasible iff the true weighted max is below the limit
+    assert (sd.local_data["stress"][0] <= 0.0) == (wmax <= sd.sigma_lim)

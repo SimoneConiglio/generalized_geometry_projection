@@ -213,22 +213,27 @@ class _StressConstraintDiscipline(Discipline):
     one adjoint solve reusing the physics discipline's factorized ``K``:
         ``dG/dρ_e = ∂G/∂ρ_e − λ_eᵀ (dE_drho_e · ke_ref) u_e``,  ``K λ = ∂G/∂u``.
 
-    Adaptive allowable (Le, Norato, Bruns, Ha & Tortorelli 2010): aggregation is a lower
-    bound of the true max stress, so a converged ``G <= 0`` design can still violate
-    ``σ_max <= σ_lim`` pointwise (or, with a fixed loose allowable, end over-conservative).
-    With ``adaptive=True`` the constraint is evaluated against an *effective* allowable
-    set — like Le's ``c = σ_max/σ_PN`` — from a **fresh, state-free ratio** each iteration:
+    Adaptive normalization (Le, Norato, Bruns, Ha & Tortorelli 2010): aggregation is a
+    lower bound of the true max stress, so a converged ``G <= 0`` design can still
+    violate ``σ_max <= σ_lim`` pointwise (or, with a fixed loose allowable, end
+    over-conservative). With ``adaptive=True`` the emitted constraint is Le's form,
+    ``c · S(x) / σ_lim - 1 <= 0``, with the *current-design* aggregate stress measure
 
-        σ_allow <- α · σ_a* · (σ_lim / σ_max) + (1-α) · σ_allow
+        S(x) = σ_a*(x)   — the critical allowable, i.e. the root of ``G(x, σ_a*) = 0``
+                           (the g-space analogue of σ_PN; found by bisection)
 
-    where, at the previous design, ``σ_a*`` is the *critical allowable* (the root of
-    ``G(σ_a*) = 0``, the g-space analogue of the aggregate measure σ_PN) and ``σ_max`` is
-    the true max von Mises over material elements (ρ >= rho_solid). Fixed point: the
-    aggregate binds exactly when ``σ_max = σ_lim`` — margin leaves the constraint
-    feasible (removal continues), overshoot makes it violated (material returns). The
-    target involves no accumulated state, so it cannot ratchet/run away; damping α only
-    smooths it. The allowable is frozen within each iteration, so the adjoint
-    sensitivity is unchanged (it is a constant there).
+    and the **lagged, O(1) geometric ratio** ``c = σ_max/σ_a*`` from the previous
+    iterate (``σ_max`` = ρ-weighted max von Mises, Verbart-consistent). Because the
+    absolute stress scale enters through ``S(x)`` *instantly*, a design whose stress
+    explodes within one MMA step is labeled infeasible immediately — only the mildly
+    varying ratio is lagged (this is what makes Le's normalization immune to the
+    phantom-feasible iterates an allowable-with-lag form produces under mass
+    minimization). At a fixed design the output equals ``σ_max/σ_lim - 1`` exactly;
+    fixed point: ``σ_max = σ_lim``. Sensitivity of ``σ_a*(x)`` via the implicit
+    function theorem: ``dσ_a*/dρ = -(∂G/∂ρ)/(∂G/∂σ_a)`` at ``(x, σ_a*)``, with the
+    ``u``-path handled by the same single adjoint solve. When the bisection bracket is
+    clipped (no interior root), the raw ``G`` at the clipped allowable is emitted so
+    the optimizer keeps a nonzero gradient.
     """
 
     def __init__(self, phys_discipline, se_ref, sigma_lim, num_elements, dim,
@@ -254,9 +259,10 @@ class _StressConstraintDiscipline(Discipline):
         # the constraint.
         self.max_correction = float(max_correction)
         self.sigma_lim = float(sigma_lim)
-        self.sigma_allow = float(sigma_lim)     # effective allowable (adapted when enabled)
-        self._last_sigma_max = None             # true max stress at the previous design
-        self._last_sa_star = None               # critical allowable at the previous design
+        self.sigma_allow = float(sigma_lim)     # allowable the raw G is evaluated at
+        self._c = None                          # lagged Le ratio sigma_max/sigma_a*
+        self._mode = "raw"                      # 'le' (adaptive interior) or 'raw'
+        self._sa_star = None                    # current critical allowable (adaptive)
         self.input_grammar.update_from_names(["rho_E"])
         self.output_grammar.update_from_names(["stress"])
         self.default_inputs = {"rho_E": np.full(num_elements, volfrac)}
@@ -269,40 +275,64 @@ class _StressConstraintDiscipline(Discipline):
         if input_data is not None:
             self.local_data.update(input_data)
         self._rho = self.local_data["rho_E"].flatten()
+        u = self.phys.last_u
 
-        # Le-Norato update from the PREVIOUS design, then frozen for this whole
-        # iteration (value + jacobian). The target σ_a*·(σ_lim/σ_max) is a fresh,
-        # state-free ratio (both factors recomputed at the same design) — the direct
-        # analogue of Le's c = σ_max/σ_PN — so it cannot ratchet away like an
-        # integrated update would. Clamps: tightening bounded by max_correction (an
-        # unremovable stress raiser must not drive the allowable to zero), loose 1e3
-        # relax cap purely for numerics.
-        if (self.adaptive and self._last_sigma_max is not None
-                and self._last_sigma_max > 0.0 and self._last_sa_star is not None):
-            target = self._last_sa_star * self.sigma_lim / self._last_sigma_max
-            sa = self.alpha * target + (1.0 - self.alpha) * self.sigma_allow
-            self.sigma_allow = float(np.clip(
-                sa, self.sigma_lim / self.max_correction, self.sigma_lim * 1e3))
+        if not self.adaptive:
+            self._mode = "raw"
+            G = self.kernel.value(self._rho, u, sigma_allow=self.sigma_allow)
+            self.local_data["stress"] = np.array([G])
+            return
 
-        G = self.kernel.value(self._rho, self.phys.last_u, sigma_allow=self.sigma_allow)
-        self.local_data["stress"] = np.array([G])
-        if self.adaptive:
-            # rho-weighted (Verbart-consistent) max — NOT thresholded on density: a
-            # thresholded max is blind to a load path fading through intermediate
-            # densities (its stress rises while it drops out of the rho >= rho_solid
-            # set), which lets mass-minimization collapse the design "feasibly".
-            self._last_sigma_max = self.kernel.weighted_max_stress(
-                self._rho, self.phys.last_u)
-            self._last_sa_star = self.kernel.critical_allowable(
-                self._rho, self.phys.last_u,
-                lo=self.sigma_lim / self.max_correction, hi=self.sigma_lim * 1e3)
+        lo = self.sigma_lim / self.max_correction
+        hi = self.sigma_lim * 1e3
+        sa_star = self.kernel.critical_allowable(self._rho, u, lo=lo, hi=hi)
+        # rho-weighted (Verbart-consistent) max — NOT thresholded on density: a
+        # thresholded max is blind to a load path fading through intermediate
+        # densities, which lets mass-minimization collapse the design "feasibly".
+        wmax = self.kernel.weighted_max_stress(self._rho, u)
+        interior = (sa_star > lo * 1.0001) and (sa_star < hi * 0.9999) and wmax > 0.0
+
+        if interior:
+            # Le's normalized constraint c·S(x)/σ_lim - 1 with S(x) = σ_a*(x) fresh at
+            # the current design and c the LAGGED (previous-iterate) O(1) ratio. First
+            # evaluation has no lag available -> use the current ratio (output then
+            # equals σ_max/σ_lim - 1 exactly).
+            c = self._c if self._c is not None else wmax / sa_star
+            self._mode = "le"
+            self._sa_star = sa_star
+            self._c_used = c
+            self.sigma_allow = sa_star          # introspection: current critical allowable
+            out = c * sa_star / self.sigma_lim - 1.0
+        else:
+            # No interior root (all-margin or fully violated design): emit the raw
+            # aggregate at the clipped allowable so a usable gradient survives.
+            self._mode = "raw"
+            self.sigma_allow = float(np.clip(sa_star, lo, hi))
+            out = self.kernel.value(self._rho, u, sigma_allow=self.sigma_allow)
+        self.local_data["stress"] = np.array([out])
+
+        # Lag the ratio for the next iterate (kept when the current one is degenerate).
+        if interior:
+            self._c = wmax / sa_star
 
     def _compute_jacobian(self, inputs=None, outputs=None, **kwargs):
-        _, dG_drho_expl, dG_du = self.kernel.value_and_grads(
-            self._rho, self.phys.last_u, sigma_allow=self.sigma_allow)
-        lam = self.phys.adjoint_solve(dG_du)
-        dG_drho = dG_drho_expl + self.phys.dstiffness_sensitivity(lam)
-        self.jac = {"stress": {"rho_E": dG_drho.reshape(1, -1)}}
+        u = self.phys.last_u
+        if self._mode == "le":
+            # d(out)/dρ = (c/σ_lim)·dσ_a*/dρ with, by the implicit function theorem at
+            # G(x, σ_a*) = 0:  dσ_a*/d(·) = -(dG/d(·)) / (∂G/∂σ_a).
+            _, dG_drho_expl, dG_du = self.kernel.value_and_grads(
+                self._rho, u, sigma_allow=self._sa_star)
+            G_sa = self.kernel.dG_dsigma_allow(self._rho, u, self._sa_star)
+            lam = self.phys.adjoint_solve(dG_du)
+            dG_total = dG_drho_expl + self.phys.dstiffness_sensitivity(lam)
+            scale = -self._c_used / (self.sigma_lim * G_sa)
+            dout = scale * dG_total
+        else:
+            _, dG_drho_expl, dG_du = self.kernel.value_and_grads(
+                self._rho, u, sigma_allow=self.sigma_allow)
+            lam = self.phys.adjoint_solve(dG_du)
+            dout = dG_drho_expl + self.phys.dstiffness_sensitivity(lam)
+        self.jac = {"stress": {"rho_E": dout.reshape(1, -1)}}
 
 
 class _ShiftedObjectiveDiscipline(Discipline):

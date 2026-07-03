@@ -127,6 +127,7 @@ class StressConstraintKernel:
         self._G = jax.jit(G)
         self._dG_drho = jax.jit(jax.grad(G, argnums=0))   # explicit ρ-partial (u fixed)
         self._dG_du = jax.jit(jax.grad(G, argnums=1))     # ∂G/∂u (ρ fixed)
+        self._dG_dsa = jax.jit(jax.grad(G, argnums=2))    # ∂G/∂σ_allow (for implicit σ_a*)
 
     def value(self, rho, u, sigma_allow=None) -> float:
         sa = self.sigma_lim if sigma_allow is None else float(sigma_allow)
@@ -156,6 +157,10 @@ class StressConstraintKernel:
         s = _stress_ratio(jnp.asarray(rho), jnp.asarray(u), self.cell_dofs, self.se_ref,
                           self.sigma_lim, q, self.dim)
         return np.asarray(s)
+
+    def dG_dsigma_allow(self, rho, u, sigma_allow) -> float:
+        """``∂G/∂σ_allow`` at the given allowable (negative: G is monotone decreasing)."""
+        return float(self._dG_dsa(jnp.asarray(rho), jnp.asarray(u), float(sigma_allow)))
 
     def critical_allowable(self, rho, u, lo: float, hi: float, tol: float = 1e-4) -> float:
         """The allowable ``σ_a*`` at which the aggregate is exactly active: ``G(σ_a*) = 0``.
