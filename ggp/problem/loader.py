@@ -46,6 +46,7 @@ def _build_load(raw: Dict[str, Any]) -> Load:
         region=raw["region"],
         type=raw.get("type", "point"),
         value=raw.get("value", [0.0, -1.0]),
+        width=raw.get("width", 0.0),
     )
 
 

@@ -133,6 +133,19 @@ class FEMDiscretiser:
                 tip_dof = _closest_dof_on_face(dof_coords, y_dofs, face_coord=Lx, face_axis=0, target=target)
                 f_vec[tip_dof] = ld.value[1]
 
+            elif ld.region == "mid_right" and ld.type == "patch":
+                # Total force spread uniformly over the face nodes within width/2 of
+                # the mid-right point — removes the point-load stress singularity
+                # (standard in stress-constrained benchmarks, e.g. Le et al. 2010).
+                on_face = np.abs(dof_coords[y_dofs, 0] - Lx) < 1e-6
+                near_mid = np.abs(dof_coords[y_dofs, 1] - Ly / 2.0) <= ld.width / 2.0 + 1e-9
+                patch = np.asarray(y_dofs)[on_face & near_mid]
+                if len(patch) == 0:      # degenerate width -> fall back to the point load
+                    patch = np.array([_closest_dof_on_face(
+                        dof_coords, y_dofs, face_coord=Lx, face_axis=0,
+                        target=np.array([Lx, Ly / 2.0]))])
+                f_vec[patch] = ld.value[1] / len(patch)
+
             elif ld.region == "top_left_corner" and ld.type == "point":
                 if domain.dim == 3:
                     Lz = domain.metadata.get("Lz", 30.0)

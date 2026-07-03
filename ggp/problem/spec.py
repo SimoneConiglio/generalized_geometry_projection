@@ -83,14 +83,19 @@ class Load:
     ----------
     region : str
         Region identifier (e.g. ``"mid_right"``, ``"top_face"``).
-    type : {"point", "pressure", "traction", "body"}
-        Load application mode.
+    type : {"point", "patch", "pressure", "traction", "body"}
+        Load application mode. ``"patch"`` spreads the total force uniformly over the
+        boundary nodes within ``width`` of the region's reference point — the standard
+        way to avoid the point-load stress singularity in stress-constrained problems.
     value : list of float
-        Force/pressure vector.
+        Force/pressure vector (total force for ``"point"``/``"patch"``).
+    width : float
+        Extent of the ``"patch"`` load along the loaded face (ignored otherwise).
     """
     region: str
-    type: Literal["point", "pressure", "traction", "body"] = "point"
+    type: Literal["point", "patch", "pressure", "traction", "body"] = "point"
     value: List[float] = field(default_factory=lambda: [0.0, -1.0])
+    width: float = 0.0
 
 
 # ── Formulation ───────────────────────────────────────────────────────────────
