@@ -159,6 +159,13 @@ class FormulationSpec:
     truss_radius: Optional[float] = None
     # 3-D truss only: number of nodes along z (grid_nx x grid_ny x grid_nz lattice).
     grid_nz: Optional[int] = None
+    # Fix every component's mass density Mc to 1 (bounds [1, 1]): components are
+    # SOLID bars and the design changes only by geometry (move/resize/reorient) --
+    # the Lagrangian-native "binary" design space. Essential for active stress
+    # constraints: intermediate Mc lets the optimizer fade overstressed material
+    # (sigma_hat ~ 1/rho^p rewards removal in the relaxed constraint), while solid
+    # bars must relieve stress by reshaping. Free 2D only.
+    fix_mc: bool = False
 
 
 # ── Optimisation ──────────────────────────────────────────────────────────────

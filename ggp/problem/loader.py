@@ -67,6 +67,7 @@ def _build_formulation(raw: Dict[str, Any]) -> FormulationSpec:
         symmetry=raw.get("symmetry"),
         truss_radius=raw.get("truss_radius"),
         grid_nz=raw.get("grid_nz"),
+        fix_mc=raw.get("fix_mc", False),
     )
 
 

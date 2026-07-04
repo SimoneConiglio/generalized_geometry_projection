@@ -787,6 +787,7 @@ class GGPPipeline:
             "r_gp": self.spec.formulation.r_gp,
             "Ngp": self.spec.formulation.Ngp,
             "min_thickness": self.spec.formulation.min_thickness,
+            "fix_mc": self.spec.formulation.fix_mc or None,
         }
         # Apply per-run sharpness overrides (continuation strategy).
         for _k in ("ka", "pp", "r_gp", "gammac", "gammav"):

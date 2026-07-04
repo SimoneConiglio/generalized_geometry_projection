@@ -34,6 +34,7 @@ class Free2DMapper(ProjectionMapper):
         method: str = "GP",
         Ngp: int = 2,
         min_thickness: float = 1.0,
+        fix_mc: bool = False,
         **kwargs,
     ):
         self._num_components = num_components
@@ -42,6 +43,8 @@ class Free2DMapper(ProjectionMapper):
         self.Ngp = Ngp
         # Minimum primitive thickness (lower bound on h) -> minimum length scale.
         self.min_thickness = float(min_thickness) if min_thickness else 1.0
+        # Solid bars: Mc pinned to 1 (Lagrangian-native binary design space).
+        self.fix_mc = bool(fix_mc)
 
         # Pre-compute local sampling window integration weights
         pts, wts = np.polynomial.legendre.leggauss(self.Ngp)
@@ -77,7 +80,8 @@ class Free2DMapper(ProjectionMapper):
         lb[2::6] = min_len;       ub[2::6] = diag        # length L
         lb[3::6] = self.min_thickness;  ub[3::6] = diag  # thickness h (minh=1 by default)
         lb[4::6] = -2.0 * np.pi;  ub[4::6] = 2.0 * np.pi
-        lb[5::6] = 0.0;           ub[5::6] = 1.0
+        lb[5::6] = 1.0 if self.fix_mc else 0.0
+        ub[5::6] = 1.0
         return lb, ub
 
     def forward(
