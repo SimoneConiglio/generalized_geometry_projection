@@ -557,7 +557,134 @@ landscape this chaotic (§2.6), the highest-leverage move is to *remove* the ill
 degenerate degrees of freedom — connectivity, phantom crossings — so that an ordinary
 continuation can anneal cleanly into a good basin. Better conditioning beats harder searching.
 
-## 5. Reproducing & extending
+## 5. Stress-constrained GGP: making the adaptive allowable converge
+
+The capability wave that followed the local-minima study added **stress constraints**
+(with displacement constraints and a configurable objective — any response among
+`compliance / volume / displacement / stress` can now be minimized, maximized, or
+bounded). This chapter documents the stress formulation, and — in the same honest
+spirit as §4 — the string of instructive *failures* on the way to a converged
+stress-active design, because the failures are where the transferable lessons live.
+
+### 5.1 Formulation
+
+Local von Mises constraints are handled with the **unified aggregation-relaxation** of
+Verbart, Langelaar & van Keulen (2017), the method adopted in the Eulerian chapter of
+the Coniglio thesis. The solid-material (unit-`E`) element stress is recovered from a
+reference operator assembled once per mesh (`σ̂_e = se_ref · u_e`, exact for the
+structured grid), and the reformulated, design-independent local constraint
+
+```
+g_e = ρ_e · ( σ̂vm_e / σ_allow − 1 ) ≤ 0
+```
+
+is aggregated with a lower-bound KS, `G = (1/P)·ln( meanₑ exp(P·g_e) ) ≤ 0`. One
+parameter `P` controls both aggregation sharpness and relaxation; void elements are
+trivially feasible, which is what makes singular optima accessible. All the nonlinear
+algebra (stress recovery, von Mises, aggregation) is differentiated by **JAX autodiff**;
+the implicit `u`-path is one adjoint solve reusing the physics discipline's cached LU
+factorization. Every gradient is finite-difference-gated at three levels: element
+kernel, discipline (total adjoint `dG/dρ`), and the **full composed chain**
+`d(stress)/d(bar variables)` through geometry → physics → stress.
+
+Two wiring details matter more than they look:
+
+* **The weight must be the *mass* density `ρ_V`, not the penalized stiffness density
+  `ρ_E`.** With `ρ_E ~ Mc^γc` (γc = 3), a gray design cuts its stress weight cubically
+  while its mass falls only linearly — mass minimization then parks in a feasible
+  **zero-stiffness gray haze** (observed: 5.3 % mass at `ρ_E ≈ 10⁻⁴`). With the `ρ_V`
+  weight the haze is infeasible (`σ̂ ~ 1/ρ³` vs weight `ρ¹` ⇒ `g ~ 1/ρ²` grows).
+* **Non-design (void) elements and the load-introduction vicinity must be masked** out
+  of the stress measure. Bars overlapping the L-bracket's void quadrant keep `ρ ≈ 1`
+  in the raw geometry output against an `Emin` displacement field — an enormous,
+  fictitious "solid stress" that pressured the constraint (+25 % compliance in an early
+  run) until masked. Conversely the mask must **not** be used under pure mass
+  minimization, where the load-adjacent stress is exactly what anchors load-carrying.
+
+### 5.2 Why an adaptive allowable (Le–Norato 2010)
+
+The lower-bound aggregation satisfies `G ≤ 0` while the **true** max stress slightly
+exceeds `σ_lim` (our first converged L-bracket run: KS residual −0.07 but pointwise
+overshoot), or — with a fixed loose allowable — ends over-conservative
+(`σ_max = 0.3·σ_lim`). Le, Norato, Bruns, Ha & Tortorelli (2010) fix this with an
+**adaptive normalization**: a correction factor (equivalently an *adapted allowable*)
+updated between iterations from the measured true maximum, so the converged design
+stops exactly at `σ_max = σ_lim`.
+
+### 5.3 What failed, and why (seven benchmark-scale runs)
+
+Every failure below happened with **provably correct gradients** (the FD gates above
+passed throughout); each was a dynamics or formulation-wiring effect:
+
+| # | Configuration | Failure | Root cause → fix |
+|---|---|---|---|
+| 1 | integrated allowable update | `σ_allow` 2.5→245 in 9 iterations, constraint dead | the update was an *integrator*; Le's `c = σ_max/σ_PN` is a fresh, O(1) **ratio** each iteration → state-free target `σ_a*·(σ_lim/σ_max)` |
+| 2 | point load in the measure, mass-min | death-spiral: `σ_allow → 0` | the load-element FE stress is singular; no finite allowable holds it → clamp + (for vol-constrained runs) load-region mask |
+| 3 | mass-min, thresholded `σ_max` (ρ ≥ 0.5) | collapse to void, "feasible" | the load path faded *through* intermediate densities, invisible to a thresholded max → ρ-weighted max, no threshold |
+| 4 | mass-min, load region masked | collapse: all stress hidden *inside* the excluded ball | the load anchor is what enforces load-carrying → no exclusion under mass-min |
+| 5 | volume objective (×100 percent scale) | MMA descends while infeasible | gemseo-mma's fixed constraint penalty had only ~10× authority → affine objective rescale to O(1) (`shift`/`scale` params) |
+| 6 | `ρ_E`-weighted constraint, mass-min | zero-stiffness gray haze at 5 % mass, "feasible" | weight by mass density `ρ_V` (see §5.1) |
+| 7 | **any per-iteration adaptive normalization** (damped, state-free, lagged-`c` Le form, idempotent per design) | MMA dismantles the design (vol 0.39→0.15, C 78→200+) even warm-started, tight-moved, `Mc`-fixed | the constraint value shifts 20–30 % between iterations; MMA's asymptote heuristics cannot track an inconsistent constraint |
+
+Failure 7 is the deep one: it persisted after *everything else* was verified — including
+a full-chain finite-difference check showing the composed sensitivities are correct and
+correctly signed (fattening a loaded bar reduces the constraint). The measurement was
+right; the *game* MMA was asked to play changed every iteration.
+
+### 5.4 The recipe that converges
+
+Three ingredients (matching established GGP practice):
+
+1. **Binary continuation first** — converge the plain compliance/volume design
+   (near-binary, load paths at `ρ ≈ 1`) and warm-start from it (`x0` injection).
+2. **Solid bars** (`fix_mc: true`) — pin every component's `Mc` to 1: stress must be
+   relieved by geometry reshaping, never by density fade; gray survives only in the
+   thin projection band.
+3. **Outer-loop Le correction** — each *inner* run solves the **raw** Verbart
+   aggregate at a **fixed** allowable (smooth, monotone, iteration-consistent: MMA
+   converges cleanly), and *between* runs
+
+   ```
+   σ_allow ← σ_allow · (σ_lim / σ_max_true)^0.7
+   ```
+
+   warm-started, until the true max von Mises is within 3 % of `σ_lim`. Same fixed
+   point as the per-iteration scheme (`σ_max = σ_lim`), stable dynamics.
+
+On the L-bracket with `σ_lim = 0.75` (genuinely active: the unconstrained optimum sits
+at `σ_max = 0.80`), the loop converges in **two outer iterations**:
+
+| outer | inner `σ_allow` | C | vol | true `σ_max` |
+|---|---|---|---|---|
+| 0 | 0.750 | 78.36 | 0.398 | 0.775 |
+| 1 | 0.733 | **78.18** | 0.398 | **0.772** ✓ (within 3 % of 0.75) |
+
+Feasible throughout, no dismantling, and essentially **zero compliance cost** relative
+to the unconstrained baseline (78.3) — the constraint reshaped the corner region
+rather than degrading the structure.
+
+![L-bracket, active stress via the outer-loop Le allowable](_static/lshape_stress_active.png)
+
+For reference, the volume-constrained runs at a slack limit behave as expected: at
+`σ_lim = 2.5` the constraint is correctly reported inactive (true margin −70 %) and the
+design is volume-limited (C = 81.5); and the qualitative stress-relief signature — the
+constrained design rounding/thickening material at the re-entrant corner versus the
+baseline's sharp crossing — is visible in the earlier comparison figures
+(`lshape_baseline.png` vs `lshape_stress_constrained.png`).
+
+### 5.5 Open items
+
+* **Pure mass minimization** should now transfer (raw inner constraint + outer-loop
+  allowable, descending from the stress-converged design on the feasible side) but has
+  not been run to convergence.
+* **Aggressive targets** (`σ_lim` 25 % below the natural max) require re-routing the
+  load path away from the corner — beyond a 400-iteration / 0.005-move budget, a
+  compute limit rather than a formulation one.
+* The per-iteration adaptive scheme might be rescued by updating every N ≫ 1
+  iterations (interpolating toward the outer loop), or by GCMMA's inner convexity
+  control — untested.
+
+## 6. Reproducing & extending
 
 * Run a single strategy: `ggp search --preset short_cantilever --strategy continuation`.
 * Add a new continuation schedule: pass a list of `overrides` dicts to
@@ -570,6 +697,13 @@ continuation can anneal cleanly into a good basin. Better conditioning beats har
   in the preset; the connectivity (with crossing-node planarization) is built by
   `ggp.projection.truss_2d.build_ground_structure` and unit-tested in
   `tests/test_truss_mapper.py`.
+* Stress/displacement constraints & configurable objective (§5): presets
+  `short_cantilever_stress.yaml`, `short_cantilever_displacement.yaml`,
+  `l_shape_stress.yaml`, `short_cantilever_minvol_stress.yaml`; the converged
+  stress-active recipe is `benchmarks/lshape_stress_outer.py`. The objective is chosen via
+  `objective: {name: ..., sense: minimize|maximize, params: {...}}`. The JAX sensitivity
+  kernel lives in `ggp/utils/jax_sensitivity.py`; FD gates in `tests/test_stress.py` and
+  `tests/test_adjoint_constraints.py`.
 
 ## References
 1. M. P. Bendsøe, O. Sigmund. *Topology Optimization: Theory, Methods, and
@@ -607,3 +741,9 @@ continuation can anneal cleanly into a good basin. Better conditioning beats har
     transient chaos.* Neural Networks 8(6):915–930, 1995.
 16. B. Li, W. Jiang. *Optimizing complex functions by chaos search.* Cybernetics and
     Systems 29(4):409–419, 1998.
+17. A. Verbart, M. Langelaar, F. van Keulen. *A unified aggregation and relaxation
+    approach for stress-constrained topology optimization.* SMO 55:663–679, 2017.
+18. C. Le, J. Norato, T. Bruns, C. Ha, D. Tortorelli. *Stress-based topology
+    optimization for continua.* SMO 41:605–620, 2010.
+19. P. Duysinx, M. P. Bendsøe. *Topology optimization of continuum structures with
+    local stress constraints.* IJNME 43(8):1453–1478, 1998.
