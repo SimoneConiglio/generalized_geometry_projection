@@ -238,6 +238,25 @@ let darkTheme = isDarkTheme();
 let modal = null;
 let modalContent = null;
 let previousScrollOffset = [window.scrollX, window.scrollY];
+let _lazyObserver = null;
+let _renderQueue = Promise.resolve();
+
+// Apply d3 zoom to each SVG. Idempotent: an SVG already wrapped is skipped,
+// so this is safe to call both for the initial batch and for diagrams that
+// render lazily once they become visible.
+const addZoomToSvgs = (svgs) => {
+    svgs.each(function() {
+        if (this.getAttribute('data-zoom-applied') === 'true') return;
+        var svg = d3.select(this);
+        svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+        var inner = svg.select("g");
+        var zoom = d3.zoom().on("zoom", function(event) {
+            inner.attr("transform", event.transform);
+        });
+        svg.call(zoom);
+        this.setAttribute('data-zoom-applied', 'true');
+    });
+};
 
 const runMermaid = async (rerun) => {
     console.log("Running mermaid diagrams, rerun =", rerun);
@@ -245,7 +264,15 @@ const runMermaid = async (rerun) => {
     let all_mermaids = document.querySelectorAll(".mermaid");
 
     if (rerun) {
+        // Disconnect any previous lazy rendering observer
+        if (_lazyObserver) {
+            _lazyObserver.disconnect();
+            _lazyObserver = null;
+        }
+
         all_mermaids.forEach((el) => {
+            el.removeAttribute('data-mermaid-deferred');
+            el.removeAttribute('data-mermaid-render-failed');
             if(!el.hasAttribute("data-original-code")) {
                 // store original code
                 // console.log(`Storing original code for first run: `, el.innerHTML);
@@ -262,35 +289,89 @@ const runMermaid = async (rerun) => {
                 el.setAttribute('data-original-code', el.innerHTML);
             }
         });
-        await mermaid.run();
+
+        // Separate visible and hidden elements. Mermaid's layout engine measures
+        // text dimensions via the DOM, which fails for elements hidden by a parent
+        // (e.g., Reveal.js non-active slides, sphinx-design unopened tabs),
+        // producing broken SVGs. Render visible elements now, defer hidden ones.
+        const visible = [];
+        const hidden = [];
+        all_mermaids.forEach((el) => {
+            // offsetParent is null for display:none ancestors.
+            // getClientRects().length > 0 catches position:fixed elements
+            // (which also have null offsetParent but are still visible).
+            if (el.offsetParent !== null || el.getClientRects().length > 0) {
+                visible.push(el);
+            } else {
+                hidden.push(el);
+                el.setAttribute('data-mermaid-deferred', 'true');
+            }
+        });
+
+        if (visible.length > 0) {
+            try {
+                await mermaid.run({ nodes: visible });
+            } catch (e) {
+                console.error("Mermaid rendering failed:", e);
+            }
+        }
+
+        // Lazily render hidden elements when they become visible.
+        // Uses a promise chain (_renderQueue) to serialize rendering,
+        // since IntersectionObserver may report multiple entries at once
+        // and mermaid.run() is not safe to call concurrently.
+        if (hidden.length > 0) {
+            if (typeof IntersectionObserver === 'undefined') {
+                console.warn("IntersectionObserver not available; hidden mermaid diagrams will not render.");
+            } else {
+                _renderQueue = Promise.resolve();
+                _lazyObserver = new IntersectionObserver((entries) => {
+                    for (const entry of entries) {
+                        if (entry.isIntersecting && entry.target.getAttribute("data-processed") !== "true") {
+                            _lazyObserver.unobserve(entry.target);
+                            const el = entry.target;
+                            _renderQueue = _renderQueue.then(async () => {
+                                try {
+                                    await mermaid.run({ nodes: [el] });
+                                    el.removeAttribute('data-mermaid-deferred');
+                                    // Apply zoom to the now-rendered diagram, matching
+                                    // the decoration visible diagrams receive.
+                                    if ("False" === "True") {
+                                        addZoomToSvgs(d3.selectAll(""));
+                                    }
+                                } catch (e) {
+                                    console.error("Mermaid deferred rendering failed:", e);
+                                    el.removeAttribute('data-mermaid-deferred');
+                                    el.setAttribute('data-mermaid-render-failed', 'true');
+                                }
+                            });
+                        }
+                    }
+                });
+                hidden.forEach((el) => _lazyObserver.observe(el));
+            }
+        }
     }
 
     all_mermaids = document.querySelectorAll(".mermaid");
-    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+    // Exclude deferred (hidden) and render-failed elements from completion checks
+    const mermaids_active = document.querySelectorAll(".mermaid:not([data-mermaid-deferred]):not([data-mermaid-render-failed])");
+    const mermaids_processed = document.querySelectorAll(".mermaid:not([data-mermaid-deferred]):not([data-mermaid-render-failed])[data-processed='true']");
 
     if ("False" === "True") {
-        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        const mermaids_to_add_zoom = -1 === -1 ? mermaids_active.length : -1;
         if(mermaids_to_add_zoom > 0) {
             var svgs = d3.selectAll("");
-            if(all_mermaids.length !== mermaids_processed.length) {
+            // Wait until every active (visible) diagram has rendered. Deferred
+            // diagrams are excluded, so a fixed d3_node_count that counts a
+            // hidden diagram no longer loops forever waiting for its SVG.
+            if(mermaids_active.length !== mermaids_processed.length) {
                 setTimeout(() => runMermaid(false), 200);
                 return;
-            } else if(svgs.size() !== mermaids_to_add_zoom) {
-                setTimeout(() => runMermaid(false), 200);
-                return;
-            } else {
-                svgs.each(function() {
-                    var svg = d3.select(this);
-                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
-                    var inner = svg.select("g");
-                    var zoom = d3.zoom().on("zoom", function(event) {
-                        inner.attr("transform", event.transform);
-                    });
-                    svg.call(zoom);
-                });
             }
+            addZoomToSvgs(svgs);
         }
-    } else if(all_mermaids.length !== mermaids_processed.length) {
+    } else if(mermaids_active.length !== mermaids_processed.length) {
         // Wait for mermaid to process all diagrams
         setTimeout(() => runMermaid(false), 200);
         return;
@@ -610,14 +691,19 @@ window.runMermaid = runMermaid;</script>
 <span class="sd">    ----------</span>
 <span class="sd">    region : str</span>
 <span class="sd">        Region identifier (e.g. ``&quot;mid_right&quot;``, ``&quot;top_face&quot;``).</span>
-<span class="sd">    type : {&quot;point&quot;, &quot;pressure&quot;, &quot;traction&quot;, &quot;body&quot;}</span>
-<span class="sd">        Load application mode.</span>
+<span class="sd">    type : {&quot;point&quot;, &quot;patch&quot;, &quot;pressure&quot;, &quot;traction&quot;, &quot;body&quot;}</span>
+<span class="sd">        Load application mode. ``&quot;patch&quot;`` spreads the total force uniformly over the</span>
+<span class="sd">        boundary nodes within ``width`` of the region&#39;s reference point — the standard</span>
+<span class="sd">        way to avoid the point-load stress singularity in stress-constrained problems.</span>
 <span class="sd">    value : list of float</span>
-<span class="sd">        Force/pressure vector.</span>
+<span class="sd">        Force/pressure vector (total force for ``&quot;point&quot;``/``&quot;patch&quot;``).</span>
+<span class="sd">    width : float</span>
+<span class="sd">        Extent of the ``&quot;patch&quot;`` load along the loaded face (ignored otherwise).</span>
 <span class="sd">    &quot;&quot;&quot;</span>
     <span class="n">region</span><span class="p">:</span> <span class="nb">str</span>
-    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;point&quot;</span><span class="p">,</span> <span class="s2">&quot;pressure&quot;</span><span class="p">,</span> <span class="s2">&quot;traction&quot;</span><span class="p">,</span> <span class="s2">&quot;body&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;point&quot;</span>
-    <span class="n">value</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">])</span></div>
+    <span class="nb">type</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;point&quot;</span><span class="p">,</span> <span class="s2">&quot;patch&quot;</span><span class="p">,</span> <span class="s2">&quot;pressure&quot;</span><span class="p">,</span> <span class="s2">&quot;traction&quot;</span><span class="p">,</span> <span class="s2">&quot;body&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;point&quot;</span>
+    <span class="n">value</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="k">lambda</span><span class="p">:</span> <span class="p">[</span><span class="mf">0.0</span><span class="p">,</span> <span class="o">-</span><span class="mf">1.0</span><span class="p">])</span>
+    <span class="n">width</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">0.0</span></div>
 
 
 
@@ -657,7 +743,8 @@ window.runMermaid = runMermaid;</script>
 <span class="sd">        Number of tiles along x and y for the ``&quot;grid&quot;`` initialisation. Their</span>
 <span class="sd">        product must equal ``num_components`` and both must be &lt; the mesh resolution.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">mode</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;Free&quot;</span><span class="p">,</span> <span class="s2">&quot;ALM&quot;</span><span class="p">,</span> <span class="s2">&quot;3D_Free&quot;</span><span class="p">,</span> <span class="s2">&quot;3D_ALM&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;Free&quot;</span>
+    <span class="n">mode</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;Free&quot;</span><span class="p">,</span> <span class="s2">&quot;ALM&quot;</span><span class="p">,</span> <span class="s2">&quot;3D_Free&quot;</span><span class="p">,</span> <span class="s2">&quot;3D_ALM&quot;</span><span class="p">,</span> <span class="s2">&quot;Truss&quot;</span><span class="p">,</span> <span class="s2">&quot;2D_Truss&quot;</span><span class="p">,</span>
+                  <span class="s2">&quot;Truss3D&quot;</span><span class="p">,</span> <span class="s2">&quot;3D_Truss&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;Free&quot;</span>
     <span class="n">num_components</span><span class="p">:</span> <span class="nb">int</span> <span class="o">=</span> <span class="mi">18</span>
     <span class="n">num_layers</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
     <span class="n">comp_per_layer</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
@@ -675,24 +762,53 @@ window.runMermaid = runMermaid;</script>
     <span class="c1"># Enforce a design symmetry by mirror-pairing components. &quot;y&quot; -&gt; top-bottom</span>
     <span class="c1"># symmetry about Ly/2 (the optimiser controls num_components/2 free components).</span>
     <span class="c1"># None -&gt; no symmetry. Free 2D only.</span>
-    <span class="n">symmetry</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span></div>
+    <span class="n">symmetry</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">str</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># Truss mode only: node-pair connection radius for the ground structure. A bar</span>
+    <span class="c1"># is created for every node pair within this distance. None -&gt; ~1 tile-diagonal</span>
+    <span class="c1"># (each node connects to its 8 grid neighbours); larger -&gt; denser, approaching</span>
+    <span class="c1"># the complete graph. grid_nx x grid_ny give the NODE lattice in Truss mode.</span>
+    <span class="n">truss_radius</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">float</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># 3-D truss only: number of nodes along z (grid_nx x grid_ny x grid_nz lattice).</span>
+    <span class="n">grid_nz</span><span class="p">:</span> <span class="n">Optional</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="kc">None</span>
+    <span class="c1"># Fix every component&#39;s mass density Mc to 1 (bounds [1, 1]): components are</span>
+    <span class="c1"># SOLID bars and the design changes only by geometry (move/resize/reorient) --</span>
+    <span class="c1"># the Lagrangian-native &quot;binary&quot; design space. Essential for active stress</span>
+    <span class="c1"># constraints: intermediate Mc lets the optimizer fade overstressed material</span>
+    <span class="c1"># (sigma_hat ~ 1/rho^p rewards removal in the relaxed constraint), while solid</span>
+    <span class="c1"># bars must relieve stress by reshaping. Free 2D only.</span>
+    <span class="n">fix_mc</span><span class="p">:</span> <span class="nb">bool</span> <span class="o">=</span> <span class="kc">False</span></div>
 
 
 
 <span class="c1"># ── Optimisation ──────────────────────────────────────────────────────────────</span>
 
+<span class="c1"># Discipline outputs (&quot;responses&quot;) that can be selected as the objective or as a</span>
+<span class="c1"># constraint. compliance/volume always exist; displacement/stress disciplines are</span>
+<span class="c1"># built on demand (see GGPPipeline.run) whenever they&#39;re needed by either role.</span>
+<span class="n">KNOWN_RESPONSES</span> <span class="o">=</span> <span class="p">(</span><span class="s2">&quot;compliance&quot;</span><span class="p">,</span> <span class="s2">&quot;volume&quot;</span><span class="p">,</span> <span class="s2">&quot;displacement&quot;</span><span class="p">,</span> <span class="s2">&quot;stress&quot;</span><span class="p">)</span>
+
+
 <div class="viewcode-block" id="ObjectiveSpec">
 <a class="viewcode-back" href="../../../api.html#ggp.problem.spec.ObjectiveSpec">[docs]</a>
 <span class="nd">@dataclass</span><span class="p">(</span><span class="n">frozen</span><span class="o">=</span><span class="kc">True</span><span class="p">)</span>
 <span class="k">class</span><span class="w"> </span><span class="nc">ObjectiveSpec</span><span class="p">:</span>
-<span class="w">    </span><span class="sd">&quot;&quot;&quot;Objective function to minimise.</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Objective function to minimise or maximise.</span>
 
 <span class="sd">    Parameters</span>
 <span class="sd">    ----------</span>
 <span class="sd">    name : str</span>
-<span class="sd">        Objective identifier (e.g. ``&quot;compliance&quot;``).</span>
+<span class="sd">        Response identifier — one of :data:`KNOWN_RESPONSES`</span>
+<span class="sd">        (``&quot;compliance&quot;``, ``&quot;volume&quot;``, ``&quot;displacement&quot;``, ``&quot;stress&quot;``).</span>
+<span class="sd">    sense : {&quot;minimize&quot;, &quot;maximize&quot;}</span>
+<span class="sd">        Optimisation direction.</span>
+<span class="sd">    params : dict</span>
+<span class="sd">        Extra parameters for responses that need them when used as the objective</span>
+<span class="sd">        without also being a constraint (e.g. ``P``/``aggregation`` for ``&quot;stress&quot;``,</span>
+<span class="sd">        ``axis``/``point`` for ``&quot;displacement&quot;``) — mirrors :attr:`ConstraintSpec.params`.</span>
 <span class="sd">    &quot;&quot;&quot;</span>
-    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;compliance&quot;</span></div>
+    <span class="n">name</span><span class="p">:</span> <span class="nb">str</span> <span class="o">=</span> <span class="s2">&quot;compliance&quot;</span>
+    <span class="n">sense</span><span class="p">:</span> <span class="n">Literal</span><span class="p">[</span><span class="s2">&quot;minimize&quot;</span><span class="p">,</span> <span class="s2">&quot;maximize&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="s2">&quot;minimize&quot;</span>
+    <span class="n">params</span><span class="p">:</span> <span class="n">Dict</span><span class="p">[</span><span class="nb">str</span><span class="p">,</span> <span class="n">Any</span><span class="p">]</span> <span class="o">=</span> <span class="n">field</span><span class="p">(</span><span class="n">default_factory</span><span class="o">=</span><span class="nb">dict</span><span class="p">)</span></div>
 
 
 

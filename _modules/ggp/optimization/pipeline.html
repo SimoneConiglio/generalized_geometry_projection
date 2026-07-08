@@ -238,6 +238,25 @@ let darkTheme = isDarkTheme();
 let modal = null;
 let modalContent = null;
 let previousScrollOffset = [window.scrollX, window.scrollY];
+let _lazyObserver = null;
+let _renderQueue = Promise.resolve();
+
+// Apply d3 zoom to each SVG. Idempotent: an SVG already wrapped is skipped,
+// so this is safe to call both for the initial batch and for diagrams that
+// render lazily once they become visible.
+const addZoomToSvgs = (svgs) => {
+    svgs.each(function() {
+        if (this.getAttribute('data-zoom-applied') === 'true') return;
+        var svg = d3.select(this);
+        svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+        var inner = svg.select("g");
+        var zoom = d3.zoom().on("zoom", function(event) {
+            inner.attr("transform", event.transform);
+        });
+        svg.call(zoom);
+        this.setAttribute('data-zoom-applied', 'true');
+    });
+};
 
 const runMermaid = async (rerun) => {
     console.log("Running mermaid diagrams, rerun =", rerun);
@@ -245,7 +264,15 @@ const runMermaid = async (rerun) => {
     let all_mermaids = document.querySelectorAll(".mermaid");
 
     if (rerun) {
+        // Disconnect any previous lazy rendering observer
+        if (_lazyObserver) {
+            _lazyObserver.disconnect();
+            _lazyObserver = null;
+        }
+
         all_mermaids.forEach((el) => {
+            el.removeAttribute('data-mermaid-deferred');
+            el.removeAttribute('data-mermaid-render-failed');
             if(!el.hasAttribute("data-original-code")) {
                 // store original code
                 // console.log(`Storing original code for first run: `, el.innerHTML);
@@ -262,35 +289,89 @@ const runMermaid = async (rerun) => {
                 el.setAttribute('data-original-code', el.innerHTML);
             }
         });
-        await mermaid.run();
+
+        // Separate visible and hidden elements. Mermaid's layout engine measures
+        // text dimensions via the DOM, which fails for elements hidden by a parent
+        // (e.g., Reveal.js non-active slides, sphinx-design unopened tabs),
+        // producing broken SVGs. Render visible elements now, defer hidden ones.
+        const visible = [];
+        const hidden = [];
+        all_mermaids.forEach((el) => {
+            // offsetParent is null for display:none ancestors.
+            // getClientRects().length > 0 catches position:fixed elements
+            // (which also have null offsetParent but are still visible).
+            if (el.offsetParent !== null || el.getClientRects().length > 0) {
+                visible.push(el);
+            } else {
+                hidden.push(el);
+                el.setAttribute('data-mermaid-deferred', 'true');
+            }
+        });
+
+        if (visible.length > 0) {
+            try {
+                await mermaid.run({ nodes: visible });
+            } catch (e) {
+                console.error("Mermaid rendering failed:", e);
+            }
+        }
+
+        // Lazily render hidden elements when they become visible.
+        // Uses a promise chain (_renderQueue) to serialize rendering,
+        // since IntersectionObserver may report multiple entries at once
+        // and mermaid.run() is not safe to call concurrently.
+        if (hidden.length > 0) {
+            if (typeof IntersectionObserver === 'undefined') {
+                console.warn("IntersectionObserver not available; hidden mermaid diagrams will not render.");
+            } else {
+                _renderQueue = Promise.resolve();
+                _lazyObserver = new IntersectionObserver((entries) => {
+                    for (const entry of entries) {
+                        if (entry.isIntersecting && entry.target.getAttribute("data-processed") !== "true") {
+                            _lazyObserver.unobserve(entry.target);
+                            const el = entry.target;
+                            _renderQueue = _renderQueue.then(async () => {
+                                try {
+                                    await mermaid.run({ nodes: [el] });
+                                    el.removeAttribute('data-mermaid-deferred');
+                                    // Apply zoom to the now-rendered diagram, matching
+                                    // the decoration visible diagrams receive.
+                                    if ("False" === "True") {
+                                        addZoomToSvgs(d3.selectAll(""));
+                                    }
+                                } catch (e) {
+                                    console.error("Mermaid deferred rendering failed:", e);
+                                    el.removeAttribute('data-mermaid-deferred');
+                                    el.setAttribute('data-mermaid-render-failed', 'true');
+                                }
+                            });
+                        }
+                    }
+                });
+                hidden.forEach((el) => _lazyObserver.observe(el));
+            }
+        }
     }
 
     all_mermaids = document.querySelectorAll(".mermaid");
-    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+    // Exclude deferred (hidden) and render-failed elements from completion checks
+    const mermaids_active = document.querySelectorAll(".mermaid:not([data-mermaid-deferred]):not([data-mermaid-render-failed])");
+    const mermaids_processed = document.querySelectorAll(".mermaid:not([data-mermaid-deferred]):not([data-mermaid-render-failed])[data-processed='true']");
 
     if ("False" === "True") {
-        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        const mermaids_to_add_zoom = -1 === -1 ? mermaids_active.length : -1;
         if(mermaids_to_add_zoom > 0) {
             var svgs = d3.selectAll("");
-            if(all_mermaids.length !== mermaids_processed.length) {
+            // Wait until every active (visible) diagram has rendered. Deferred
+            // diagrams are excluded, so a fixed d3_node_count that counts a
+            // hidden diagram no longer loops forever waiting for its SVG.
+            if(mermaids_active.length !== mermaids_processed.length) {
                 setTimeout(() => runMermaid(false), 200);
                 return;
-            } else if(svgs.size() !== mermaids_to_add_zoom) {
-                setTimeout(() => runMermaid(false), 200);
-                return;
-            } else {
-                svgs.each(function() {
-                    var svg = d3.select(this);
-                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
-                    var inner = svg.select("g");
-                    var zoom = d3.zoom().on("zoom", function(event) {
-                        inner.attr("transform", event.transform);
-                    });
-                    svg.call(zoom);
-                });
             }
+            addZoomToSvgs(svgs);
         }
-    } else if(all_mermaids.length !== mermaids_processed.length) {
+    } else if(mermaids_active.length !== mermaids_processed.length) {
         // Wait for mermaid to process all diagrams
         setTimeout(() => runMermaid(false), 200);
         return;
@@ -655,6 +736,275 @@ window.runMermaid = runMermaid;</script>
         <span class="p">}</span>
 
 
+<span class="k">class</span><span class="w"> </span><span class="nc">_DisplacementConstraintDiscipline</span><span class="p">(</span><span class="n">Discipline</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Point/DOF displacement constraint ``|ℓᵀu| / u_max - 1 &lt;= 0``.</span>
+
+<span class="sd">    Not self-adjoint, so the sensitivity needs one adjoint solve reusing the physics</span>
+<span class="sd">    discipline&#39;s cached, BC-eliminated ``K``:  with ``K λ = ∂g/∂u`` and ``∂g/∂u = sign·ℓ/u_max``,</span>
+<span class="sd">    the total design sensitivity is ``dg/dρ_e = -λ_eᵀ (dE_drho_e · ke_ref) u_e`` (there is no</span>
+<span class="sd">    explicit ρ-dependence — displacement enters only through ``u``).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">phys_discipline</span><span class="p">,</span> <span class="n">ell</span><span class="p">,</span> <span class="n">u_max</span><span class="p">,</span> <span class="n">num_elements</span><span class="p">,</span> <span class="n">volfrac</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+                 <span class="n">name</span><span class="o">=</span><span class="s2">&quot;DisplacementConstraint&quot;</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">phys</span> <span class="o">=</span> <span class="n">phys_discipline</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ell</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">ell</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>   <span class="c1"># DOF selector (n_dofs,)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">u_max</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">u_max</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_elements</span> <span class="o">=</span> <span class="n">num_elements</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sign</span> <span class="o">=</span> <span class="mf">1.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">input_grammar</span><span class="o">.</span><span class="n">update_from_names</span><span class="p">([</span><span class="s2">&quot;rho_E&quot;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_grammar</span><span class="o">.</span><span class="n">update_from_names</span><span class="p">([</span><span class="s2">&quot;displacement&quot;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">default_inputs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;rho_E&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">num_elements</span><span class="p">,</span> <span class="n">volfrac</span><span class="p">)}</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;cache&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;cache_type&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache_type</span> <span class="o">=</span> <span class="n">Discipline</span><span class="o">.</span><span class="n">CacheType</span><span class="o">.</span><span class="n">NONE</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">input_data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+        <span class="n">u</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phys</span><span class="o">.</span><span class="n">last_u</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">ell</span> <span class="o">@</span> <span class="n">u</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sign</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="n">val</span> <span class="o">&gt;=</span> <span class="mf">0.0</span> <span class="k">else</span> <span class="o">-</span><span class="mf">1.0</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="p">[</span><span class="s2">&quot;displacement&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="nb">abs</span><span class="p">(</span><span class="n">val</span><span class="p">)</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">u_max</span> <span class="o">-</span> <span class="mf">1.0</span><span class="p">])</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_jacobian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">outputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">dg_du</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sign</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">ell</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">u_max</span>
+        <span class="n">lam</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phys</span><span class="o">.</span><span class="n">adjoint_solve</span><span class="p">(</span><span class="n">dg_du</span><span class="p">)</span>
+        <span class="n">dg_drho</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phys</span><span class="o">.</span><span class="n">dstiffness_sensitivity</span><span class="p">(</span><span class="n">lam</span><span class="p">)</span>     <span class="c1"># -λ_eᵀ (dE_drho ke_ref) u_e</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">jac</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;displacement&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;rho_E&quot;</span><span class="p">:</span> <span class="n">dg_drho</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)}}</span>
+
+
+<span class="k">def</span><span class="w"> </span><span class="nf">_stress_exclusion_mask</span><span class="p">(</span><span class="n">analysis</span><span class="p">,</span> <span class="n">eval_coords</span><span class="p">,</span> <span class="n">exclude_radius</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Element mask excluding non-stress-measured elements.</span>
+
+<span class="sd">    Two exclusions, both required for a meaningful stress measure:</span>
+<span class="sd">    * the **load-introduction vicinity** (within ``exclude_radius`` of any loaded DOF):</span>
+<span class="sd">      a point load&#39;s FE stress is singular (grows without bound under mesh refinement),</span>
+<span class="sd">      so no finite allowable can hold it — standard practice in stress-constrained TO</span>
+<span class="sd">      (Le et al. 2010 spread or exclude the load region for the same reason);</span>
+<span class="sd">    * **non-design (empty) elements**: the physics discipline forces ``rho -&gt; 0`` there,</span>
+<span class="sd">      but the geometry&#39;s raw ``rho_E`` (which this discipline consumes) can be ~1 when a</span>
+<span class="sd">      component overlaps the void region — combined with the ``Emin`` stiffness the</span>
+<span class="sd">      recovered &quot;solid stress&quot; is enormous and fictitious.</span>
+
+<span class="sd">    Returns ``None`` (no mask) when neither exclusion applies.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+    <span class="n">active</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">ones</span><span class="p">(</span><span class="n">eval_coords</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">])</span>
+    <span class="k">if</span> <span class="n">exclude_radius</span> <span class="o">&gt;</span> <span class="mf">0.0</span><span class="p">:</span>
+        <span class="n">loaded</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">nonzero</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">analysis</span><span class="o">.</span><span class="n">load_vector</span><span class="p">)</span><span class="o">.</span><span class="n">flatten</span><span class="p">())[</span><span class="mi">0</span><span class="p">]</span>
+        <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">loaded</span><span class="p">):</span>
+            <span class="n">dof_coords</span> <span class="o">=</span> <span class="n">analysis</span><span class="o">.</span><span class="n">function_spaces</span><span class="p">[</span><span class="s2">&quot;u&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">tabulate_dof_coordinates</span><span class="p">()</span>
+            <span class="n">pts</span> <span class="o">=</span> <span class="n">dof_coords</span><span class="p">[</span><span class="n">loaded</span><span class="p">]</span>
+            <span class="n">d</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">eval_coords</span><span class="p">[:,</span> <span class="kc">None</span><span class="p">,</span> <span class="p">:]</span> <span class="o">-</span> <span class="n">pts</span><span class="p">[</span><span class="kc">None</span><span class="p">,</span> <span class="p">:,</span> <span class="p">:],</span> <span class="n">axis</span><span class="o">=</span><span class="mi">2</span><span class="p">)</span><span class="o">.</span><span class="n">min</span><span class="p">(</span><span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">)</span>
+            <span class="n">active</span><span class="p">[</span><span class="n">d</span> <span class="o">&lt;=</span> <span class="n">exclude_radius</span><span class="p">]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="k">if</span> <span class="n">analysis</span><span class="o">.</span><span class="n">empty_elements</span><span class="p">:</span>
+        <span class="n">active</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">analysis</span><span class="o">.</span><span class="n">empty_elements</span><span class="p">,</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">int</span><span class="p">)]</span> <span class="o">=</span> <span class="mf">0.0</span>
+    <span class="k">return</span> <span class="n">active</span> <span class="k">if</span> <span class="n">np</span><span class="o">.</span><span class="n">any</span><span class="p">(</span><span class="n">active</span> <span class="o">==</span> <span class="mf">0.0</span><span class="p">)</span> <span class="k">else</span> <span class="kc">None</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_StressConstraintDiscipline</span><span class="p">(</span><span class="n">Discipline</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Aggregated von Mises stress constraint (unified aggregation-relaxation).</span>
+
+<span class="sd">    The nonlinear algebra (stress recovery, von Mises, relaxation, aggregation) and its</span>
+<span class="sd">    partials ``∂G/∂ρ|explicit`` and ``∂G/∂u`` come from the JAX kernel</span>
+<span class="sd">    (:class:`ggp.utils.jax_sensitivity.StressConstraintKernel`); the implicit-``u`` part is</span>
+<span class="sd">    one adjoint solve reusing the physics discipline&#39;s factorized ``K``:</span>
+<span class="sd">        ``dG/dρ_e = ∂G/∂ρ_e − λ_eᵀ (dE_drho_e · ke_ref) u_e``,  ``K λ = ∂G/∂u``.</span>
+
+<span class="sd">    Adaptive normalization (Le, Norato, Bruns, Ha &amp; Tortorelli 2010): aggregation is a</span>
+<span class="sd">    lower bound of the true max stress, so a converged ``G &lt;= 0`` design can still</span>
+<span class="sd">    violate ``σ_max &lt;= σ_lim`` pointwise (or, with a fixed loose allowable, end</span>
+<span class="sd">    over-conservative). With ``adaptive=True`` the emitted constraint is Le&#39;s form,</span>
+<span class="sd">    ``c · S(x) / σ_lim - 1 &lt;= 0``, with the *current-design* aggregate stress measure</span>
+
+<span class="sd">        S(x) = σ_a*(x)   — the critical allowable, i.e. the root of ``G(x, σ_a*) = 0``</span>
+<span class="sd">                           (the g-space analogue of σ_PN; found by bisection)</span>
+
+<span class="sd">    and the **lagged, O(1) geometric ratio** ``c = σ_max/σ_a*`` from the previous</span>
+<span class="sd">    iterate (``σ_max`` = ρ-weighted max von Mises, Verbart-consistent). Because the</span>
+<span class="sd">    absolute stress scale enters through ``S(x)`` *instantly*, a design whose stress</span>
+<span class="sd">    explodes within one MMA step is labeled infeasible immediately — only the mildly</span>
+<span class="sd">    varying ratio is lagged (this is what makes Le&#39;s normalization immune to the</span>
+<span class="sd">    phantom-feasible iterates an allowable-with-lag form produces under mass</span>
+<span class="sd">    minimization). At a fixed design the output equals ``σ_max/σ_lim - 1`` exactly;</span>
+<span class="sd">    fixed point: ``σ_max = σ_lim``. Sensitivity of ``σ_a*(x)`` via the implicit</span>
+<span class="sd">    function theorem: ``dσ_a*/dρ = -(∂G/∂ρ)/(∂G/∂σ_a)`` at ``(x, σ_a*)``, with the</span>
+<span class="sd">    ``u``-path handled by the same single adjoint solve. When the bisection bracket is</span>
+<span class="sd">    clipped (no interior root), the raw ``G`` at the clipped allowable is emitted so</span>
+<span class="sd">    the optimizer keeps a nonzero gradient.</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">phys_discipline</span><span class="p">,</span> <span class="n">se_ref</span><span class="p">,</span> <span class="n">sigma_lim</span><span class="p">,</span> <span class="n">num_elements</span><span class="p">,</span> <span class="n">dim</span><span class="p">,</span>
+                 <span class="n">q</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">P</span><span class="o">=</span><span class="mf">8.0</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="s2">&quot;verbart&quot;</span><span class="p">,</span> <span class="n">volfrac</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span>
+                 <span class="n">adaptive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">alpha</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">rho_solid</span><span class="o">=</span><span class="mf">0.5</span><span class="p">,</span> <span class="n">max_correction</span><span class="o">=</span><span class="mf">4.0</span><span class="p">,</span>
+                 <span class="n">active_mask</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">name</span><span class="o">=</span><span class="s2">&quot;StressConstraint&quot;</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="n">name</span><span class="o">=</span><span class="n">name</span><span class="p">)</span>
+        <span class="kn">from</span><span class="w"> </span><span class="nn">ggp.utils.jax_sensitivity</span><span class="w"> </span><span class="kn">import</span> <span class="n">StressConstraintKernel</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">phys</span> <span class="o">=</span> <span class="n">phys_discipline</span>
+        <span class="n">cell_dofs</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">([</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">phys_discipline</span><span class="o">.</span><span class="n">cell_dofs</span><span class="p">[</span><span class="n">e</span><span class="p">])</span>
+                                <span class="k">for</span> <span class="n">e</span> <span class="ow">in</span> <span class="nb">range</span><span class="p">(</span><span class="n">num_elements</span><span class="p">)],</span> <span class="n">dtype</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">int64</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span> <span class="o">=</span> <span class="n">StressConstraintKernel</span><span class="p">(</span><span class="n">cell_dofs</span><span class="p">,</span> <span class="n">se_ref</span><span class="p">,</span> <span class="n">sigma_lim</span><span class="p">,</span>
+                                             <span class="n">q</span><span class="o">=</span><span class="n">q</span><span class="p">,</span> <span class="n">P</span><span class="o">=</span><span class="n">P</span><span class="p">,</span> <span class="n">kind</span><span class="o">=</span><span class="n">kind</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">dim</span><span class="p">,</span>
+                                             <span class="n">active_mask</span><span class="o">=</span><span class="n">active_mask</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">num_elements</span> <span class="o">=</span> <span class="n">num_elements</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rho</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">adaptive</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="n">adaptive</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">alpha</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">alpha</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">rho_solid</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">rho_solid</span><span class="p">)</span>
+        <span class="c1"># Safety clamp: sigma_allow stays in [sigma_lim/max_correction,</span>
+        <span class="c1"># sigma_lim*max_correction] so an unachievable target (e.g. a stress raiser the</span>
+        <span class="c1"># optimizer cannot remove) can never ratchet the allowable to zero and blow up</span>
+        <span class="c1"># the constraint.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">max_correction</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">max_correction</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sigma_lim</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">sigma_lim</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">sigma_allow</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">sigma_lim</span><span class="p">)</span>     <span class="c1"># allowable the raw G is evaluated at</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_c</span> <span class="o">=</span> <span class="kc">None</span>                          <span class="c1"># lagged Le ratio sigma_max/sigma_a*</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_c_next</span> <span class="o">=</span> <span class="kc">None</span>                     <span class="c1"># ratio recorded at the current design</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_mode</span> <span class="o">=</span> <span class="s2">&quot;raw&quot;</span>                      <span class="c1"># &#39;le&#39; (adaptive interior) or &#39;raw&#39;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_sa_star</span> <span class="o">=</span> <span class="kc">None</span>                    <span class="c1"># current critical allowable (adaptive)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_prev_rho</span> <span class="o">=</span> <span class="kc">None</span>                   <span class="c1"># design of the last _run (idempotency)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cached_out</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="c1"># The Verbart weight must be the MASS density rho_V, not the penalized</span>
+        <span class="c1"># stiffness density rho_E: with rho_E ~ Mc^gammac (gammac=3) a gray design</span>
+        <span class="c1"># cuts the stress weight cubically while its mass falls only linearly, so</span>
+        <span class="c1"># mass-minimization can park in a feasible zero-stiffness &quot;gray haze&quot;. With</span>
+        <span class="c1"># the rho_V weight the haze is infeasible (sigma_hat ~ 1/rho^3 vs weight</span>
+        <span class="c1"># rho^1 -&gt; g ~ 1/rho^2 grows), as in the SIMP-literature formulation.</span>
+        <span class="c1"># rho_E stays an input for the implicit u-path (adjoint through K(rho_E)).</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">input_grammar</span><span class="o">.</span><span class="n">update_from_names</span><span class="p">([</span><span class="s2">&quot;rho_E&quot;</span><span class="p">,</span> <span class="s2">&quot;rho_V&quot;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_grammar</span><span class="o">.</span><span class="n">update_from_names</span><span class="p">([</span><span class="s2">&quot;stress&quot;</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">default_inputs</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;rho_E&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">num_elements</span><span class="p">,</span> <span class="n">volfrac</span><span class="p">),</span>
+                               <span class="s2">&quot;rho_V&quot;</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">full</span><span class="p">(</span><span class="n">num_elements</span><span class="p">,</span> <span class="n">volfrac</span><span class="p">)}</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;cache&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;cache_type&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache_type</span> <span class="o">=</span> <span class="n">Discipline</span><span class="o">.</span><span class="n">CacheType</span><span class="o">.</span><span class="n">NONE</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">input_data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+        <span class="c1"># rho_V is the Verbart weight (mass density); rho_E enters only implicitly</span>
+        <span class="c1"># through the displacement u = u(K(rho_E)), handled by the adjoint.</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_rho</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="p">[</span><span class="s2">&quot;rho_V&quot;</span><span class="p">]</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="n">u</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phys</span><span class="o">.</span><span class="n">last_u</span>
+
+        <span class="k">if</span> <span class="ow">not</span> <span class="bp">self</span><span class="o">.</span><span class="n">adaptive</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_mode</span> <span class="o">=</span> <span class="s2">&quot;raw&quot;</span>
+            <span class="n">G</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="o">.</span><span class="n">value</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rho</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="n">sigma_allow</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">sigma_allow</span><span class="p">)</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="p">[</span><span class="s2">&quot;stress&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">G</span><span class="p">])</span>
+            <span class="k">return</span>
+
+        <span class="c1"># IDEMPOTENT per design: GEMSEO&#39;s chain evaluates the discipline more than once</span>
+        <span class="c1"># per optimizer iteration (value pass + linearization pass). Advancing the</span>
+        <span class="c1"># lagged ratio on every call would make the constraint&#39;s value and gradient</span>
+        <span class="c1"># correspond to *different* constraints within one MMA iteration — the update</span>
+        <span class="c1"># must advance only when the design actually changes (Le&#39;s update is</span>
+        <span class="c1"># per-design-iteration, not per-evaluation).</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prev_rho</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="ow">and</span> <span class="n">np</span><span class="o">.</span><span class="n">array_equal</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rho</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_prev_rho</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="p">[</span><span class="s2">&quot;stress&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">_cached_out</span><span class="p">])</span>
+            <span class="k">return</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_prev_rho</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_rho</span><span class="o">.</span><span class="n">copy</span><span class="p">()</span>
+
+        <span class="n">lo</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigma_lim</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">max_correction</span>
+        <span class="n">hi</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigma_lim</span> <span class="o">*</span> <span class="mf">1e3</span>
+        <span class="n">sa_star</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="o">.</span><span class="n">critical_allowable</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rho</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="n">lo</span><span class="o">=</span><span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="o">=</span><span class="n">hi</span><span class="p">)</span>
+        <span class="c1"># rho-weighted (Verbart-consistent) max — NOT thresholded on density: a</span>
+        <span class="c1"># thresholded max is blind to a load path fading through intermediate</span>
+        <span class="c1"># densities, which lets mass-minimization collapse the design &quot;feasibly&quot;.</span>
+        <span class="n">wmax</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="o">.</span><span class="n">weighted_max_stress</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rho</span><span class="p">,</span> <span class="n">u</span><span class="p">)</span>
+        <span class="n">interior</span> <span class="o">=</span> <span class="p">(</span><span class="n">sa_star</span> <span class="o">&gt;</span> <span class="n">lo</span> <span class="o">*</span> <span class="mf">1.0001</span><span class="p">)</span> <span class="ow">and</span> <span class="p">(</span><span class="n">sa_star</span> <span class="o">&lt;</span> <span class="n">hi</span> <span class="o">*</span> <span class="mf">0.9999</span><span class="p">)</span> <span class="ow">and</span> <span class="n">wmax</span> <span class="o">&gt;</span> <span class="mf">0.0</span>
+
+        <span class="c1"># Advance the lag: the ratio recorded at the previous design becomes current.</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_c_next</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_c_next</span>
+
+        <span class="k">if</span> <span class="n">interior</span><span class="p">:</span>
+            <span class="c1"># Le&#39;s normalized constraint c·S(x)/σ_lim - 1 with S(x) = σ_a*(x) fresh at</span>
+            <span class="c1"># the current design and c the LAGGED (previous-design) O(1) ratio. First</span>
+            <span class="c1"># evaluation has no lag available -&gt; use the current ratio (output then</span>
+            <span class="c1"># equals σ_max/σ_lim - 1 exactly).</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_c</span> <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_c</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="n">wmax</span> <span class="o">/</span> <span class="n">sa_star</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_mode</span> <span class="o">=</span> <span class="s2">&quot;le&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_sa_star</span> <span class="o">=</span> <span class="n">sa_star</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_c_used</span> <span class="o">=</span> <span class="n">c</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sigma_allow</span> <span class="o">=</span> <span class="n">sa_star</span>          <span class="c1"># introspection: current critical allowable</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="n">c</span> <span class="o">*</span> <span class="n">sa_star</span> <span class="o">/</span> <span class="bp">self</span><span class="o">.</span><span class="n">sigma_lim</span> <span class="o">-</span> <span class="mf">1.0</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_c_next</span> <span class="o">=</span> <span class="n">wmax</span> <span class="o">/</span> <span class="n">sa_star</span>       <span class="c1"># ratio of THIS design, for the next one</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="c1"># No interior root (all-margin or fully violated design): emit the raw</span>
+            <span class="c1"># aggregate at the clipped allowable so a usable gradient survives.</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">_mode</span> <span class="o">=</span> <span class="s2">&quot;raw&quot;</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">sigma_allow</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="n">sa_star</span><span class="p">,</span> <span class="n">lo</span><span class="p">,</span> <span class="n">hi</span><span class="p">))</span>
+            <span class="n">out</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="o">.</span><span class="n">value</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rho</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="n">sigma_allow</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">sigma_allow</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">_cached_out</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">out</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="p">[</span><span class="s2">&quot;stress&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">out</span><span class="p">])</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_jacobian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">outputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="n">u</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phys</span><span class="o">.</span><span class="n">last_u</span>
+        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">_mode</span> <span class="o">==</span> <span class="s2">&quot;le&quot;</span><span class="p">:</span>
+            <span class="c1"># d(out)/dρ = (c/σ_lim)·dσ_a*/dρ with, by the implicit function theorem at</span>
+            <span class="c1"># G(x, σ_a*) = 0:  dσ_a*/d(·) = -(dG/d(·)) / (∂G/∂σ_a).</span>
+            <span class="n">_</span><span class="p">,</span> <span class="n">dG_drho_expl</span><span class="p">,</span> <span class="n">dG_du</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="o">.</span><span class="n">value_and_grads</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_rho</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="n">sigma_allow</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">_sa_star</span><span class="p">)</span>
+            <span class="n">G_sa</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="o">.</span><span class="n">dG_dsigma_allow</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">_rho</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">_sa_star</span><span class="p">)</span>
+            <span class="n">lam</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phys</span><span class="o">.</span><span class="n">adjoint_solve</span><span class="p">(</span><span class="n">dG_du</span><span class="p">)</span>
+            <span class="n">scale</span> <span class="o">=</span> <span class="o">-</span><span class="bp">self</span><span class="o">.</span><span class="n">_c_used</span> <span class="o">/</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">sigma_lim</span> <span class="o">*</span> <span class="n">G_sa</span><span class="p">)</span>
+            <span class="n">d_rhoV</span> <span class="o">=</span> <span class="n">scale</span> <span class="o">*</span> <span class="n">dG_drho_expl</span>                              <span class="c1"># explicit weight path</span>
+            <span class="n">d_rhoE</span> <span class="o">=</span> <span class="n">scale</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">phys</span><span class="o">.</span><span class="n">dstiffness_sensitivity</span><span class="p">(</span><span class="n">lam</span><span class="p">)</span>     <span class="c1"># implicit u-path</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">_</span><span class="p">,</span> <span class="n">dG_drho_expl</span><span class="p">,</span> <span class="n">dG_du</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">kernel</span><span class="o">.</span><span class="n">value_and_grads</span><span class="p">(</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">_rho</span><span class="p">,</span> <span class="n">u</span><span class="p">,</span> <span class="n">sigma_allow</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">sigma_allow</span><span class="p">)</span>
+            <span class="n">lam</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phys</span><span class="o">.</span><span class="n">adjoint_solve</span><span class="p">(</span><span class="n">dG_du</span><span class="p">)</span>
+            <span class="n">d_rhoV</span> <span class="o">=</span> <span class="n">dG_drho_expl</span>
+            <span class="n">d_rhoE</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">phys</span><span class="o">.</span><span class="n">dstiffness_sensitivity</span><span class="p">(</span><span class="n">lam</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">jac</span> <span class="o">=</span> <span class="p">{</span><span class="s2">&quot;stress&quot;</span><span class="p">:</span> <span class="p">{</span><span class="s2">&quot;rho_E&quot;</span><span class="p">:</span> <span class="n">d_rhoE</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">),</span>
+                               <span class="s2">&quot;rho_V&quot;</span><span class="p">:</span> <span class="n">d_rhoV</span><span class="o">.</span><span class="n">reshape</span><span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="o">-</span><span class="mi">1</span><span class="p">)}}</span>
+
+
+<span class="k">class</span><span class="w"> </span><span class="nc">_ShiftedObjectiveDiscipline</span><span class="p">(</span><span class="n">Discipline</span><span class="p">):</span>
+<span class="w">    </span><span class="sd">&quot;&quot;&quot;Affine-rescale a response used as the objective: ``(base + shift) * scale``.</span>
+
+<span class="sd">    An affine map changes neither the minimizer nor the gradient direction — it exists</span>
+<span class="sd">    for two gemseo-mma reasons:</span>
+<span class="sd">    * ``shift``: the stopping test divides by the *signed* initial objective</span>
+<span class="sd">      (``change_relative_f = change_f / f_ref``), so a response that starts negative</span>
+<span class="sd">      (e.g. the volume response below the reference fill) stops MMA at iteration 1.</span>
+<span class="sd">      The shift keeps the objective positive.</span>
+<span class="sd">    * ``scale``: MMA weighs constraint violation against the objective via a fixed</span>
+<span class="sd">      penalty (c = 1000); a ×100-scaled response (volume in percent) leaves only ~10×</span>
+<span class="sd">      authority for feasibility, and MMA will happily descend the objective while</span>
+<span class="sd">      infeasible. Scaling the objective to O(1) restores the usual ~1000× feasibility</span>
+<span class="sd">      priority. (E.g. shift=200, scale=0.01 turns the volume response into v + 1.)</span>
+
+<span class="sd">    The pipeline inverts the map when reporting (``f_opt/scale - shift``).</span>
+<span class="sd">    &quot;&quot;&quot;</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="fm">__init__</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">base_name</span><span class="p">:</span> <span class="nb">str</span><span class="p">,</span> <span class="n">shift</span><span class="p">:</span> <span class="nb">float</span><span class="p">,</span> <span class="n">scale</span><span class="p">:</span> <span class="nb">float</span> <span class="o">=</span> <span class="mf">1.0</span><span class="p">):</span>
+        <span class="nb">super</span><span class="p">()</span><span class="o">.</span><span class="fm">__init__</span><span class="p">(</span><span class="sa">f</span><span class="s2">&quot;Shifted_</span><span class="si">{</span><span class="n">base_name</span><span class="si">}</span><span class="s2">&quot;</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">base_name</span> <span class="o">=</span> <span class="n">base_name</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">out_name</span> <span class="o">=</span> <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">base_name</span><span class="si">}</span><span class="s2">_shifted&quot;</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">shift</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">shift</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">scale</span><span class="p">)</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">input_grammar</span><span class="o">.</span><span class="n">update_from_names</span><span class="p">([</span><span class="n">base_name</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">output_grammar</span><span class="o">.</span><span class="n">update_from_names</span><span class="p">([</span><span class="bp">self</span><span class="o">.</span><span class="n">out_name</span><span class="p">])</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">default_inputs</span> <span class="o">=</span> <span class="p">{</span><span class="n">base_name</span><span class="p">:</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="mi">1</span><span class="p">)}</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;cache&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="k">if</span> <span class="nb">hasattr</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="s2">&quot;cache_type&quot;</span><span class="p">):</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">cache_type</span> <span class="o">=</span> <span class="n">Discipline</span><span class="o">.</span><span class="n">CacheType</span><span class="o">.</span><span class="n">NONE</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_run</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">input_data</span><span class="o">=</span><span class="kc">None</span><span class="p">):</span>
+        <span class="k">if</span> <span class="n">input_data</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="o">.</span><span class="n">update</span><span class="p">(</span><span class="n">input_data</span><span class="p">)</span>
+        <span class="n">val</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">base_name</span><span class="p">])</span><span class="o">.</span><span class="n">flatten</span><span class="p">()</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">local_data</span><span class="p">[</span><span class="bp">self</span><span class="o">.</span><span class="n">out_name</span><span class="p">]</span> <span class="o">=</span> <span class="p">(</span><span class="n">val</span> <span class="o">+</span> <span class="bp">self</span><span class="o">.</span><span class="n">shift</span><span class="p">)</span> <span class="o">*</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span>
+
+    <span class="k">def</span><span class="w"> </span><span class="nf">_compute_jacobian</span><span class="p">(</span><span class="bp">self</span><span class="p">,</span> <span class="n">inputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="n">outputs</span><span class="o">=</span><span class="kc">None</span><span class="p">,</span> <span class="o">**</span><span class="n">kwargs</span><span class="p">):</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">jac</span> <span class="o">=</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">out_name</span><span class="p">:</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">base_name</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">scale</span> <span class="o">*</span> <span class="n">np</span><span class="o">.</span><span class="n">eye</span><span class="p">(</span><span class="mi">1</span><span class="p">)}}</span>
+
+
 <span class="k">class</span><span class="w"> </span><span class="nc">_DeflatedObjectiveDiscipline</span><span class="p">(</span><span class="n">Discipline</span><span class="p">):</span>
 <span class="w">    </span><span class="sd">&quot;&quot;&quot;Deflated-objective discipline used by the deflation global-search strategy.</span>
 
@@ -956,6 +1306,32 @@ window.runMermaid = runMermaid;</script>
             <span class="n">x</span><span class="p">[</span><span class="mi">7</span><span class="p">::</span><span class="mi">8</span><span class="p">]</span> <span class="o">=</span> <span class="n">Mc</span>
             <span class="k">return</span> <span class="n">x</span>
 
+        <span class="k">if</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;3D_Box&quot;</span><span class="p">,</span> <span class="s2">&quot;Box3D&quot;</span><span class="p">):</span>
+            <span class="c1"># Grid-fill: tile the domain with nc oriented boxes (axis-aligned start),</span>
+            <span class="c1"># each sized to a lattice cell, Mc = volfrac. The optimiser then moves,</span>
+            <span class="c1"># resizes, rotates and removes them.</span>
+            <span class="n">Lx</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Lx&quot;</span><span class="p">,</span> <span class="mf">60.0</span><span class="p">);</span> <span class="n">Ly</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Ly&quot;</span><span class="p">,</span> <span class="mf">30.0</span><span class="p">);</span> <span class="n">Lz</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Lz&quot;</span><span class="p">,</span> <span class="mf">30.0</span><span class="p">)</span>
+            <span class="n">lb</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;lb&quot;</span><span class="p">);</span> <span class="n">ub</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ub&quot;</span><span class="p">);</span> <span class="n">vf</span> <span class="o">=</span> <span class="n">kwargs</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;volfrac&quot;</span><span class="p">,</span> <span class="mf">0.3</span><span class="p">)</span>
+            <span class="n">nc</span> <span class="o">=</span> <span class="n">n</span> <span class="o">//</span> <span class="mi">9</span>
+            <span class="n">c</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">ceil</span><span class="p">(</span><span class="n">nc</span> <span class="o">**</span> <span class="p">(</span><span class="mf">1.0</span> <span class="o">/</span> <span class="mf">3.0</span><span class="p">)))</span>
+            <span class="n">xs</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">Lx</span> <span class="o">/</span> <span class="n">c</span>
+            <span class="n">ys</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">Ly</span> <span class="o">/</span> <span class="n">c</span>
+            <span class="n">zs</span> <span class="o">=</span> <span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">arange</span><span class="p">(</span><span class="n">c</span><span class="p">)</span> <span class="o">+</span> <span class="mf">0.5</span><span class="p">)</span> <span class="o">*</span> <span class="n">Lz</span> <span class="o">/</span> <span class="n">c</span>
+            <span class="n">XX</span><span class="p">,</span> <span class="n">YY</span><span class="p">,</span> <span class="n">ZZ</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">meshgrid</span><span class="p">(</span><span class="n">xs</span><span class="p">,</span> <span class="n">ys</span><span class="p">,</span> <span class="n">zs</span><span class="p">,</span> <span class="n">indexing</span><span class="o">=</span><span class="s2">&quot;ij&quot;</span><span class="p">)</span>
+            <span class="n">Xc</span> <span class="o">=</span> <span class="n">XX</span><span class="o">.</span><span class="n">ravel</span><span class="p">()[:</span><span class="n">nc</span><span class="p">];</span> <span class="n">Yc</span> <span class="o">=</span> <span class="n">YY</span><span class="o">.</span><span class="n">ravel</span><span class="p">()[:</span><span class="n">nc</span><span class="p">];</span> <span class="n">Zc</span> <span class="o">=</span> <span class="n">ZZ</span><span class="o">.</span><span class="n">ravel</span><span class="p">()[:</span><span class="n">nc</span><span class="p">]</span>
+            <span class="n">sx</span><span class="p">,</span> <span class="n">sy</span><span class="p">,</span> <span class="n">sz</span> <span class="o">=</span> <span class="n">Lx</span> <span class="o">/</span> <span class="n">c</span><span class="p">,</span> <span class="n">Ly</span> <span class="o">/</span> <span class="n">c</span><span class="p">,</span> <span class="n">Lz</span> <span class="o">/</span> <span class="n">c</span>
+            <span class="n">x</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">n</span><span class="p">)</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">((</span><span class="n">Xc</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">9</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">ub</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">0</span><span class="p">::</span><span class="mi">9</span><span class="p">]),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">((</span><span class="n">Yc</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">9</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">ub</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">1</span><span class="p">::</span><span class="mi">9</span><span class="p">]),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">2</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">((</span><span class="n">Zc</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">2</span><span class="p">::</span><span class="mi">9</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">ub</span><span class="p">[</span><span class="mi">2</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">2</span><span class="p">::</span><span class="mi">9</span><span class="p">]),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">3</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">((</span><span class="n">sx</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">3</span><span class="p">::</span><span class="mi">9</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">ub</span><span class="p">[</span><span class="mi">3</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">3</span><span class="p">::</span><span class="mi">9</span><span class="p">]),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">4</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">((</span><span class="n">sy</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">4</span><span class="p">::</span><span class="mi">9</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">ub</span><span class="p">[</span><span class="mi">4</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">4</span><span class="p">::</span><span class="mi">9</span><span class="p">]),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">5</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">((</span><span class="n">sz</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">5</span><span class="p">::</span><span class="mi">9</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">ub</span><span class="p">[</span><span class="mi">5</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">5</span><span class="p">::</span><span class="mi">9</span><span class="p">]),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">6</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">((</span><span class="mf">0.0</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">6</span><span class="p">::</span><span class="mi">9</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">ub</span><span class="p">[</span><span class="mi">6</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">6</span><span class="p">::</span><span class="mi">9</span><span class="p">]),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>  <span class="c1"># theta</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">7</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">((</span><span class="mf">0.0</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">7</span><span class="p">::</span><span class="mi">9</span><span class="p">])</span> <span class="o">/</span> <span class="p">(</span><span class="n">ub</span><span class="p">[</span><span class="mi">7</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">-</span> <span class="n">lb</span><span class="p">[</span><span class="mi">7</span><span class="p">::</span><span class="mi">9</span><span class="p">]),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>  <span class="c1"># phi</span>
+            <span class="n">x</span><span class="p">[</span><span class="mi">8</span><span class="p">::</span><span class="mi">9</span><span class="p">]</span> <span class="o">=</span> <span class="n">vf</span>
+            <span class="k">return</span> <span class="n">x</span>
+
         <span class="c1"># Fallback for other modes</span>
         <span class="k">return</span> <span class="n">np</span><span class="o">.</span><span class="n">random</span><span class="o">.</span><span class="n">default_rng</span><span class="p">(</span><span class="mi">42</span><span class="p">)</span><span class="o">.</span><span class="n">uniform</span><span class="p">(</span><span class="mf">0.4</span><span class="p">,</span> <span class="mf">0.6</span><span class="p">,</span> <span class="n">n</span><span class="p">)</span>
 
@@ -978,6 +1354,31 @@ window.runMermaid = runMermaid;</script>
         <span class="n">Lz</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Lz&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
         <span class="n">mesh_area</span> <span class="o">=</span> <span class="n">Lx</span> <span class="o">*</span> <span class="n">Ly</span> <span class="o">*</span> <span class="p">(</span><span class="n">Lz</span> <span class="k">if</span> <span class="n">Lz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">1.0</span><span class="p">)</span>
 
+        <span class="c1"># Truss mode: build the node lattice + radius-based bar connectivity once,</span>
+        <span class="c1"># up-front, so the geometry discipline (KS aggregates over *bars*) and the</span>
+        <span class="c1"># design space (2 vars/node + 2 vars/bar) both get the right sizes.</span>
+        <span class="n">mode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">mode</span>
+        <span class="n">truss_nodes</span> <span class="o">=</span> <span class="n">truss_bars</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="n">num_components_eff</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_components</span>
+        <span class="k">if</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;Truss&quot;</span><span class="p">,</span> <span class="s2">&quot;2D_Truss&quot;</span><span class="p">):</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">ggp.projection.truss_2d</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_ground_structure</span>
+            <span class="n">gnx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">grid_nx</span> <span class="ow">or</span> <span class="mi">4</span>
+            <span class="n">gny</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">grid_ny</span> <span class="ow">or</span> <span class="mi">3</span>
+            <span class="n">truss_nodes</span><span class="p">,</span> <span class="n">truss_bars</span> <span class="o">=</span> <span class="n">build_ground_structure</span><span class="p">(</span>
+                <span class="n">gnx</span><span class="p">,</span> <span class="n">gny</span><span class="p">,</span> <span class="n">Lx</span><span class="p">,</span> <span class="n">Ly</span><span class="p">,</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">truss_radius</span>
+            <span class="p">)</span>
+            <span class="n">num_components_eff</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">truss_bars</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;Truss3D&quot;</span><span class="p">,</span> <span class="s2">&quot;3D_Truss&quot;</span><span class="p">):</span>
+            <span class="kn">from</span><span class="w"> </span><span class="nn">ggp.projection.truss_3d</span><span class="w"> </span><span class="kn">import</span> <span class="n">build_ground_structure_3d</span>
+            <span class="n">gnx</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">grid_nx</span> <span class="ow">or</span> <span class="mi">3</span>
+            <span class="n">gny</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">grid_ny</span> <span class="ow">or</span> <span class="mi">2</span>
+            <span class="n">gnz</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">grid_nz</span> <span class="ow">or</span> <span class="mi">2</span>
+            <span class="n">truss_nodes</span><span class="p">,</span> <span class="n">truss_bars</span> <span class="o">=</span> <span class="n">build_ground_structure_3d</span><span class="p">(</span>
+                <span class="n">gnx</span><span class="p">,</span> <span class="n">gny</span><span class="p">,</span> <span class="n">gnz</span><span class="p">,</span> <span class="n">Lx</span><span class="p">,</span> <span class="n">Ly</span><span class="p">,</span> <span class="n">Lz</span> <span class="k">if</span> <span class="n">Lz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">30.0</span><span class="p">,</span>
+                <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">truss_radius</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">num_components_eff</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">truss_bars</span><span class="p">)</span>
+
         <span class="c1"># 3. Geometry Discipline</span>
         <span class="c1"># Use pp=100 to match Matlab smooth_sat.m (sharper binary saturation)</span>
         <span class="n">geom_kwargs</span> <span class="o">=</span> <span class="p">{</span>
@@ -990,15 +1391,21 @@ window.runMermaid = runMermaid;</script>
             <span class="s2">&quot;r_gp&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">r_gp</span><span class="p">,</span>
             <span class="s2">&quot;Ngp&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">Ngp</span><span class="p">,</span>
             <span class="s2">&quot;min_thickness&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">min_thickness</span><span class="p">,</span>
+            <span class="s2">&quot;fix_mc&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">fix_mc</span> <span class="ow">or</span> <span class="kc">None</span><span class="p">,</span>
         <span class="p">}</span>
         <span class="c1"># Apply per-run sharpness overrides (continuation strategy).</span>
         <span class="k">for</span> <span class="n">_k</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;ka&quot;</span><span class="p">,</span> <span class="s2">&quot;pp&quot;</span><span class="p">,</span> <span class="s2">&quot;r_gp&quot;</span><span class="p">,</span> <span class="s2">&quot;gammac&quot;</span><span class="p">,</span> <span class="s2">&quot;gammav&quot;</span><span class="p">):</span>
             <span class="k">if</span> <span class="n">_k</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">overrides</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">overrides</span><span class="p">[</span><span class="n">_k</span><span class="p">]</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
                 <span class="n">geom_kwargs</span><span class="p">[</span><span class="n">_k</span><span class="p">]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">overrides</span><span class="p">[</span><span class="n">_k</span><span class="p">]</span>
 
+        <span class="c1"># Truss mode: hand the connectivity to the mapper via kwargs.</span>
+        <span class="k">if</span> <span class="n">truss_nodes</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
+            <span class="n">geom_kwargs</span><span class="p">[</span><span class="s2">&quot;nodes&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">truss_nodes</span>
+            <span class="n">geom_kwargs</span><span class="p">[</span><span class="s2">&quot;bars&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">truss_bars</span>
+
         <span class="n">geom_discipline</span> <span class="o">=</span> <span class="n">GGPGeometryDiscipline</span><span class="p">(</span>
             <span class="n">mesh</span><span class="o">=</span><span class="n">analysis</span><span class="o">.</span><span class="n">mesh</span><span class="p">,</span>
-            <span class="n">num_components</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_components</span><span class="p">,</span>
+            <span class="n">num_components</span><span class="o">=</span><span class="n">num_components_eff</span><span class="p">,</span>
             <span class="n">mode</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">mode</span><span class="p">,</span>
             <span class="o">**</span><span class="p">{</span><span class="n">k</span><span class="p">:</span> <span class="n">v</span> <span class="k">for</span> <span class="n">k</span><span class="p">,</span> <span class="n">v</span> <span class="ow">in</span> <span class="n">geom_kwargs</span><span class="o">.</span><span class="n">items</span><span class="p">()</span> <span class="k">if</span> <span class="n">v</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">}</span>
         <span class="p">)</span>
@@ -1016,7 +1423,7 @@ window.runMermaid = runMermaid;</script>
         <span class="c1"># small Emin floor below because rectangle densities can be exactly 0</span>
         <span class="c1"># (the AMNA characteristic saturates to 0 outside the block) -&gt; Emin=0 would</span>
         <span class="c1"># make the FE system singular in fully-void regions.</span>
-        <span class="n">p_penalty</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="n">method</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;GP&quot;</span><span class="p">,</span> <span class="s2">&quot;rect&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="mf">3.0</span>
+        <span class="n">p_penalty</span> <span class="o">=</span> <span class="mf">1.0</span> <span class="k">if</span> <span class="n">method</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;GP&quot;</span><span class="p">,</span> <span class="s2">&quot;rect&quot;</span><span class="p">,</span> <span class="s2">&quot;box&quot;</span><span class="p">)</span> <span class="k">else</span> <span class="mf">3.0</span>
         <span class="c1"># Emin: the reference Free GP branch (model_updateM.py) computes E = rho*E0</span>
         <span class="c1"># with NO Emin floor (void E -&gt; ~0 via the smooth-saturation residual).</span>
         <span class="c1"># GGP-Topo&#39;s SIMP form adds Emin, which spuriously raises void E and, because</span>
@@ -1026,7 +1433,10 @@ window.runMermaid = runMermaid;</script>
         <span class="c1"># their reference uses MNA *with* Emin (and Emin=0 makes the ALM FE singular</span>
         <span class="c1"># -&gt; NaN), so the no-floor case is restricted to non-ALM modes.</span>
         <span class="n">_is_alm</span> <span class="o">=</span> <span class="s2">&quot;ALM&quot;</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">mode</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
-        <span class="n">e_min</span> <span class="o">=</span> <span class="mf">0.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;GP&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_is_alm</span><span class="p">)</span> <span class="k">else</span> <span class="mf">1e-6</span>
+        <span class="c1"># Truss ground structures leave large fully-void regions (bars are thin lines</span>
+        <span class="c1"># in the domain), so a zero Emin makes K singular; keep a small floor for them.</span>
+        <span class="n">_is_truss</span> <span class="o">=</span> <span class="s2">&quot;Truss&quot;</span> <span class="ow">in</span> <span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">mode</span> <span class="ow">or</span> <span class="s2">&quot;&quot;</span><span class="p">)</span>
+        <span class="n">e_min</span> <span class="o">=</span> <span class="mf">0.0</span> <span class="k">if</span> <span class="p">(</span><span class="n">method</span> <span class="o">==</span> <span class="s2">&quot;GP&quot;</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_is_alm</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">_is_truss</span><span class="p">)</span> <span class="k">else</span> <span class="mf">1e-6</span>
 
         <span class="c1"># Per-run penalisation overrides (continuation strategy).</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">overrides</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;p_penalty&quot;</span><span class="p">)</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
@@ -1053,7 +1463,11 @@ window.runMermaid = runMermaid;</script>
         <span class="n">design_space</span> <span class="o">=</span> <span class="n">create_design_space</span><span class="p">()</span>
         <span class="n">mode</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">mode</span>
 
-        <span class="k">if</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;ALM&quot;</span><span class="p">,</span> <span class="s2">&quot;2D_ALM&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_layers</span><span class="p">:</span>
+        <span class="k">if</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;Truss&quot;</span><span class="p">,</span> <span class="s2">&quot;2D_Truss&quot;</span><span class="p">,</span> <span class="s2">&quot;Truss3D&quot;</span><span class="p">,</span> <span class="s2">&quot;3D_Truss&quot;</span><span class="p">):</span>
+            <span class="c1"># dim vars per node + 2 vars per bar (h, Mc); the mapper&#39;s bounds array</span>
+            <span class="c1"># already has the right total length (2N+2B in 2D, 3N+2B in 3D).</span>
+            <span class="n">num_vars</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">geom_discipline</span><span class="o">.</span><span class="n">lb</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">[</span><span class="s2">&quot;ALM&quot;</span><span class="p">,</span> <span class="s2">&quot;2D_ALM&quot;</span><span class="p">]</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_layers</span><span class="p">:</span>
             <span class="n">_np_val</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">comp_per_layer</span>
             <span class="n">_nY</span>     <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">num_layers</span>
             <span class="n">num_vars</span> <span class="o">=</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">_nY</span> <span class="o">*</span> <span class="n">_np_val</span> <span class="o">+</span> <span class="mi">2</span> <span class="o">*</span> <span class="n">_np_val</span> <span class="o">+</span> <span class="mi">2</span>  <span class="c1"># [Xc,L]+h+Mc+[y0,theta0]</span>
@@ -1107,13 +1521,14 @@ window.runMermaid = runMermaid;</script>
                 <span class="k">if</span> <span class="n">geom</span><span class="o">.</span><span class="n">role</span> <span class="o">==</span> <span class="s2">&quot;non_design&quot;</span> <span class="ow">and</span> <span class="n">geom</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;box&quot;</span><span class="p">:</span>
                     <span class="n">_init_kwargs</span><span class="p">[</span><span class="s2">&quot;non_design_origin&quot;</span><span class="p">]</span> <span class="o">=</span> <span class="n">geom</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;origin&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
                     <span class="k">break</span>
-        <span class="k">elif</span> <span class="n">mode</span> <span class="o">==</span> <span class="s2">&quot;3D_Free&quot;</span><span class="p">:</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;3D_Free&quot;</span><span class="p">,</span> <span class="s2">&quot;3D_Box&quot;</span><span class="p">,</span> <span class="s2">&quot;Box3D&quot;</span><span class="p">):</span>
             <span class="n">_init_kwargs</span> <span class="o">=</span> <span class="p">{</span>
                 <span class="s2">&quot;Lx&quot;</span><span class="p">:</span> <span class="n">Lx</span><span class="p">,</span>
                 <span class="s2">&quot;Ly&quot;</span><span class="p">:</span> <span class="n">Ly</span><span class="p">,</span>
                 <span class="s2">&quot;Lz&quot;</span><span class="p">:</span> <span class="n">Lz</span> <span class="k">if</span> <span class="n">Lz</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="mf">30.0</span><span class="p">,</span>
                 <span class="s2">&quot;lb&quot;</span><span class="p">:</span> <span class="n">geom_discipline</span><span class="o">.</span><span class="n">lb</span><span class="p">,</span>
                 <span class="s2">&quot;ub&quot;</span><span class="p">:</span> <span class="n">geom_discipline</span><span class="o">.</span><span class="n">ub</span><span class="p">,</span>
+                <span class="s2">&quot;volfrac&quot;</span><span class="p">:</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">volfrac</span><span class="p">,</span>
             <span class="p">}</span>
         <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">x0</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span><span class="p">:</span>
             <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">x0</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">0</span><span class="p">]</span> <span class="o">!=</span> <span class="n">num_vars</span><span class="p">:</span>
@@ -1122,6 +1537,18 @@ window.runMermaid = runMermaid;</script>
                     <span class="sa">f</span><span class="s2">&quot;</span><span class="si">{</span><span class="n">num_vars</span><span class="si">}</span><span class="s2"> design variables.&quot;</span>
                 <span class="p">)</span>
             <span class="n">x_init</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">x0</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
+        <span class="k">elif</span> <span class="n">mode</span> <span class="ow">in</span> <span class="p">(</span><span class="s2">&quot;Truss&quot;</span><span class="p">,</span> <span class="s2">&quot;2D_Truss&quot;</span><span class="p">,</span> <span class="s2">&quot;Truss3D&quot;</span><span class="p">,</span> <span class="s2">&quot;3D_Truss&quot;</span><span class="p">):</span>
+            <span class="c1"># Start: every node on its lattice site, every ground-structure bar</span>
+            <span class="c1"># present with a modest thickness and Mc = volfrac (the optimizer then</span>
+            <span class="c1"># moves nodes, fattens load-paths and removes idle bars via h/Mc).</span>
+            <span class="n">N</span><span class="p">,</span> <span class="n">B</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">truss_nodes</span><span class="p">),</span> <span class="nb">len</span><span class="p">(</span><span class="n">truss_bars</span><span class="p">)</span>
+            <span class="n">nd</span> <span class="o">=</span> <span class="n">truss_nodes</span><span class="o">.</span><span class="n">shape</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>                    <span class="c1"># 2 (planar) or 3 (spatial)</span>
+            <span class="n">lb</span><span class="p">,</span> <span class="n">ub</span> <span class="o">=</span> <span class="n">geom_discipline</span><span class="o">.</span><span class="n">lb</span><span class="p">,</span> <span class="n">geom_discipline</span><span class="o">.</span><span class="n">ub</span>
+            <span class="n">x_un</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">empty</span><span class="p">(</span><span class="n">num_vars</span><span class="p">)</span>
+            <span class="n">x_un</span><span class="p">[:</span> <span class="n">nd</span> <span class="o">*</span> <span class="n">N</span><span class="p">]</span> <span class="o">=</span> <span class="n">truss_nodes</span><span class="o">.</span><span class="n">ravel</span><span class="p">()</span>
+            <span class="n">x_un</span><span class="p">[</span><span class="n">nd</span> <span class="o">*</span> <span class="n">N</span> <span class="p">:</span> <span class="n">nd</span> <span class="o">*</span> <span class="n">N</span> <span class="o">+</span> <span class="n">B</span><span class="p">]</span> <span class="o">=</span> <span class="nb">max</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">min_thickness</span> <span class="ow">or</span> <span class="mf">1.0</span><span class="p">,</span> <span class="mf">2.0</span><span class="p">)</span>
+            <span class="n">x_un</span><span class="p">[</span><span class="n">nd</span> <span class="o">*</span> <span class="n">N</span> <span class="o">+</span> <span class="n">B</span> <span class="p">:]</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">volfrac</span>
+            <span class="n">x_init</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">clip</span><span class="p">((</span><span class="n">x_un</span> <span class="o">-</span> <span class="n">lb</span><span class="p">)</span> <span class="o">/</span> <span class="p">(</span><span class="n">ub</span> <span class="o">-</span> <span class="n">lb</span><span class="p">),</span> <span class="mf">0.0</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)</span>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">x_init</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">_make_init</span><span class="p">(</span><span class="n">mode</span><span class="p">,</span> <span class="n">num_vars</span><span class="p">,</span> <span class="o">**</span><span class="n">_init_kwargs</span><span class="p">)</span>
         <span class="c1"># Under symmetry the design variable is the free half (&quot;x_free&quot;); the</span>
@@ -1157,9 +1584,66 @@ window.runMermaid = runMermaid;</script>
             <span class="p">)</span>
             <span class="n">extra_disciplines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">oh_disc</span><span class="p">)</span>
 
-        <span class="c1"># 7b. Deflation: repel known minima by deflating the objective.</span>
-        <span class="n">objective_name</span> <span class="o">=</span> <span class="s2">&quot;compliance&quot;</span>
-        <span class="k">if</span> <span class="bp">self</span><span class="o">.</span><span class="n">deflation</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">deflation</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;roots&quot;</span><span class="p">):</span>
+        <span class="c1"># A response&#39;s discipline is built whenever it&#39;s needed as a CONSTRAINT or as the</span>
+        <span class="c1"># OBJECTIVE; when only the latter, its params come from spec.objective.params</span>
+        <span class="c1"># (mirrors ConstraintSpec.params) instead of a ConstraintSpec.</span>
+        <span class="n">needed_responses</span> <span class="o">=</span> <span class="p">{</span><span class="n">c</span><span class="o">.</span><span class="n">name</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">constraints</span><span class="p">}</span> <span class="o">|</span> <span class="p">{</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">objective</span><span class="o">.</span><span class="n">name</span><span class="p">}</span>
+
+        <span class="c1"># 7a2. Displacement constraint/objective: bound or optimize |u| at a tracked DOF.</span>
+        <span class="n">disp_spec</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">constraints</span> <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;displacement&quot;</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;displacement&quot;</span> <span class="ow">in</span> <span class="n">needed_responses</span><span class="p">:</span>
+            <span class="n">dp</span> <span class="o">=</span> <span class="n">disp_spec</span><span class="o">.</span><span class="n">params</span> <span class="k">if</span> <span class="n">disp_spec</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">objective</span><span class="o">.</span><span class="n">params</span>
+            <span class="n">V_u</span> <span class="o">=</span> <span class="n">analysis</span><span class="o">.</span><span class="n">function_spaces</span><span class="p">[</span><span class="s2">&quot;u&quot;</span><span class="p">]</span>
+            <span class="n">dof_coords</span> <span class="o">=</span> <span class="n">V_u</span><span class="o">.</span><span class="n">tabulate_dof_coordinates</span><span class="p">()</span>
+            <span class="n">axis</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">dp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;axis&quot;</span><span class="p">,</span> <span class="mi">1</span><span class="p">))</span>
+            <span class="n">u_max</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">dp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;u_max&quot;</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">))</span>
+            <span class="n">sub_dofs_axis</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">V_u</span><span class="o">.</span><span class="n">sub</span><span class="p">(</span><span class="n">axis</span><span class="p">)</span><span class="o">.</span><span class="n">dofmap</span><span class="p">()</span><span class="o">.</span><span class="n">dofs</span><span class="p">())</span>
+            <span class="n">pt</span> <span class="o">=</span> <span class="n">dp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;point&quot;</span><span class="p">,</span> <span class="kc">None</span><span class="p">)</span>
+            <span class="k">if</span> <span class="n">pt</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>                                  <span class="c1"># default: the loaded (mid-right) point</span>
+                <span class="n">pt</span> <span class="o">=</span> <span class="p">[</span><span class="n">Lx</span><span class="p">,</span> <span class="n">Ly</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">]</span> <span class="o">+</span> <span class="p">([(</span><span class="n">Lz</span> <span class="ow">or</span> <span class="mf">30.0</span><span class="p">)</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">]</span> <span class="k">if</span> <span class="n">analysis</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">3</span> <span class="k">else</span> <span class="p">[])</span>
+            <span class="n">target</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">pt</span><span class="p">[:</span><span class="n">analysis</span><span class="o">.</span><span class="n">dim</span><span class="p">],</span> <span class="n">dtype</span><span class="o">=</span><span class="nb">float</span><span class="p">)</span>
+            <span class="n">nearest</span> <span class="o">=</span> <span class="nb">int</span><span class="p">(</span><span class="n">sub_dofs_axis</span><span class="p">[</span><span class="n">np</span><span class="o">.</span><span class="n">argmin</span><span class="p">(</span>
+                <span class="n">np</span><span class="o">.</span><span class="n">linalg</span><span class="o">.</span><span class="n">norm</span><span class="p">(</span><span class="n">dof_coords</span><span class="p">[</span><span class="n">sub_dofs_axis</span><span class="p">]</span> <span class="o">-</span> <span class="n">target</span><span class="p">,</span> <span class="n">axis</span><span class="o">=</span><span class="mi">1</span><span class="p">))])</span>
+            <span class="n">ell</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">(</span><span class="n">V_u</span><span class="o">.</span><span class="n">dim</span><span class="p">());</span> <span class="n">ell</span><span class="p">[</span><span class="n">nearest</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+            <span class="n">disp_disc</span> <span class="o">=</span> <span class="n">_DisplacementConstraintDiscipline</span><span class="p">(</span>
+                <span class="n">phys_discipline</span><span class="p">,</span> <span class="n">ell</span><span class="p">,</span> <span class="n">u_max</span><span class="p">,</span>
+                <span class="n">num_elements</span><span class="o">=</span><span class="n">phys_discipline</span><span class="o">.</span><span class="n">num_elements</span><span class="p">,</span> <span class="n">volfrac</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">volfrac</span><span class="p">,</span>
+            <span class="p">)</span>
+            <span class="n">extra_disciplines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">disp_disc</span><span class="p">)</span>
+
+        <span class="c1"># 7a3. Stress constraint/objective: aggregated von Mises (adjoint via JAX kernel).</span>
+        <span class="n">stress_spec</span> <span class="o">=</span> <span class="nb">next</span><span class="p">((</span><span class="n">c</span> <span class="k">for</span> <span class="n">c</span> <span class="ow">in</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">constraints</span> <span class="k">if</span> <span class="n">c</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;stress&quot;</span><span class="p">),</span> <span class="kc">None</span><span class="p">)</span>
+        <span class="k">if</span> <span class="s2">&quot;stress&quot;</span> <span class="ow">in</span> <span class="n">needed_responses</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">analysis</span><span class="o">.</span><span class="n">se_ref</span> <span class="ow">is</span> <span class="kc">None</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span><span class="s2">&quot;stress constraint/objective requires se_ref from the discretiser&quot;</span><span class="p">)</span>
+            <span class="n">sp</span> <span class="o">=</span> <span class="n">stress_spec</span><span class="o">.</span><span class="n">params</span> <span class="k">if</span> <span class="n">stress_spec</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">objective</span><span class="o">.</span><span class="n">params</span>
+            <span class="n">stress_disc</span> <span class="o">=</span> <span class="n">_StressConstraintDiscipline</span><span class="p">(</span>
+                <span class="n">phys_discipline</span><span class="p">,</span> <span class="n">analysis</span><span class="o">.</span><span class="n">se_ref</span><span class="p">,</span>
+                <span class="n">sigma_lim</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;sigma_limit&quot;</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">)),</span>
+                <span class="n">num_elements</span><span class="o">=</span><span class="n">phys_discipline</span><span class="o">.</span><span class="n">num_elements</span><span class="p">,</span> <span class="n">dim</span><span class="o">=</span><span class="n">analysis</span><span class="o">.</span><span class="n">dim</span><span class="p">,</span>
+                <span class="n">q</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;q&quot;</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)),</span> <span class="n">P</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;P&quot;</span><span class="p">,</span> <span class="n">sp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;ka&quot;</span><span class="p">,</span> <span class="mf">8.0</span><span class="p">))),</span>
+                <span class="n">kind</span><span class="o">=</span><span class="n">sp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;aggregation&quot;</span><span class="p">,</span> <span class="s2">&quot;verbart&quot;</span><span class="p">),</span> <span class="n">volfrac</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">volfrac</span><span class="p">,</span>
+                <span class="n">adaptive</span><span class="o">=</span><span class="nb">bool</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;adaptive&quot;</span><span class="p">,</span> <span class="kc">False</span><span class="p">)),</span>
+                <span class="n">alpha</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;alpha&quot;</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)),</span>
+                <span class="n">rho_solid</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;rho_solid&quot;</span><span class="p">,</span> <span class="mf">0.5</span><span class="p">)),</span>
+                <span class="n">max_correction</span><span class="o">=</span><span class="nb">float</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;max_correction&quot;</span><span class="p">,</span> <span class="mf">4.0</span><span class="p">)),</span>
+                <span class="n">active_mask</span><span class="o">=</span><span class="n">_stress_exclusion_mask</span><span class="p">(</span>
+                    <span class="n">analysis</span><span class="p">,</span> <span class="n">geom_discipline</span><span class="o">.</span><span class="n">eval_coords</span><span class="p">,</span>
+                    <span class="nb">float</span><span class="p">(</span><span class="n">sp</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;exclude_radius&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))),</span>
+            <span class="p">)</span>
+            <span class="n">extra_disciplines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">stress_disc</span><span class="p">)</span>
+
+        <span class="c1"># 7b. Deflation: repel known minima by deflating the objective. Deflation wraps the</span>
+        <span class="c1"># &quot;compliance&quot; discipline output specifically, so it only composes with a compliance</span>
+        <span class="c1"># objective; other objectives would need _DeflatedObjectiveDiscipline generalized.</span>
+        <span class="n">objective_name</span> <span class="o">=</span> <span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">objective</span><span class="o">.</span><span class="n">name</span>
+        <span class="n">deflation_active</span> <span class="o">=</span> <span class="nb">bool</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">deflation</span> <span class="ow">and</span> <span class="bp">self</span><span class="o">.</span><span class="n">deflation</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;roots&quot;</span><span class="p">))</span>
+        <span class="k">if</span> <span class="n">deflation_active</span><span class="p">:</span>
+            <span class="k">if</span> <span class="n">objective_name</span> <span class="o">!=</span> <span class="s2">&quot;compliance&quot;</span><span class="p">:</span>
+                <span class="k">raise</span> <span class="ne">ValueError</span><span class="p">(</span>
+                    <span class="s2">&quot;Deflation currently only supports a &#39;compliance&#39; objective &quot;</span>
+                    <span class="sa">f</span><span class="s2">&quot;(got &#39;</span><span class="si">{</span><span class="n">objective_name</span><span class="si">}</span><span class="s2">&#39;).&quot;</span>
+                <span class="p">)</span>
             <span class="n">defl_disc</span> <span class="o">=</span> <span class="n">_DeflatedObjectiveDiscipline</span><span class="p">(</span>
                 <span class="n">roots</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">deflation</span><span class="p">[</span><span class="s2">&quot;roots&quot;</span><span class="p">],</span>
                 <span class="n">num_vars</span><span class="o">=</span><span class="n">num_vars</span><span class="p">,</span>
@@ -1170,13 +1654,24 @@ window.runMermaid = runMermaid;</script>
             <span class="n">extra_disciplines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">defl_disc</span><span class="p">)</span>
             <span class="n">objective_name</span> <span class="o">=</span> <span class="s2">&quot;compliance_deflated&quot;</span>
 
+        <span class="c1"># 7c. Optional affine objective rescale (objective.params.shift/scale): keeps a</span>
+        <span class="c1"># negative-valued response positive for gemseo-mma&#39;s relative-change stopping</span>
+        <span class="c1"># test, and normalizes a large-scaled response (volume in percent) to O(1) so</span>
+        <span class="c1"># MMA&#39;s fixed constraint penalty retains its usual feasibility authority.</span>
+        <span class="n">obj_shift</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">objective</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;shift&quot;</span><span class="p">,</span> <span class="mf">0.0</span><span class="p">))</span>
+        <span class="n">obj_scale</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">objective</span><span class="o">.</span><span class="n">params</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;scale&quot;</span><span class="p">,</span> <span class="mf">1.0</span><span class="p">))</span>
+        <span class="k">if</span> <span class="p">(</span><span class="n">obj_shift</span> <span class="o">!=</span> <span class="mf">0.0</span> <span class="ow">or</span> <span class="n">obj_scale</span> <span class="o">!=</span> <span class="mf">1.0</span><span class="p">)</span> <span class="ow">and</span> <span class="ow">not</span> <span class="n">deflation_active</span><span class="p">:</span>
+            <span class="n">shift_disc</span> <span class="o">=</span> <span class="n">_ShiftedObjectiveDiscipline</span><span class="p">(</span><span class="n">objective_name</span><span class="p">,</span> <span class="n">obj_shift</span><span class="p">,</span> <span class="n">obj_scale</span><span class="p">)</span>
+            <span class="n">extra_disciplines</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">shift_disc</span><span class="p">)</span>
+            <span class="n">objective_name</span> <span class="o">=</span> <span class="n">shift_disc</span><span class="o">.</span><span class="n">out_name</span>
+
         <span class="c1"># 8. Scenario</span>
         <span class="n">all_disciplines</span> <span class="o">=</span> <span class="p">[</span><span class="n">chain</span><span class="p">]</span> <span class="o">+</span> <span class="n">extra_disciplines</span>
         <span class="n">scenario</span> <span class="o">=</span> <span class="n">create_scenario</span><span class="p">(</span>
             <span class="n">all_disciplines</span><span class="p">,</span>
             <span class="n">objective_name</span><span class="o">=</span><span class="n">objective_name</span><span class="p">,</span>
             <span class="n">design_space</span><span class="o">=</span><span class="n">design_space</span><span class="p">,</span>
-            <span class="n">maximize_objective</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span>
+            <span class="n">maximize_objective</span><span class="o">=</span><span class="p">(</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">objective</span><span class="o">.</span><span class="n">sense</span> <span class="o">==</span> <span class="s2">&quot;maximize&quot;</span><span class="p">),</span>
             <span class="n">formulation_name</span><span class="o">=</span><span class="s2">&quot;MDF&quot;</span>
         <span class="p">)</span>
 
@@ -1188,6 +1683,14 @@ window.runMermaid = runMermaid;</script>
             <span class="k">elif</span> <span class="n">c</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;overhang&quot;</span> <span class="ow">and</span> <span class="n">extra_disciplines</span><span class="p">:</span>
                 <span class="n">scenario</span><span class="o">.</span><span class="n">add_constraint</span><span class="p">(</span>
                     <span class="s2">&quot;overhang&quot;</span><span class="p">,</span> <span class="n">constraint_type</span><span class="o">=</span><span class="s2">&quot;ineq&quot;</span><span class="p">,</span> <span class="n">positive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mf">0.0</span>
+                <span class="p">)</span>
+            <span class="k">elif</span> <span class="n">c</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;displacement&quot;</span><span class="p">:</span>
+                <span class="n">scenario</span><span class="o">.</span><span class="n">add_constraint</span><span class="p">(</span>
+                    <span class="s2">&quot;displacement&quot;</span><span class="p">,</span> <span class="n">constraint_type</span><span class="o">=</span><span class="s2">&quot;ineq&quot;</span><span class="p">,</span> <span class="n">positive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mf">0.0</span>
+                <span class="p">)</span>
+            <span class="k">elif</span> <span class="n">c</span><span class="o">.</span><span class="n">name</span> <span class="o">==</span> <span class="s2">&quot;stress&quot;</span><span class="p">:</span>
+                <span class="n">scenario</span><span class="o">.</span><span class="n">add_constraint</span><span class="p">(</span>
+                    <span class="s2">&quot;stress&quot;</span><span class="p">,</span> <span class="n">constraint_type</span><span class="o">=</span><span class="s2">&quot;ineq&quot;</span><span class="p">,</span> <span class="n">positive</span><span class="o">=</span><span class="kc">False</span><span class="p">,</span> <span class="n">value</span><span class="o">=</span><span class="mf">0.0</span>
                 <span class="p">)</span>
 
         <span class="c1"># NOTE on overhang aggregation: the Matlab reference (ALM_constraint.m)</span>
@@ -1224,10 +1727,11 @@ window.runMermaid = runMermaid;</script>
 
         <span class="n">n_iter</span> <span class="o">=</span> <span class="nb">len</span><span class="p">(</span><span class="n">scenario</span><span class="o">.</span><span class="n">formulation</span><span class="o">.</span><span class="n">optimization_problem</span><span class="o">.</span><span class="n">database</span><span class="p">)</span>
 
-        <span class="c1"># objective_value is always the *raw* log(C+1), so it is comparable across</span>
-        <span class="c1"># strategies. Under deflation the scenario objective is the deflated value,</span>
-        <span class="c1"># so recompute the true compliance at the optimum from the geom+phys chain.</span>
-        <span class="k">if</span> <span class="n">objective_name</span> <span class="o">!=</span> <span class="s2">&quot;compliance&quot;</span><span class="p">:</span>
+        <span class="c1"># Under deflation the scenario&#39;s objective is the *deflated* value, so recompute</span>
+        <span class="c1"># the true &quot;compliance&quot; at the optimum from the geom+phys chain. Otherwise</span>
+        <span class="c1"># opt_result.f_opt is already the raw, correctly-signed value of whatever</span>
+        <span class="c1"># response is the objective (GEMSEO un-negates internally for maximize).</span>
+        <span class="k">if</span> <span class="n">deflation_active</span><span class="p">:</span>
             <span class="k">try</span><span class="p">:</span>
                 <span class="n">chain</span><span class="o">.</span><span class="n">execute</span><span class="p">({</span><span class="n">design_var</span><span class="p">:</span> <span class="n">x_opt</span><span class="p">})</span>
                 <span class="n">objective_value</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span>
@@ -1238,6 +1742,10 @@ window.runMermaid = runMermaid;</script>
         <span class="k">else</span><span class="p">:</span>
             <span class="n">f_opt</span> <span class="o">=</span> <span class="n">opt_result</span><span class="o">.</span><span class="n">f_opt</span>
             <span class="n">objective_value</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">f_opt</span><span class="p">)</span> <span class="k">if</span> <span class="n">f_opt</span> <span class="ow">is</span> <span class="ow">not</span> <span class="kc">None</span> <span class="k">else</span> <span class="nb">float</span><span class="p">(</span><span class="s2">&quot;nan&quot;</span><span class="p">)</span>
+            <span class="c1"># report the raw response value (invert the affine objective rescale)</span>
+            <span class="k">if</span> <span class="n">obj_scale</span> <span class="o">!=</span> <span class="mf">1.0</span><span class="p">:</span>
+                <span class="n">objective_value</span> <span class="o">=</span> <span class="n">objective_value</span> <span class="o">/</span> <span class="n">obj_scale</span>
+            <span class="n">objective_value</span> <span class="o">-=</span> <span class="n">obj_shift</span>
 
         <span class="n">result</span> <span class="o">=</span> <span class="n">OptimisationResult</span><span class="p">(</span>
             <span class="n">problem_name</span><span class="o">=</span><span class="s2">&quot;optimization_run&quot;</span><span class="p">,</span>
@@ -1245,6 +1753,7 @@ window.runMermaid = runMermaid;</script>
             <span class="n">status</span><span class="o">=</span><span class="n">opt_result</span><span class="o">.</span><span class="n">status</span><span class="p">,</span>
             <span class="n">iterations</span><span class="o">=</span><span class="n">n_iter</span><span class="p">,</span>
             <span class="n">objective_value</span><span class="o">=</span><span class="n">objective_value</span><span class="p">,</span>
+            <span class="n">objective_name</span><span class="o">=</span><span class="bp">self</span><span class="o">.</span><span class="n">spec</span><span class="o">.</span><span class="n">objective</span><span class="o">.</span><span class="n">name</span><span class="p">,</span>
             <span class="n">max_constraint_violation</span><span class="o">=</span><span class="mf">0.0</span><span class="p">,</span>
             <span class="n">design_variables</span><span class="o">=</span><span class="n">x_opt</span><span class="p">,</span>
             <span class="n">history</span><span class="o">=</span><span class="p">{},</span>

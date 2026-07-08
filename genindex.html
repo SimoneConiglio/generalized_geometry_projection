@@ -238,6 +238,25 @@ let darkTheme = isDarkTheme();
 let modal = null;
 let modalContent = null;
 let previousScrollOffset = [window.scrollX, window.scrollY];
+let _lazyObserver = null;
+let _renderQueue = Promise.resolve();
+
+// Apply d3 zoom to each SVG. Idempotent: an SVG already wrapped is skipped,
+// so this is safe to call both for the initial batch and for diagrams that
+// render lazily once they become visible.
+const addZoomToSvgs = (svgs) => {
+    svgs.each(function() {
+        if (this.getAttribute('data-zoom-applied') === 'true') return;
+        var svg = d3.select(this);
+        svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+        var inner = svg.select("g");
+        var zoom = d3.zoom().on("zoom", function(event) {
+            inner.attr("transform", event.transform);
+        });
+        svg.call(zoom);
+        this.setAttribute('data-zoom-applied', 'true');
+    });
+};
 
 const runMermaid = async (rerun) => {
     console.log("Running mermaid diagrams, rerun =", rerun);
@@ -245,7 +264,15 @@ const runMermaid = async (rerun) => {
     let all_mermaids = document.querySelectorAll(".mermaid");
 
     if (rerun) {
+        // Disconnect any previous lazy rendering observer
+        if (_lazyObserver) {
+            _lazyObserver.disconnect();
+            _lazyObserver = null;
+        }
+
         all_mermaids.forEach((el) => {
+            el.removeAttribute('data-mermaid-deferred');
+            el.removeAttribute('data-mermaid-render-failed');
             if(!el.hasAttribute("data-original-code")) {
                 // store original code
                 // console.log(`Storing original code for first run: `, el.innerHTML);
@@ -262,35 +289,89 @@ const runMermaid = async (rerun) => {
                 el.setAttribute('data-original-code', el.innerHTML);
             }
         });
-        await mermaid.run();
+
+        // Separate visible and hidden elements. Mermaid's layout engine measures
+        // text dimensions via the DOM, which fails for elements hidden by a parent
+        // (e.g., Reveal.js non-active slides, sphinx-design unopened tabs),
+        // producing broken SVGs. Render visible elements now, defer hidden ones.
+        const visible = [];
+        const hidden = [];
+        all_mermaids.forEach((el) => {
+            // offsetParent is null for display:none ancestors.
+            // getClientRects().length > 0 catches position:fixed elements
+            // (which also have null offsetParent but are still visible).
+            if (el.offsetParent !== null || el.getClientRects().length > 0) {
+                visible.push(el);
+            } else {
+                hidden.push(el);
+                el.setAttribute('data-mermaid-deferred', 'true');
+            }
+        });
+
+        if (visible.length > 0) {
+            try {
+                await mermaid.run({ nodes: visible });
+            } catch (e) {
+                console.error("Mermaid rendering failed:", e);
+            }
+        }
+
+        // Lazily render hidden elements when they become visible.
+        // Uses a promise chain (_renderQueue) to serialize rendering,
+        // since IntersectionObserver may report multiple entries at once
+        // and mermaid.run() is not safe to call concurrently.
+        if (hidden.length > 0) {
+            if (typeof IntersectionObserver === 'undefined') {
+                console.warn("IntersectionObserver not available; hidden mermaid diagrams will not render.");
+            } else {
+                _renderQueue = Promise.resolve();
+                _lazyObserver = new IntersectionObserver((entries) => {
+                    for (const entry of entries) {
+                        if (entry.isIntersecting && entry.target.getAttribute("data-processed") !== "true") {
+                            _lazyObserver.unobserve(entry.target);
+                            const el = entry.target;
+                            _renderQueue = _renderQueue.then(async () => {
+                                try {
+                                    await mermaid.run({ nodes: [el] });
+                                    el.removeAttribute('data-mermaid-deferred');
+                                    // Apply zoom to the now-rendered diagram, matching
+                                    // the decoration visible diagrams receive.
+                                    if ("False" === "True") {
+                                        addZoomToSvgs(d3.selectAll(""));
+                                    }
+                                } catch (e) {
+                                    console.error("Mermaid deferred rendering failed:", e);
+                                    el.removeAttribute('data-mermaid-deferred');
+                                    el.setAttribute('data-mermaid-render-failed', 'true');
+                                }
+                            });
+                        }
+                    }
+                });
+                hidden.forEach((el) => _lazyObserver.observe(el));
+            }
+        }
     }
 
     all_mermaids = document.querySelectorAll(".mermaid");
-    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+    // Exclude deferred (hidden) and render-failed elements from completion checks
+    const mermaids_active = document.querySelectorAll(".mermaid:not([data-mermaid-deferred]):not([data-mermaid-render-failed])");
+    const mermaids_processed = document.querySelectorAll(".mermaid:not([data-mermaid-deferred]):not([data-mermaid-render-failed])[data-processed='true']");
 
     if ("False" === "True") {
-        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        const mermaids_to_add_zoom = -1 === -1 ? mermaids_active.length : -1;
         if(mermaids_to_add_zoom > 0) {
             var svgs = d3.selectAll("");
-            if(all_mermaids.length !== mermaids_processed.length) {
+            // Wait until every active (visible) diagram has rendered. Deferred
+            // diagrams are excluded, so a fixed d3_node_count that counts a
+            // hidden diagram no longer loops forever waiting for its SVG.
+            if(mermaids_active.length !== mermaids_processed.length) {
                 setTimeout(() => runMermaid(false), 200);
                 return;
-            } else if(svgs.size() !== mermaids_to_add_zoom) {
-                setTimeout(() => runMermaid(false), 200);
-                return;
-            } else {
-                svgs.each(function() {
-                    var svg = d3.select(this);
-                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
-                    var inner = svg.select("g");
-                    var zoom = d3.zoom().on("zoom", function(event) {
-                        inner.attr("transform", event.transform);
-                    });
-                    svg.call(zoom);
-                });
             }
+            addZoomToSvgs(svgs);
         }
-    } else if(all_mermaids.length !== mermaids_processed.length) {
+    } else if(mermaids_active.length !== mermaids_processed.length) {
         // Wait for mermaid to process all diagrams
         setTimeout(() => runMermaid(false), 200);
         return;
@@ -539,11 +620,14 @@ window.runMermaid = runMermaid;</script>
  | <a href="#T"><strong>T</strong></a>
  | <a href="#U"><strong>U</strong></a>
  | <a href="#V"><strong>V</strong></a>
+ | <a href="#W"><strong>W</strong></a>
  
 </div>
 <h2 id="A">A</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api.html#ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline.adjoint_solve">adjoint_solve() (ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline method)</a>
+</li>
       <li><a href="api.html#ggp.optimization.results.OptimisationResult.algorithm">algorithm (ggp.optimization.results.OptimisationResult attribute)</a>
 
       <ul>
@@ -608,6 +692,8 @@ window.runMermaid = runMermaid;</script>
 </li>
       <li><a href="api.html#ggp.discretisation.fem.FEMDiscretiser.discretise">discretise() (ggp.discretisation.fem.FEMDiscretiser method)</a>
 </li>
+      <li><a href="api.html#ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline.dstiffness_sensitivity">dstiffness_sensitivity() (ggp.gemseo_wrappers.physics_discipline.GGPPhysicsDiscipline method)</a>
+</li>
   </ul></td>
 </tr></table>
 
@@ -635,6 +721,8 @@ window.runMermaid = runMermaid;</script>
       <li><a href="api.html#ggp.geometry.io.fenics_reader.FenicsBoxReader">FenicsBoxReader (class in ggp.geometry.io.fenics_reader)</a>
 </li>
       <li><a href="api.html#ggp.geometry.io.fenics_reader.FenicsRectangleReader">FenicsRectangleReader (class in ggp.geometry.io.fenics_reader)</a>
+</li>
+      <li><a href="api.html#ggp.problem.spec.FormulationSpec.fix_mc">fix_mc (ggp.problem.spec.FormulationSpec attribute)</a>
 </li>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
@@ -706,8 +794,6 @@ window.runMermaid = runMermaid;</script>
         <li><a href="api.html#module-ggp.optimization.pipeline">module</a>
 </li>
       </ul></li>
-  </ul></td>
-  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     ggp.optimization.results
 
@@ -715,6 +801,8 @@ window.runMermaid = runMermaid;</script>
         <li><a href="api.html#module-ggp.optimization.results">module</a>
 </li>
       </ul></li>
+  </ul></td>
+  <td style="width: 33%; vertical-align: top;"><ul>
       <li>
     ggp.physics.amjax_solver
 
@@ -759,6 +847,8 @@ window.runMermaid = runMermaid;</script>
       <li><a href="api.html#ggp.problem.spec.FormulationSpec.grid_nx">grid_nx (ggp.problem.spec.FormulationSpec attribute)</a>
 </li>
       <li><a href="api.html#ggp.problem.spec.FormulationSpec.grid_ny">grid_ny (ggp.problem.spec.FormulationSpec attribute)</a>
+</li>
+      <li><a href="api.html#ggp.problem.spec.FormulationSpec.grid_nz">grid_nz (ggp.problem.spec.FormulationSpec attribute)</a>
 </li>
   </ul></td>
 </tr></table>
@@ -901,6 +991,8 @@ window.runMermaid = runMermaid;</script>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#ggp.problem.spec.ProblemSpec.objective">objective (ggp.problem.spec.ProblemSpec attribute)</a>
 </li>
+      <li><a href="api.html#ggp.optimization.results.OptimisationResult.objective_name">objective_name (ggp.optimization.results.OptimisationResult attribute)</a>
+</li>
       <li><a href="api.html#ggp.optimization.results.OptimisationResult.objective_value">objective_value (ggp.optimization.results.OptimisationResult attribute)</a>
 </li>
   </ul></td>
@@ -921,6 +1013,8 @@ window.runMermaid = runMermaid;</script>
 
       <ul>
         <li><a href="api.html#ggp.problem.spec.GeometrySpec.params">(ggp.problem.spec.GeometrySpec attribute)</a>
+</li>
+        <li><a href="api.html#ggp.problem.spec.ObjectiveSpec.params">(ggp.problem.spec.ObjectiveSpec attribute)</a>
 </li>
       </ul></li>
   </ul></td>
@@ -967,6 +1061,8 @@ window.runMermaid = runMermaid;</script>
 <h2 id="S">S</h2>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api.html#ggp.problem.spec.ObjectiveSpec.sense">sense (ggp.problem.spec.ObjectiveSpec attribute)</a>
+</li>
       <li><a href="api.html#ggp.physics.amjax_solver.solve_amjax">solve_amjax() (in module ggp.physics.amjax_solver)</a>
 </li>
       <li><a href="api.html#ggp.problem.spec.ProblemSpec.solver">solver (ggp.problem.spec.ProblemSpec attribute)</a>
@@ -992,6 +1088,8 @@ window.runMermaid = runMermaid;</script>
 <table style="width: 100%" class="indextable genindextable"><tr>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#ggp.optimization.results.OptimisationResult.to_dict">to_dict() (ggp.optimization.results.OptimisationResult method)</a>
+</li>
+      <li><a href="api.html#ggp.problem.spec.FormulationSpec.truss_radius">truss_radius (ggp.problem.spec.FormulationSpec attribute)</a>
 </li>
       <li><a href="api.html#ggp.problem.spec.BoundaryCondition.type">type (ggp.problem.spec.BoundaryCondition attribute)</a>
 
@@ -1026,6 +1124,14 @@ window.runMermaid = runMermaid;</script>
   </ul></td>
   <td style="width: 33%; vertical-align: top;"><ul>
       <li><a href="api.html#ggp.problem.spec.ProblemSpec.volfrac">volfrac (ggp.problem.spec.ProblemSpec attribute)</a>
+</li>
+  </ul></td>
+</tr></table>
+
+<h2 id="W">W</h2>
+<table style="width: 100%" class="indextable genindextable"><tr>
+  <td style="width: 33%; vertical-align: top;"><ul>
+      <li><a href="api.html#ggp.problem.spec.Load.width">width (ggp.problem.spec.Load attribute)</a>
 </li>
   </ul></td>
 </tr></table>

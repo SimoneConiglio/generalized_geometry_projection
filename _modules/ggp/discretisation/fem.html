@@ -238,6 +238,25 @@ let darkTheme = isDarkTheme();
 let modal = null;
 let modalContent = null;
 let previousScrollOffset = [window.scrollX, window.scrollY];
+let _lazyObserver = null;
+let _renderQueue = Promise.resolve();
+
+// Apply d3 zoom to each SVG. Idempotent: an SVG already wrapped is skipped,
+// so this is safe to call both for the initial batch and for diagrams that
+// render lazily once they become visible.
+const addZoomToSvgs = (svgs) => {
+    svgs.each(function() {
+        if (this.getAttribute('data-zoom-applied') === 'true') return;
+        var svg = d3.select(this);
+        svg.html("<g class='wrapper'>" + svg.html() + "</g>");
+        var inner = svg.select("g");
+        var zoom = d3.zoom().on("zoom", function(event) {
+            inner.attr("transform", event.transform);
+        });
+        svg.call(zoom);
+        this.setAttribute('data-zoom-applied', 'true');
+    });
+};
 
 const runMermaid = async (rerun) => {
     console.log("Running mermaid diagrams, rerun =", rerun);
@@ -245,7 +264,15 @@ const runMermaid = async (rerun) => {
     let all_mermaids = document.querySelectorAll(".mermaid");
 
     if (rerun) {
+        // Disconnect any previous lazy rendering observer
+        if (_lazyObserver) {
+            _lazyObserver.disconnect();
+            _lazyObserver = null;
+        }
+
         all_mermaids.forEach((el) => {
+            el.removeAttribute('data-mermaid-deferred');
+            el.removeAttribute('data-mermaid-render-failed');
             if(!el.hasAttribute("data-original-code")) {
                 // store original code
                 // console.log(`Storing original code for first run: `, el.innerHTML);
@@ -262,35 +289,89 @@ const runMermaid = async (rerun) => {
                 el.setAttribute('data-original-code', el.innerHTML);
             }
         });
-        await mermaid.run();
+
+        // Separate visible and hidden elements. Mermaid's layout engine measures
+        // text dimensions via the DOM, which fails for elements hidden by a parent
+        // (e.g., Reveal.js non-active slides, sphinx-design unopened tabs),
+        // producing broken SVGs. Render visible elements now, defer hidden ones.
+        const visible = [];
+        const hidden = [];
+        all_mermaids.forEach((el) => {
+            // offsetParent is null for display:none ancestors.
+            // getClientRects().length > 0 catches position:fixed elements
+            // (which also have null offsetParent but are still visible).
+            if (el.offsetParent !== null || el.getClientRects().length > 0) {
+                visible.push(el);
+            } else {
+                hidden.push(el);
+                el.setAttribute('data-mermaid-deferred', 'true');
+            }
+        });
+
+        if (visible.length > 0) {
+            try {
+                await mermaid.run({ nodes: visible });
+            } catch (e) {
+                console.error("Mermaid rendering failed:", e);
+            }
+        }
+
+        // Lazily render hidden elements when they become visible.
+        // Uses a promise chain (_renderQueue) to serialize rendering,
+        // since IntersectionObserver may report multiple entries at once
+        // and mermaid.run() is not safe to call concurrently.
+        if (hidden.length > 0) {
+            if (typeof IntersectionObserver === 'undefined') {
+                console.warn("IntersectionObserver not available; hidden mermaid diagrams will not render.");
+            } else {
+                _renderQueue = Promise.resolve();
+                _lazyObserver = new IntersectionObserver((entries) => {
+                    for (const entry of entries) {
+                        if (entry.isIntersecting && entry.target.getAttribute("data-processed") !== "true") {
+                            _lazyObserver.unobserve(entry.target);
+                            const el = entry.target;
+                            _renderQueue = _renderQueue.then(async () => {
+                                try {
+                                    await mermaid.run({ nodes: [el] });
+                                    el.removeAttribute('data-mermaid-deferred');
+                                    // Apply zoom to the now-rendered diagram, matching
+                                    // the decoration visible diagrams receive.
+                                    if ("False" === "True") {
+                                        addZoomToSvgs(d3.selectAll(""));
+                                    }
+                                } catch (e) {
+                                    console.error("Mermaid deferred rendering failed:", e);
+                                    el.removeAttribute('data-mermaid-deferred');
+                                    el.setAttribute('data-mermaid-render-failed', 'true');
+                                }
+                            });
+                        }
+                    }
+                });
+                hidden.forEach((el) => _lazyObserver.observe(el));
+            }
+        }
     }
 
     all_mermaids = document.querySelectorAll(".mermaid");
-    const mermaids_processed = document.querySelectorAll(".mermaid[data-processed='true']");
+    // Exclude deferred (hidden) and render-failed elements from completion checks
+    const mermaids_active = document.querySelectorAll(".mermaid:not([data-mermaid-deferred]):not([data-mermaid-render-failed])");
+    const mermaids_processed = document.querySelectorAll(".mermaid:not([data-mermaid-deferred]):not([data-mermaid-render-failed])[data-processed='true']");
 
     if ("False" === "True") {
-        const mermaids_to_add_zoom = -1 === -1 ? all_mermaids.length : -1;
+        const mermaids_to_add_zoom = -1 === -1 ? mermaids_active.length : -1;
         if(mermaids_to_add_zoom > 0) {
             var svgs = d3.selectAll("");
-            if(all_mermaids.length !== mermaids_processed.length) {
+            // Wait until every active (visible) diagram has rendered. Deferred
+            // diagrams are excluded, so a fixed d3_node_count that counts a
+            // hidden diagram no longer loops forever waiting for its SVG.
+            if(mermaids_active.length !== mermaids_processed.length) {
                 setTimeout(() => runMermaid(false), 200);
                 return;
-            } else if(svgs.size() !== mermaids_to_add_zoom) {
-                setTimeout(() => runMermaid(false), 200);
-                return;
-            } else {
-                svgs.each(function() {
-                    var svg = d3.select(this);
-                    svg.html("<g class='wrapper'>" + svg.html() + "</g>");
-                    var inner = svg.select("g");
-                    var zoom = d3.zoom().on("zoom", function(event) {
-                        inner.attr("transform", event.transform);
-                    });
-                    svg.call(zoom);
-                });
             }
+            addZoomToSvgs(svgs);
         }
-    } else if(all_mermaids.length !== mermaids_processed.length) {
+    } else if(mermaids_active.length !== mermaids_processed.length) {
         // Wait for mermaid to process all diagrams
         setTimeout(() => runMermaid(false), 200);
         return;
@@ -569,7 +650,11 @@ window.runMermaid = runMermaid;</script>
         <span class="bp">self</span><span class="o">.</span><span class="n">point_fixed_dofs</span><span class="p">:</span> <span class="n">List</span><span class="p">[</span><span class="nb">int</span><span class="p">]</span> <span class="o">=</span> <span class="p">[]</span>  <span class="c1"># extra DOFs fixed via direct indexing</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">load_vector</span> <span class="o">=</span> <span class="kc">None</span>
         <span class="bp">self</span><span class="o">.</span><span class="n">empty_elements</span> <span class="o">=</span> <span class="p">[]</span>
-        <span class="bp">self</span><span class="o">.</span><span class="n">ke_ref</span> <span class="o">=</span> <span class="kc">None</span></div>
+        <span class="bp">self</span><span class="o">.</span><span class="n">ke_ref</span> <span class="o">=</span> <span class="kc">None</span>
+        <span class="c1"># Reference (unit-E) element stress-extraction operator: cell-average Voigt</span>
+        <span class="c1"># stress = se_ref @ u_e. Shape (n_stress, dofs_per_cell); n_stress = 3 (2D</span>
+        <span class="c1"># plane stress: σxx,σyy,τxy) or 6 (3D: σxx,σyy,σzz,τxy,τyz,τxz).</span>
+        <span class="bp">self</span><span class="o">.</span><span class="n">se_ref</span> <span class="o">=</span> <span class="kc">None</span></div>
 
 
 
@@ -655,6 +740,19 @@ window.runMermaid = runMermaid;</script>
                 <span class="n">tip_dof</span> <span class="o">=</span> <span class="n">_closest_dof_on_face</span><span class="p">(</span><span class="n">dof_coords</span><span class="p">,</span> <span class="n">y_dofs</span><span class="p">,</span> <span class="n">face_coord</span><span class="o">=</span><span class="n">Lx</span><span class="p">,</span> <span class="n">face_axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span> <span class="n">target</span><span class="o">=</span><span class="n">target</span><span class="p">)</span>
                 <span class="n">f_vec</span><span class="p">[</span><span class="n">tip_dof</span><span class="p">]</span> <span class="o">=</span> <span class="n">ld</span><span class="o">.</span><span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span>
 
+            <span class="k">elif</span> <span class="n">ld</span><span class="o">.</span><span class="n">region</span> <span class="o">==</span> <span class="s2">&quot;mid_right&quot;</span> <span class="ow">and</span> <span class="n">ld</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;patch&quot;</span><span class="p">:</span>
+                <span class="c1"># Total force spread uniformly over the face nodes within width/2 of</span>
+                <span class="c1"># the mid-right point — removes the point-load stress singularity</span>
+                <span class="c1"># (standard in stress-constrained benchmarks, e.g. Le et al. 2010).</span>
+                <span class="n">on_face</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">dof_coords</span><span class="p">[</span><span class="n">y_dofs</span><span class="p">,</span> <span class="mi">0</span><span class="p">]</span> <span class="o">-</span> <span class="n">Lx</span><span class="p">)</span> <span class="o">&lt;</span> <span class="mf">1e-6</span>
+                <span class="n">near_mid</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">abs</span><span class="p">(</span><span class="n">dof_coords</span><span class="p">[</span><span class="n">y_dofs</span><span class="p">,</span> <span class="mi">1</span><span class="p">]</span> <span class="o">-</span> <span class="n">Ly</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">)</span> <span class="o">&lt;=</span> <span class="n">ld</span><span class="o">.</span><span class="n">width</span> <span class="o">/</span> <span class="mf">2.0</span> <span class="o">+</span> <span class="mf">1e-9</span>
+                <span class="n">patch</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">y_dofs</span><span class="p">)[</span><span class="n">on_face</span> <span class="o">&amp;</span> <span class="n">near_mid</span><span class="p">]</span>
+                <span class="k">if</span> <span class="nb">len</span><span class="p">(</span><span class="n">patch</span><span class="p">)</span> <span class="o">==</span> <span class="mi">0</span><span class="p">:</span>      <span class="c1"># degenerate width -&gt; fall back to the point load</span>
+                    <span class="n">patch</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">_closest_dof_on_face</span><span class="p">(</span>
+                        <span class="n">dof_coords</span><span class="p">,</span> <span class="n">y_dofs</span><span class="p">,</span> <span class="n">face_coord</span><span class="o">=</span><span class="n">Lx</span><span class="p">,</span> <span class="n">face_axis</span><span class="o">=</span><span class="mi">0</span><span class="p">,</span>
+                        <span class="n">target</span><span class="o">=</span><span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">([</span><span class="n">Lx</span><span class="p">,</span> <span class="n">Ly</span> <span class="o">/</span> <span class="mf">2.0</span><span class="p">]))])</span>
+                <span class="n">f_vec</span><span class="p">[</span><span class="n">patch</span><span class="p">]</span> <span class="o">=</span> <span class="n">ld</span><span class="o">.</span><span class="n">value</span><span class="p">[</span><span class="mi">1</span><span class="p">]</span> <span class="o">/</span> <span class="nb">len</span><span class="p">(</span><span class="n">patch</span><span class="p">)</span>
+
             <span class="k">elif</span> <span class="n">ld</span><span class="o">.</span><span class="n">region</span> <span class="o">==</span> <span class="s2">&quot;top_left_corner&quot;</span> <span class="ow">and</span> <span class="n">ld</span><span class="o">.</span><span class="n">type</span> <span class="o">==</span> <span class="s2">&quot;point&quot;</span><span class="p">:</span>
                 <span class="k">if</span> <span class="n">domain</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">3</span><span class="p">:</span>
                     <span class="n">Lz</span> <span class="o">=</span> <span class="n">domain</span><span class="o">.</span><span class="n">metadata</span><span class="o">.</span><span class="n">get</span><span class="p">(</span><span class="s2">&quot;Lz&quot;</span><span class="p">,</span> <span class="mf">30.0</span><span class="p">)</span>
@@ -695,6 +793,24 @@ window.runMermaid = runMermaid;</script>
 
         <span class="n">cell</span> <span class="o">=</span> <span class="nb">next</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">cells</span><span class="p">(</span><span class="n">mesh</span><span class="p">))</span>
         <span class="n">analysis</span><span class="o">.</span><span class="n">ke_ref</span> <span class="o">=</span> <span class="n">df</span><span class="o">.</span><span class="n">assemble_local</span><span class="p">(</span><span class="n">a</span><span class="p">,</span> <span class="n">cell</span><span class="p">)</span>
+
+        <span class="c1"># Reference stress-extraction operator (unit E), consistent with ke_ref:</span>
+        <span class="c1"># for each Voigt component k, ∫_cell σ_k(u) dx / |cell| is a linear form in u,</span>
+        <span class="c1"># so assemble_local returns the row of se_ref acting on the element DOFs.</span>
+        <span class="k">if</span> <span class="n">domain</span><span class="o">.</span><span class="n">dim</span> <span class="o">==</span> <span class="mi">2</span><span class="p">:</span>
+            <span class="n">voigt_idx</span> <span class="o">=</span> <span class="p">[(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">)]</span>                       <span class="c1"># σxx, σyy, τxy</span>
+        <span class="k">else</span><span class="p">:</span>
+            <span class="n">voigt_idx</span> <span class="o">=</span> <span class="p">[(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">0</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">2</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">1</span><span class="p">),</span> <span class="p">(</span><span class="mi">1</span><span class="p">,</span> <span class="mi">2</span><span class="p">),</span> <span class="p">(</span><span class="mi">0</span><span class="p">,</span> <span class="mi">2</span><span class="p">)]</span>
+        <span class="c1"># Cell volume in a cell-type-agnostic way (cell.volume() is unimplemented for</span>
+        <span class="c1"># hexahedra): integrate the DG0 test function over the reference cell.</span>
+        <span class="n">vol</span> <span class="o">=</span> <span class="nb">float</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">sum</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">assemble_local</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">TestFunction</span><span class="p">(</span><span class="n">V_dg</span><span class="p">)</span> <span class="o">*</span> <span class="n">df</span><span class="o">.</span><span class="n">dx</span><span class="p">,</span> <span class="n">cell</span><span class="p">))))</span>
+        <span class="n">se_rows</span> <span class="o">=</span> <span class="p">[]</span>
+        <span class="k">for</span> <span class="p">(</span><span class="n">ii</span><span class="p">,</span> <span class="n">jj</span><span class="p">)</span> <span class="ow">in</span> <span class="n">voigt_idx</span><span class="p">:</span>
+            <span class="n">M</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">zeros</span><span class="p">((</span><span class="n">domain</span><span class="o">.</span><span class="n">dim</span><span class="p">,</span> <span class="n">domain</span><span class="o">.</span><span class="n">dim</span><span class="p">))</span>
+            <span class="n">M</span><span class="p">[</span><span class="n">ii</span><span class="p">,</span> <span class="n">jj</span><span class="p">]</span> <span class="o">=</span> <span class="mf">1.0</span>
+            <span class="n">a_k</span> <span class="o">=</span> <span class="n">ufl</span><span class="o">.</span><span class="n">inner</span><span class="p">(</span><span class="n">sig_f</span><span class="p">(</span><span class="n">u_trial</span><span class="p">),</span> <span class="n">df</span><span class="o">.</span><span class="n">Constant</span><span class="p">(</span><span class="n">M</span><span class="p">))</span> <span class="o">*</span> <span class="n">df</span><span class="o">.</span><span class="n">dx</span>
+            <span class="n">se_rows</span><span class="o">.</span><span class="n">append</span><span class="p">(</span><span class="n">np</span><span class="o">.</span><span class="n">asarray</span><span class="p">(</span><span class="n">df</span><span class="o">.</span><span class="n">assemble_local</span><span class="p">(</span><span class="n">a_k</span><span class="p">,</span> <span class="n">cell</span><span class="p">))</span> <span class="o">/</span> <span class="n">vol</span><span class="p">)</span>
+        <span class="n">analysis</span><span class="o">.</span><span class="n">se_ref</span> <span class="o">=</span> <span class="n">np</span><span class="o">.</span><span class="n">array</span><span class="p">(</span><span class="n">se_rows</span><span class="p">)</span>      <span class="c1"># (n_stress, dofs_per_cell)</span>
 
         <span class="k">return</span> <span class="n">analysis</span></div>
 </div>

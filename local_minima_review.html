@@ -73,9 +73,18 @@
 <li class="toctree-l3"><a class="reference internal" href="#improving-the-starting-guess-rectangle-primitives-grid-fill">4.4 Improving the starting guess: rectangle primitives + grid fill</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#global-search-on-the-rectangle-minimum-length-config">4.5 Global search on the rectangle / minimum-length config</a></li>
 <li class="toctree-l3"><a class="reference internal" href="#is-the-asymmetric-optimum-really-better-enforcing-symmetry">4.6 Is the asymmetric optimum really better? Enforcing symmetry</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#reformulating-the-design-space-a-node-based-planar-truss">4.7 Reformulating the design space: a node-based planar truss</a></li>
 </ul>
 </li>
-<li class="toctree-l2"><a class="reference internal" href="#reproducing-extending">5. Reproducing &amp; extending</a></li>
+<li class="toctree-l2"><a class="reference internal" href="#stress-constrained-ggp-making-the-adaptive-allowable-converge">5. Stress-constrained GGP: making the adaptive allowable converge</a><ul>
+<li class="toctree-l3"><a class="reference internal" href="#formulation">5.1 Formulation</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#why-an-adaptive-allowable-lenorato-2010">5.2 Why an adaptive allowable (Le–Norato 2010)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#what-failed-and-why-seven-benchmark-scale-runs">5.3 What failed, and why (seven benchmark-scale runs)</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#the-recipe-that-converges">5.4 The recipe that converges</a></li>
+<li class="toctree-l3"><a class="reference internal" href="#open-items">5.5 Open items</a></li>
+</ul>
+</li>
+<li class="toctree-l2"><a class="reference internal" href="#reproducing-extending">6. Reproducing &amp; extending</a></li>
 <li class="toctree-l2"><a class="reference internal" href="#references">References</a></li>
 </ul>
 </li>
@@ -766,15 +775,294 @@ a problem this rugged it can cost a little. Cleaner insights (“the symmetric p
 symmetric optimum”) simply do not survive contact with the discretized, length-scale-constrained,
 chaotic reality — which is the recurring theme of this study.</p>
 </section>
+<section id="reformulating-the-design-space-a-node-based-planar-truss">
+<h3>4.7 Reformulating the design space: a node-based planar truss<a class="headerlink" href="#reformulating-the-design-space-a-node-based-planar-truss" title="Link to this heading"></a></h3>
+<p>Every technique up to here tries to reach a better minimum of a <em>fixed</em> parametrization —
+the free bar layout of §4.1–4.6. We threw the whole arsenal at it (continuation, multi-start,
+basin-hopping, deflation, tunnelling, chaotic search) and they all converged on the <em>same</em>
+<code class="docutils literal notranslate"><span class="pre">C</span> <span class="pre">≈</span> <span class="pre">76</span></code> wall (§4.5). The last experiment asks a different question: <strong>what if we change the
+parametrization itself?</strong></p>
+<p>Instead of parametrising each bar independently by its centre, length and angle
+(<code class="docutils literal notranslate"><span class="pre">[Xc,</span> <span class="pre">Yc,</span> <span class="pre">L,</span> <span class="pre">θ,</span> <span class="pre">h,</span> <span class="pre">Mc]</span></code>), we parametrise it by its <strong>two endpoints</strong>, and require bars to
+<strong>share</strong> those endpoints — a <em>truss</em>. The design variables become the <strong>node (joint)
+positions</strong> plus, per bar, a thickness <code class="docutils literal notranslate"><span class="pre">h</span></code> and mass density <code class="docutils literal notranslate"><span class="pre">Mc</span></code> (the topology knobs: a bar
+vanishes when either hits its lower bound). This is the classic ground-structure idea, with
+<em>movable</em> nodes. Implementation: <code class="docutils literal notranslate"><span class="pre">Truss2DMapper</span></code> (registered <code class="docutils literal notranslate"><span class="pre">Truss</span></code>) converts each bar’s
+endpoints to the centre/length/angle the existing GGP kernels expect and chains the endpoint
+Jacobian into the <em>shared</em> node columns (the <code class="docutils literal notranslate"><span class="pre">is_continuous</span></code> global-column convention);
+<code class="docutils literal notranslate"><span class="pre">build_ground_structure()</span></code> lays a <code class="docutils literal notranslate"><span class="pre">grid_nx</span> <span class="pre">×</span> <span class="pre">grid_ny</span></code> node lattice and connects node pairs
+within a tunable <code class="docutils literal notranslate"><span class="pre">truss_radius</span></code> (default ≈ 1 tile-diagonal = 8-neighbour stencil; larger →
+denser, → the complete graph). Preset: <code class="docutils literal notranslate"><span class="pre">short_cantilever_truss.yaml</span></code>.</p>
+<p><strong>Planarize the ground structure.</strong> A raw radius graph has two modelling defects: bars that
+<em>cross</em> without a joint there, and long bars that pass <em>through</em> an intermediate node without
+connecting to it (both appear as soon as <code class="docutils literal notranslate"><span class="pre">truss_radius</span></code> exceeds the neighbour stencil — the
+complete graph has 20 such pass-through bars on a 4×3 lattice). Both mean material overlapping
+with no real connection, so a moving node decouples from a member it visually touches. We fix
+this by making the structure a <strong>planar truss</strong>: a node is inserted at every bar-bar crossing
+and the bars are split there, and any bar through an existing node is split at it. Each diagonal
+<code class="docutils literal notranslate"><span class="pre">X</span></code> becomes a real 4-way joint. On the default 4×3 stencil this takes <strong>12 → 18 nodes</strong> (one
+crossing node per cell) and <strong>29 → 41 bars</strong>, and yields zero pass-through / zero unjointed
+crossings at any radius.</p>
+<p><img alt="planar truss starting guess" src="_images/sc2d_truss_init.png" /></p>
+<p>The payoff is the best result in this study:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>Parametrization</p></th>
+<th class="head"><p>vars</p></th>
+<th class="head"><p>baseline (sharp start)</p></th>
+<th class="head"><p>+ 5-step continuation</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>free bars (§4.5)</p></td>
+<td><p>108</p></td>
+<td><p>—</p></td>
+<td><p>76.08</p></td>
+</tr>
+<tr class="row-odd"><td><p>non-planar truss (12 nodes, 29 bars)</p></td>
+<td><p>82</p></td>
+<td><p>91.2</p></td>
+<td><p>79.3</p></td>
+</tr>
+<tr class="row-even"><td><p><strong>planar truss (18 nodes, 41 bars)</strong></p></td>
+<td><p>118</p></td>
+<td><p>89.8</p></td>
+<td><p><strong>74.25</strong></p></td>
+</tr>
+</tbody>
+</table>
+<p>A <strong>single</strong> continuation trajectory on the planar truss reaches <strong>C = 74.25</strong> — <em>below</em> the
+free-bar optimum (76.08) and below everything the full global search reached on the free bars
+(§4.5). The reasons are structural, not algorithmic:</p>
+<ul class="simple">
+<li><p><strong>Connectivity is free.</strong> In the free formulation, “is the structure connected?” is something
+the optimizer must discover, and is the source of most bad basins. In the truss it holds by
+construction (bars share joints), so that entire class of traps disappears.</p></li>
+<li><p><strong>Crossings are real joints.</strong> Planarizing removes the phantom-intersection degrees of freedom
+the optimizer would otherwise waste reconciling overlapping-but-unconnected members.</p></li>
+<li><p><strong>Fewer, better-conditioned variables.</strong> Every variable is a joint position or a member size
+with a clear structural role, rather than a free-floating bar parameter with many degenerate
+configurations.</p></li>
+<li><p><strong>Continuation still does the annealing</strong> (89.8 sharp → 74.25 smooth-started), exactly as in
+§4.5 — the initial smoothness remains the decisive knob.</p></li>
+</ul>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>planar truss + continuation, C = 74.25</p></th>
+<th class="head"><p>optimized joints &amp; bars</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p><img alt="density" src="_images/sc2d_truss_continuation.png" /></p></td>
+<td><p><img alt="schematic" src="_images/sc2d_truss_continuation_schematic.png" /></p></td>
+</tr>
+</tbody>
+</table>
+<!-- ROBUSTNESS -->
+<p>The lesson closes the study. After all the escape heuristics, <strong>the minimum that beat the wall
+came from reformulating the design space, not from a cleverer search of a fixed one.</strong> In a
+landscape this chaotic (§2.6), the highest-leverage move is to <em>remove</em> the ill-conditioned and
+degenerate degrees of freedom — connectivity, phantom crossings — so that an ordinary
+continuation can anneal cleanly into a good basin. Better conditioning beats harder searching.</p>
+</section>
+</section>
+<section id="stress-constrained-ggp-making-the-adaptive-allowable-converge">
+<h2>5. Stress-constrained GGP: making the adaptive allowable converge<a class="headerlink" href="#stress-constrained-ggp-making-the-adaptive-allowable-converge" title="Link to this heading"></a></h2>
+<p>The capability wave that followed the local-minima study added <strong>stress constraints</strong>
+(with displacement constraints and a configurable objective — any response among
+<code class="docutils literal notranslate"><span class="pre">compliance</span> <span class="pre">/</span> <span class="pre">volume</span> <span class="pre">/</span> <span class="pre">displacement</span> <span class="pre">/</span> <span class="pre">stress</span></code> can now be minimized, maximized, or
+bounded). This chapter documents the stress formulation, and — in the same honest
+spirit as §4 — the string of instructive <em>failures</em> on the way to a converged
+stress-active design, because the failures are where the transferable lessons live.</p>
+<section id="formulation">
+<h3>5.1 Formulation<a class="headerlink" href="#formulation" title="Link to this heading"></a></h3>
+<p>Local von Mises constraints are handled with the <strong>unified aggregation-relaxation</strong> of
+Verbart, Langelaar &amp; van Keulen (2017), the method adopted in the Eulerian chapter of
+the Coniglio thesis. The solid-material (unit-<code class="docutils literal notranslate"><span class="pre">E</span></code>) element stress is recovered from a
+reference operator assembled once per mesh (<code class="docutils literal notranslate"><span class="pre">σ̂_e</span> <span class="pre">=</span> <span class="pre">se_ref</span> <span class="pre">·</span> <span class="pre">u_e</span></code>, exact for the
+structured grid), and the reformulated, design-independent local constraint</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>g_e = ρ_e · ( σ̂vm_e / σ_allow − 1 ) ≤ 0
+</pre></div>
+</div>
+<p>is aggregated with a lower-bound KS, <code class="docutils literal notranslate"><span class="pre">G</span> <span class="pre">=</span> <span class="pre">(1/P)·ln(</span> <span class="pre">meanₑ</span> <span class="pre">exp(P·g_e)</span> <span class="pre">)</span> <span class="pre">≤</span> <span class="pre">0</span></code>. One
+parameter <code class="docutils literal notranslate"><span class="pre">P</span></code> controls both aggregation sharpness and relaxation; void elements are
+trivially feasible, which is what makes singular optima accessible. All the nonlinear
+algebra (stress recovery, von Mises, aggregation) is differentiated by <strong>JAX autodiff</strong>;
+the implicit <code class="docutils literal notranslate"><span class="pre">u</span></code>-path is one adjoint solve reusing the physics discipline’s cached LU
+factorization. Every gradient is finite-difference-gated at three levels: element
+kernel, discipline (total adjoint <code class="docutils literal notranslate"><span class="pre">dG/dρ</span></code>), and the <strong>full composed chain</strong>
+<code class="docutils literal notranslate"><span class="pre">d(stress)/d(bar</span> <span class="pre">variables)</span></code> through geometry → physics → stress.</p>
+<p>Two wiring details matter more than they look:</p>
+<ul class="simple">
+<li><p><strong>The weight must be the <em>mass</em> density <code class="docutils literal notranslate"><span class="pre">ρ_V</span></code>, not the penalized stiffness density
+<code class="docutils literal notranslate"><span class="pre">ρ_E</span></code>.</strong> With <code class="docutils literal notranslate"><span class="pre">ρ_E</span> <span class="pre">~</span> <span class="pre">Mc^γc</span></code> (γc = 3), a gray design cuts its stress weight cubically
+while its mass falls only linearly — mass minimization then parks in a feasible
+<strong>zero-stiffness gray haze</strong> (observed: 5.3 % mass at <code class="docutils literal notranslate"><span class="pre">ρ_E</span> <span class="pre">≈</span> <span class="pre">10⁻⁴</span></code>). With the <code class="docutils literal notranslate"><span class="pre">ρ_V</span></code>
+weight the haze is infeasible (<code class="docutils literal notranslate"><span class="pre">σ̂</span> <span class="pre">~</span> <span class="pre">1/ρ³</span></code> vs weight <code class="docutils literal notranslate"><span class="pre">ρ¹</span></code> ⇒ <code class="docutils literal notranslate"><span class="pre">g</span> <span class="pre">~</span> <span class="pre">1/ρ²</span></code> grows).</p></li>
+<li><p><strong>Non-design (void) elements and the load-introduction vicinity must be masked</strong> out
+of the stress measure. Bars overlapping the L-bracket’s void quadrant keep <code class="docutils literal notranslate"><span class="pre">ρ</span> <span class="pre">≈</span> <span class="pre">1</span></code>
+in the raw geometry output against an <code class="docutils literal notranslate"><span class="pre">Emin</span></code> displacement field — an enormous,
+fictitious “solid stress” that pressured the constraint (+25 % compliance in an early
+run) until masked. Conversely the mask must <strong>not</strong> be used under pure mass
+minimization, where the load-adjacent stress is exactly what anchors load-carrying.</p></li>
+</ul>
+</section>
+<section id="why-an-adaptive-allowable-lenorato-2010">
+<h3>5.2 Why an adaptive allowable (Le–Norato 2010)<a class="headerlink" href="#why-an-adaptive-allowable-lenorato-2010" title="Link to this heading"></a></h3>
+<p>The lower-bound aggregation satisfies <code class="docutils literal notranslate"><span class="pre">G</span> <span class="pre">≤</span> <span class="pre">0</span></code> while the <strong>true</strong> max stress slightly
+exceeds <code class="docutils literal notranslate"><span class="pre">σ_lim</span></code> (our first converged L-bracket run: KS residual −0.07 but pointwise
+overshoot), or — with a fixed loose allowable — ends over-conservative
+(<code class="docutils literal notranslate"><span class="pre">σ_max</span> <span class="pre">=</span> <span class="pre">0.3·σ_lim</span></code>). Le, Norato, Bruns, Ha &amp; Tortorelli (2010) fix this with an
+<strong>adaptive normalization</strong>: a correction factor (equivalently an <em>adapted allowable</em>)
+updated between iterations from the measured true maximum, so the converged design
+stops exactly at <code class="docutils literal notranslate"><span class="pre">σ_max</span> <span class="pre">=</span> <span class="pre">σ_lim</span></code>.</p>
+</section>
+<section id="what-failed-and-why-seven-benchmark-scale-runs">
+<h3>5.3 What failed, and why (seven benchmark-scale runs)<a class="headerlink" href="#what-failed-and-why-seven-benchmark-scale-runs" title="Link to this heading"></a></h3>
+<p>Every failure below happened with <strong>provably correct gradients</strong> (the FD gates above
+passed throughout); each was a dynamics or formulation-wiring effect:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>#</p></th>
+<th class="head"><p>Configuration</p></th>
+<th class="head"><p>Failure</p></th>
+<th class="head"><p>Root cause → fix</p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>1</p></td>
+<td><p>integrated allowable update</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">σ_allow</span></code> 2.5→245 in 9 iterations, constraint dead</p></td>
+<td><p>the update was an <em>integrator</em>; Le’s <code class="docutils literal notranslate"><span class="pre">c</span> <span class="pre">=</span> <span class="pre">σ_max/σ_PN</span></code> is a fresh, O(1) <strong>ratio</strong> each iteration → state-free target <code class="docutils literal notranslate"><span class="pre">σ_a*·(σ_lim/σ_max)</span></code></p></td>
+</tr>
+<tr class="row-odd"><td><p>2</p></td>
+<td><p>point load in the measure, mass-min</p></td>
+<td><p>death-spiral: <code class="docutils literal notranslate"><span class="pre">σ_allow</span> <span class="pre">→</span> <span class="pre">0</span></code></p></td>
+<td><p>the load-element FE stress is singular; no finite allowable holds it → clamp + (for vol-constrained runs) load-region mask</p></td>
+</tr>
+<tr class="row-even"><td><p>3</p></td>
+<td><p>mass-min, thresholded <code class="docutils literal notranslate"><span class="pre">σ_max</span></code> (ρ ≥ 0.5)</p></td>
+<td><p>collapse to void, “feasible”</p></td>
+<td><p>the load path faded <em>through</em> intermediate densities, invisible to a thresholded max → ρ-weighted max, no threshold</p></td>
+</tr>
+<tr class="row-odd"><td><p>4</p></td>
+<td><p>mass-min, load region masked</p></td>
+<td><p>collapse: all stress hidden <em>inside</em> the excluded ball</p></td>
+<td><p>the load anchor is what enforces load-carrying → no exclusion under mass-min</p></td>
+</tr>
+<tr class="row-even"><td><p>5</p></td>
+<td><p>volume objective (×100 percent scale)</p></td>
+<td><p>MMA descends while infeasible</p></td>
+<td><p>gemseo-mma’s fixed constraint penalty had only ~10× authority → affine objective rescale to O(1) (<code class="docutils literal notranslate"><span class="pre">shift</span></code>/<code class="docutils literal notranslate"><span class="pre">scale</span></code> params)</p></td>
+</tr>
+<tr class="row-odd"><td><p>6</p></td>
+<td><p><code class="docutils literal notranslate"><span class="pre">ρ_E</span></code>-weighted constraint, mass-min</p></td>
+<td><p>zero-stiffness gray haze at 5 % mass, “feasible”</p></td>
+<td><p>weight by mass density <code class="docutils literal notranslate"><span class="pre">ρ_V</span></code> (see §5.1)</p></td>
+</tr>
+<tr class="row-even"><td><p>7</p></td>
+<td><p><strong>any per-iteration adaptive normalization</strong> (damped, state-free, lagged-<code class="docutils literal notranslate"><span class="pre">c</span></code> Le form, idempotent per design)</p></td>
+<td><p>MMA dismantles the design (vol 0.39→0.15, C 78→200+) even warm-started, tight-moved, <code class="docutils literal notranslate"><span class="pre">Mc</span></code>-fixed</p></td>
+<td><p>the constraint value shifts 20–30 % between iterations; MMA’s asymptote heuristics cannot track an inconsistent constraint</p></td>
+</tr>
+</tbody>
+</table>
+<p>Failure 7 is the deep one: it persisted after <em>everything else</em> was verified — including
+a full-chain finite-difference check showing the composed sensitivities are correct and
+correctly signed (fattening a loaded bar reduces the constraint). The measurement was
+right; the <em>game</em> MMA was asked to play changed every iteration.</p>
+</section>
+<section id="the-recipe-that-converges">
+<h3>5.4 The recipe that converges<a class="headerlink" href="#the-recipe-that-converges" title="Link to this heading"></a></h3>
+<p>Three ingredients (matching established GGP practice):</p>
+<ol class="arabic">
+<li><p><strong>Binary continuation first</strong> — converge the plain compliance/volume design
+(near-binary, load paths at <code class="docutils literal notranslate"><span class="pre">ρ</span> <span class="pre">≈</span> <span class="pre">1</span></code>) and warm-start from it (<code class="docutils literal notranslate"><span class="pre">x0</span></code> injection).</p></li>
+<li><p><strong>Solid bars</strong> (<code class="docutils literal notranslate"><span class="pre">fix_mc:</span> <span class="pre">true</span></code>) — pin every component’s <code class="docutils literal notranslate"><span class="pre">Mc</span></code> to 1: stress must be
+relieved by geometry reshaping, never by density fade; gray survives only in the
+thin projection band.</p></li>
+<li><p><strong>Outer-loop Le correction</strong> — each <em>inner</em> run solves the <strong>raw</strong> Verbart
+aggregate at a <strong>fixed</strong> allowable (smooth, monotone, iteration-consistent: MMA
+converges cleanly), and <em>between</em> runs</p>
+<div class="highlight-default notranslate"><div class="highlight"><pre><span></span>σ_allow ← σ_allow · (σ_lim / σ_max_true)^0.7
+</pre></div>
+</div>
+<p>warm-started, until the true max von Mises is within 3 % of <code class="docutils literal notranslate"><span class="pre">σ_lim</span></code>. Same fixed
+point as the per-iteration scheme (<code class="docutils literal notranslate"><span class="pre">σ_max</span> <span class="pre">=</span> <span class="pre">σ_lim</span></code>), stable dynamics.</p>
+</li>
+</ol>
+<p>On the L-bracket with <code class="docutils literal notranslate"><span class="pre">σ_lim</span> <span class="pre">=</span> <span class="pre">0.75</span></code> (genuinely active: the unconstrained optimum sits
+at <code class="docutils literal notranslate"><span class="pre">σ_max</span> <span class="pre">=</span> <span class="pre">0.80</span></code>), the loop converges in <strong>two outer iterations</strong>:</p>
+<table class="docutils align-default">
+<thead>
+<tr class="row-odd"><th class="head"><p>outer</p></th>
+<th class="head"><p>inner <code class="docutils literal notranslate"><span class="pre">σ_allow</span></code></p></th>
+<th class="head"><p>C</p></th>
+<th class="head"><p>vol</p></th>
+<th class="head"><p>true <code class="docutils literal notranslate"><span class="pre">σ_max</span></code></p></th>
+</tr>
+</thead>
+<tbody>
+<tr class="row-even"><td><p>0</p></td>
+<td><p>0.750</p></td>
+<td><p>78.36</p></td>
+<td><p>0.398</p></td>
+<td><p>0.775</p></td>
+</tr>
+<tr class="row-odd"><td><p>1</p></td>
+<td><p>0.733</p></td>
+<td><p><strong>78.18</strong></p></td>
+<td><p>0.398</p></td>
+<td><p><strong>0.772</strong> ✓ (within 3 % of 0.75)</p></td>
+</tr>
+</tbody>
+</table>
+<p>Feasible throughout, no dismantling, and essentially <strong>zero compliance cost</strong> relative
+to the unconstrained baseline (78.3) — the constraint reshaped the corner region
+rather than degrading the structure.</p>
+<p><img alt="L-bracket, active stress via the outer-loop Le allowable" src="_images/lshape_stress_active.png" /></p>
+<p>For reference, the volume-constrained runs at a slack limit behave as expected: at
+<code class="docutils literal notranslate"><span class="pre">σ_lim</span> <span class="pre">=</span> <span class="pre">2.5</span></code> the constraint is correctly reported inactive (true margin −70 %) and the
+design is volume-limited (C = 81.5); and the qualitative stress-relief signature — the
+constrained design rounding/thickening material at the re-entrant corner versus the
+baseline’s sharp crossing — is visible in the earlier comparison figures
+(<code class="docutils literal notranslate"><span class="pre">lshape_baseline.png</span></code> vs <code class="docutils literal notranslate"><span class="pre">lshape_stress_constrained.png</span></code>).</p>
+</section>
+<section id="open-items">
+<h3>5.5 Open items<a class="headerlink" href="#open-items" title="Link to this heading"></a></h3>
+<ul class="simple">
+<li><p><strong>Pure mass minimization</strong> should now transfer (raw inner constraint + outer-loop
+allowable, descending from the stress-converged design on the feasible side) but has
+not been run to convergence.</p></li>
+<li><p><strong>Aggressive targets</strong> (<code class="docutils literal notranslate"><span class="pre">σ_lim</span></code> 25 % below the natural max) require re-routing the
+load path away from the corner — beyond a 400-iteration / 0.005-move budget, a
+compute limit rather than a formulation one.</p></li>
+<li><p>The per-iteration adaptive scheme might be rescued by updating every N ≫ 1
+iterations (interpolating toward the outer loop), or by GCMMA’s inner convexity
+control — untested.</p></li>
+</ul>
+</section>
 </section>
 <section id="reproducing-extending">
-<h2>5. Reproducing &amp; extending<a class="headerlink" href="#reproducing-extending" title="Link to this heading"></a></h2>
+<h2>6. Reproducing &amp; extending<a class="headerlink" href="#reproducing-extending" title="Link to this heading"></a></h2>
 <ul class="simple">
 <li><p>Run a single strategy: <code class="docutils literal notranslate"><span class="pre">ggp</span> <span class="pre">search</span> <span class="pre">--preset</span> <span class="pre">short_cantilever</span> <span class="pre">--strategy</span> <span class="pre">continuation</span></code>.</p></li>
 <li><p>Add a new continuation schedule: pass a list of <code class="docutils literal notranslate"><span class="pre">overrides</span></code> dicts to
 <code class="docutils literal notranslate"><span class="pre">global_search.continuation</span></code>.</p></li>
 <li><p>New strategies plug in the same way (construct <code class="docutils literal notranslate"><span class="pre">GGPPipeline(spec,</span> <span class="pre">x0=...,</span> <span class="pre">overrides=...,</span> <span class="pre">deflation=...)</span></code>, read back <code class="docutils literal notranslate"><span class="pre">OptimisationResult</span></code>); the orchestration is FEniCS-free and
 unit-tested in <code class="docutils literal notranslate"><span class="pre">tests/test_global_search.py</span></code>.</p></li>
+<li><p>Run the node-based planar truss: <code class="docutils literal notranslate"><span class="pre">ggp</span> <span class="pre">optimize</span> <span class="pre">--preset</span> <span class="pre">short_cantilever_truss</span></code>. Change the
+node lattice with <code class="docutils literal notranslate"><span class="pre">grid_nx</span></code>/<code class="docutils literal notranslate"><span class="pre">grid_ny</span></code> and the ground-structure density with <code class="docutils literal notranslate"><span class="pre">truss_radius</span></code>
+in the preset; the connectivity (with crossing-node planarization) is built by
+<code class="docutils literal notranslate"><span class="pre">ggp.projection.truss_2d.build_ground_structure</span></code> and unit-tested in
+<code class="docutils literal notranslate"><span class="pre">tests/test_truss_mapper.py</span></code>.</p></li>
+<li><p>Stress/displacement constraints &amp; configurable objective (§5): presets
+<code class="docutils literal notranslate"><span class="pre">short_cantilever_stress.yaml</span></code>, <code class="docutils literal notranslate"><span class="pre">short_cantilever_displacement.yaml</span></code>,
+<code class="docutils literal notranslate"><span class="pre">l_shape_stress.yaml</span></code>, <code class="docutils literal notranslate"><span class="pre">short_cantilever_minvol_stress.yaml</span></code>; the converged
+stress-active recipe is <code class="docutils literal notranslate"><span class="pre">benchmarks/lshape_stress_outer.py</span></code>. The objective is chosen via
+<code class="docutils literal notranslate"><span class="pre">objective:</span> <span class="pre">{name:</span> <span class="pre">...,</span> <span class="pre">sense:</span> <span class="pre">minimize|maximize,</span> <span class="pre">params:</span> <span class="pre">{...}}</span></code>. The JAX sensitivity
+kernel lives in <code class="docutils literal notranslate"><span class="pre">ggp/utils/jax_sensitivity.py</span></code>; FD gates in <code class="docutils literal notranslate"><span class="pre">tests/test_stress.py</span></code> and
+<code class="docutils literal notranslate"><span class="pre">tests/test_adjoint_constraints.py</span></code>.</p></li>
 </ul>
 </section>
 <section id="references">
@@ -815,6 +1103,12 @@ A 170(6):421–428, 1992.</p></li>
 transient chaos.</em> Neural Networks 8(6):915–930, 1995.</p></li>
 <li><p>B. Li, W. Jiang. <em>Optimizing complex functions by chaos search.</em> Cybernetics and
 Systems 29(4):409–419, 1998.</p></li>
+<li><p>A. Verbart, M. Langelaar, F. van Keulen. <em>A unified aggregation and relaxation
+approach for stress-constrained topology optimization.</em> SMO 55:663–679, 2017.</p></li>
+<li><p>C. Le, J. Norato, T. Bruns, C. Ha, D. Tortorelli. <em>Stress-based topology
+optimization for continua.</em> SMO 41:605–620, 2010.</p></li>
+<li><p>P. Duysinx, M. P. Bendsøe. <em>Topology optimization of continuum structures with
+local stress constraints.</em> IJNME 43(8):1453–1478, 1998.</p></li>
 </ol>
 </section>
 </section>
