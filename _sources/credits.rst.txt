@@ -34,6 +34,9 @@ Core Scientific Libraries
    * - `SciPy <https://scipy.org/>`_
      - BSD-3-Clause
      - Sparse matrix utilities (CSR format) used for stiffness assembly and linear system solving.
+   * - `AMJax <https://github.com/vboussange/AMJax>`_ (Boussange, V.)
+     - MIT
+     - JAX library bringing algebraic multigrid (AMG) methods to sparse FEM solves. The ``amjax`` FEM solver backend (:mod:`ggp.physics.amjax_solver`) implements its AMG-preconditioned CG approach using PyAMG smoothed-aggregation hierarchies and SciPy CG.
 
 Meshing
 -------
