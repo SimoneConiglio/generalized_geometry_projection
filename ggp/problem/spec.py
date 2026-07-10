@@ -225,7 +225,8 @@ class SolverSpec:
     Parameters
     ----------
     algorithm : str
-        Optimisation algorithm name (``"MMA"``, ``"SLP"``, ``"CONLIN"``).
+        Optimisation algorithm name (``"MMA"``, ``"SLP"``, ``"CONLIN"``,
+        ``"GE_SBO"``).
     max_iter : int
         Maximum number of outer iterations.
     iterative : bool

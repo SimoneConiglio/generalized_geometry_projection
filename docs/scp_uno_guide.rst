@@ -11,7 +11,7 @@ The core idea of SCP is to replace a difficult, non-convex optimization problem 
 Algorithms
 ----------
 
-The framework provides three major algorithms:
+The framework provides four major algorithms:
 
 1. **Method of Moving Asymptotes (MMA)**:
    The gold standard for topology optimization. It builds a strictly convex approximation by introducing reciprocal variables with dynamically updated asymptotes. This naturally injects curvature, safely preventing reciprocal singularities and steering the optimizer efficiently away from constraint boundaries.
@@ -21,6 +21,31 @@ The framework provides three major algorithms:
 
 3. **Sequential Linear Programming (SLP)**:
    The simplest approximation scheme, completely linearizing the objective and constraints at each iterate. It does not capture curvature and can only reliably descend when paired with strict move-limit bounds. By default, our SLP implementation uses GEMSEO's exact HiGHS ``DUAL_SIMPLEX`` LP solver, bypassing Jacobian calls in the inner loop.
+
+4. **Gradient-Enhanced Surrogate-Based Optimization (GE_SBO)**:
+   A trust-region-managed surrogate optimizer for *expensive* models whose gradients
+   are available (adjoint sensitivities). At each outer iteration it:
+
+   - fits a **gradient-enhanced kriging** surrogate — a Gaussian process conditioned
+     on both function values and gradients, so each expensive evaluation contributes
+     :math:`1 + r` observations;
+   - reduces high-dimensional design spaces through an **active subspace**
+     :math:`z = W^{T} x` identified from the sampled gradients (SVD), keeping the
+     kriging system size independent of the full dimension;
+   - acquires a **batch of** ``batch_size`` **points** inside the trust region: one
+     penalized-exploitation point plus a ladder of lower-confidence-bound points
+     :math:`\mu - \kappa_j \sigma` with increasing :math:`\kappa_j` and a repulsion
+     term for diversity. Batch points are independent and can be evaluated in
+     parallel by the caller;
+   - accepts/rejects the step and updates the trust-region radius by the classical
+     ratio test on the :math:`L_1` penalty merit function.
+
+   Inequality constraints are co-krigged with the objective (one shared Cholesky
+   factorization) and penalized inside the acquisition. Invoke it with
+   ``scenario.execute(algo_name="GE_SBO", max_iter=200, batch_size=4)``, where
+   ``max_iter`` is the total budget of true model evaluations. The engine lives in
+   ``scp_uno.gesbo_core`` (pure NumPy/SciPy) and is also usable standalone via
+   ``gesbo_minimize``.
 
 Monotone Backtracking Line-Search
 ---------------------------------

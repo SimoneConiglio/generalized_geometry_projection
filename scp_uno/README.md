@@ -11,10 +11,29 @@ The framework is built on a hierarchy of abstractions to ensure maintainability 
     *   **Surrogate-Based Optimization (SBO)** (with surrogate retraining)
     *   **Trust-Region methods**
 2.  **`SequentialConvexProgramming` (Subclass)**: Specializes the engine for cases where the approximations are analytically convex. It introduces a configurable **Inner Solver** interface.
-3.  **Algorithms (`MMA`, `CONLIN`, `SLP`)**: Concrete implementations of approximation rules:
+3.  **Algorithms (`MMA`, `CONLIN`, `SLP`, `GE_SBO`)**: Concrete implementations of approximation rules:
     *   **MMA**: Method of Moving Asymptotes (Svanberg 1987) with reciprocal approximations and dynamic asymptote updates. (Captures curvature best).
     *   **CONLIN**: Convex Linearization rule (linear for positive gradients, reciprocal for negative). Incorporates strict move limits to prevent reciprocal singularities.
     *   **SLP**: Sequential Linear Programming. Purely linear approximations of objective and constraints solved exactly at each step via a HiGHS dual-simplex LP solver over a move-limited box.
+    *   **GE_SBO**: Gradient-Enhanced Surrogate-Based Optimization (see below).
+
+## Gradient-Enhanced Surrogate-Based Optimization (`GE_SBO`)
+
+`GE_SBO` realizes the SBO extension anticipated by the `SequentialProgramming` design: instead of an analytic convex approximation, each outer iteration fits a **gradient-enhanced kriging (GEK)** surrogate to all samples collected so far — a Gaussian process conditioned on both function *values and gradients* (derivative observations enter the kriging system exactly), so every expensive evaluation contributes `1 + r` observations.
+
+Three features make it practical for expensive, high-dimensional, gradient-available problems such as GGP topology optimization:
+
+*   **Active-subspace dimension reduction**: when the design space is larger than `max_latent_dim`, the dominant subspace `W` (an SVD of the sampled gradients) reduces the surrogate inputs to `z = Wᵀx`. The kriging system size becomes independent of the full dimension `d`, and the subspace is re-identified every iteration so it tracks the optimization trajectory.
+*   **Multi-point (batch) acquisition**: every iteration proposes `batch_size` points inside the current trust region — one penalized-exploitation point (surrogate minimum) plus a ladder of lower-confidence-bound points `mean − κⱼ·σ` with geometrically increasing `κⱼ` and a smooth repulsion term that keeps the batch spread out. The batch points are mutually independent, so the expensive model can evaluate them in parallel.
+*   **Trust-region model management**: the best batch point (by the same `L1` penalty merit used by the line-search) is accepted or rejected by the classical ratio test between actual and surrogate-predicted merit reduction; the trust-region radius grows/shrinks accordingly, which keeps the method robust when the surrogate is inaccurate.
+
+Inequality constraints are handled by co-kriging every constraint alongside the objective (all outputs share one Cholesky factorization) and penalizing predicted violation inside the acquisition.
+
+```python
+scenario.execute(algo_name="GE_SBO", max_iter=200, batch_size=4, max_latent_dim=12)
+```
+
+`max_iter` is the total budget of *true model evaluations*; each iteration consumes up to `batch_size` of them. The core engine (`scp_uno.gesbo_core`) is pure NumPy/SciPy and can be used standalone through `gesbo_minimize(evaluate, x0, lb, ub, config)`.
 
 ## Monotone Backtracking Line-Search
 

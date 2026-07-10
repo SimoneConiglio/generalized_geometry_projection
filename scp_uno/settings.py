@@ -51,6 +51,83 @@ class SCPSettings(BaseOptimizerSettings):
         description="Maximum number of backtracking trials before accepting the step.",
     )
 
+class GESBOSettings(BaseOptimizerSettings):
+    """Settings for the Gradient-Enhanced Surrogate-Based Optimization (GE_SBO) algorithm.
+
+    ``max_iter`` is the total budget of *true model evaluations* (each outer
+    iteration consumes up to ``batch_size`` of them, plus the initial DOE).
+    """
+
+    max_iter: int = Field(200, description="Total budget of true model evaluations.")
+
+    # -- batch acquisition --
+    batch_size: int = Field(
+        4, description="Number of points acquired (and evaluated) per outer iteration."
+    )
+    n_init_doe: int = Field(
+        0,
+        description=(
+            "Initial DOE size (Latin Hypercube inside the initial trust region). "
+            "0 means batch_size + 1."
+        ),
+    )
+    kappa_base: float = Field(
+        1.0, description="First exploration weight of the LCB kappa ladder."
+    )
+    kappa_growth: float = Field(
+        2.0, description="Geometric growth of the LCB kappa ladder across the batch."
+    )
+    repulsion_weight: float = Field(
+        1.0, description="Batch-diversity repulsion weight in the acquisition."
+    )
+    acq_n_restarts: int = Field(
+        4, description="Random multistarts per acquisition sub-optimization."
+    )
+
+    # -- surrogate / high-dimensional scaling --
+    use_gradients: bool = Field(
+        True,
+        description=(
+            "Condition the surrogate on gradients (gradient-enhanced kriging). "
+            "False falls back to plain (value-only) kriging."
+        ),
+    )
+    max_latent_dim: int = Field(
+        12,
+        description=(
+            "Active-subspace dimension used when the design space is larger; "
+            "the surrogate is built on z = W^T x with W spanned by the sampled "
+            "gradients (key to high-dimensional scaling)."
+        ),
+    )
+    max_points: int = Field(
+        60, description="Training window: number of nearest samples kept in the surrogate."
+    )
+    max_grad_points: int = Field(
+        25, description="Subset of the window whose gradients enter the kriging system."
+    )
+    regularization: float = Field(1e-8, description="Kernel nugget regularization.")
+
+    # -- trust region --
+    tr_init: float = Field(
+        0.25, description="Initial trust-region half-width (fraction of the design box)."
+    )
+    tr_min: float = Field(1e-5, description="Minimum trust-region half-width (stopping).")
+    tr_max: float = Field(0.75, description="Maximum trust-region half-width.")
+    tr_shrink: float = Field(0.5, description="Radius shrink factor on rejected steps.")
+    tr_expand: float = Field(2.0, description="Radius expansion factor on very good steps.")
+
+    # -- merit / stopping --
+    penalty: float = Field(
+        100.0, description="mu of the l1 merit function f + mu * sum(max(0, c))."
+    )
+    constraint_tol: float = Field(1e-6, description="Feasibility tolerance on constraints.")
+    stall_limit: int = Field(
+        5, description="Consecutive non-improving iterations before declaring a stall."
+    )
+    seed: int = Field(0, description="Random seed (DOE, acquisition multistarts).")
+
+
 class UnoSettings(BaseOptimizerSettings):
     """Settings for the Uno solver wrapper."""
     preset: str = Field("filtersmma", description="Uno configuration preset.")
