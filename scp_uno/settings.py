@@ -132,6 +132,41 @@ class GESBOSettings(BaseOptimizerSettings):
     kkt_tol_rel: float = Field(1e-6, description="Relative KKT tolerance.")
 
 
+class TransformerOptSettings(BaseOptimizerSettings):
+    """Settings for the transformer learned-optimizer (TRANSFORMER_OPT).
+
+    ``max_iter`` is the total budget of true model evaluations; each outer
+    iteration consumes one batch (the policy's ``n_heads_out``, typically 4).
+    """
+
+    max_iter: int = Field(200, description="Total budget of true model evaluations.")
+    weights_path: str = Field(
+        "",
+        description=(
+            "Path to a trained policy .npz (see scripts/train_transformer_opt.py). "
+            "Empty selects the packaged default weights."
+        ),
+    )
+
+    # -- trust region --
+    tr_init: float = Field(0.25, description="Initial trust-region half-width.")
+    tr_min: float = Field(1e-5, description="Minimum trust-region half-width (stopping).")
+    tr_max: float = Field(0.75, description="Maximum trust-region half-width.")
+    tr_shrink: float = Field(0.5, description="Radius shrink factor on rejected steps.")
+    tr_expand: float = Field(2.0, description="Radius expansion factor on good boundary steps.")
+
+    # -- merit / misc --
+    penalty: float = Field(
+        100.0, description="mu of the l1 merit function f + mu * sum(max(0, c))."
+    )
+    constraint_tol: float = Field(1e-6, description="Feasibility tolerance on constraints.")
+    seed: int = Field(0, description="Random seed (latent basis fallback, dedup jitter).")
+
+    # Expected by GEMSEO's base driver (KKT-based stopping hooks).
+    kkt_tol_abs: float = Field(1e-6, description="Absolute KKT tolerance.")
+    kkt_tol_rel: float = Field(1e-6, description="Relative KKT tolerance.")
+
+
 class UnoSettings(BaseOptimizerSettings):
     """Settings for the Uno solver wrapper."""
     preset: str = Field("filtersmma", description="Uno configuration preset.")

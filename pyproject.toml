@@ -51,6 +51,9 @@ Repository = "https://github.com/SimoneConiglio/generalized_geometry_projection"
 [tool.setuptools.packages.find]
 include = ["ggp*", "scp_uno*"]
 
+[tool.setuptools.package-data]
+scp_uno = ["weights/*.npz"]
+
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "--cov=ggp --cov-fail-under=80"

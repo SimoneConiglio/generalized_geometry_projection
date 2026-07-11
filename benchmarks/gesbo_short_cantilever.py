@@ -1,16 +1,17 @@
 # Copyright (c) 2026 Simone Coniglio
 # Licensed under the MIT license. See LICENSE file in the project directory for details.
-"""Benchmark the GE_SBO algorithm on the short-cantilever GGP preset.
+"""Benchmark GE_SBO / TRANSFORMER_OPT on the short-cantilever GGP preset.
 
 Runs the built-in ``short_cantilever`` problem (18 free bars, 108 design
-variables, compliance objective, 40% volume constraint) with the
-gradient-enhanced surrogate-based optimizer and reports compliance, volume
-feasibility and timing. Optionally runs the preset MMA baseline with the same
-evaluation budget for comparison.
+variables, compliance objective, 40% volume constraint) with the selected
+surrogate/learned optimizer and reports compliance, volume feasibility and
+timing. Optionally runs the preset MMA baseline with the same evaluation
+budget for comparison.
 
 Usage (inside the ``ggp`` conda environment)::
 
     python benchmarks/gesbo_short_cantilever.py --max-evals 200 --batch-size 4
+    python benchmarks/gesbo_short_cantilever.py --algo TRANSFORMER_OPT
     python benchmarks/gesbo_short_cantilever.py --with-mma-baseline
 """
 from __future__ import annotations
@@ -28,24 +29,20 @@ from ggp.optimization.pipeline import GGPPipeline
 PRESET = Path(__file__).resolve().parents[1] / "ggp" / "cli" / "presets" / "short_cantilever.yaml"
 
 
-def run_ge_sbo(spec, max_evals: int, batch_size: int, seed: int, **options):
-    sbo_spec = replace(
+def run_algo(spec, algo: str, max_evals: int, seed: int, **options):
+    run_spec = replace(
         spec,
         solver=replace(
             spec.solver,
-            algorithm="GE_SBO",
+            algorithm=algo,
             max_iter=max_evals,
             # the preset's options are MMA-specific (asymptotes, move limits):
-            # replace them with GE_SBO settings.
-            options={
-                "batch_size": batch_size,
-                "seed": seed,
-                **options,
-            },
+            # replace them with the selected algorithm's settings.
+            options={"seed": seed, **options},
         ),
     )
     t0 = time.time()
-    result = GGPPipeline(sbo_spec).run()
+    result = GGPPipeline(run_spec).run()
     return result, time.time() - t0
 
 
@@ -70,7 +67,9 @@ def report(tag: str, result, elapsed: float):
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--max-evals", type=int, default=200,
-                        help="GE_SBO true-evaluation budget (default 200).")
+                        help="True-evaluation budget (default 200).")
+    parser.add_argument("--algo", choices=["GE_SBO", "TRANSFORMER_OPT"],
+                        default="GE_SBO", help="Algorithm to benchmark.")
     parser.add_argument("--batch-size", type=int, default=4,
                         help="Points acquired per GE_SBO iteration (default 4).")
     parser.add_argument("--seed", type=int, default=0)
@@ -89,23 +88,28 @@ def main() -> None:
     print(f"short_cantilever: mode={spec.formulation.mode} "
           f"components={spec.formulation.num_components} volfrac={spec.volfrac}")
 
-    extra = {
-        k: v for k, v in {
-            "max_latent_dim": args.max_latent_dim,
-            "max_grad_points": args.max_grad_points,
-            "tr_init": args.tr_init,
-            "kappa_base": args.kappa_base,
-        }.items() if v is not None
-    }
-    result, elapsed = run_ge_sbo(spec, args.max_evals, args.batch_size, args.seed,
-                                 **extra)
-    report("GE_SBO", result, elapsed)
+    if args.algo == "GE_SBO":
+        extra = {
+            k: v for k, v in {
+                "batch_size": args.batch_size,
+                "max_latent_dim": args.max_latent_dim,
+                "max_grad_points": args.max_grad_points,
+                "tr_init": args.tr_init,
+                "kappa_base": args.kappa_base,
+            }.items() if v is not None
+        }
+    else:                                       # TRANSFORMER_OPT
+        extra = {k: v for k, v in {"tr_init": args.tr_init}.items()
+                 if v is not None}
+    result, elapsed = run_algo(spec, args.algo, args.max_evals, args.seed, **extra)
+    report(args.algo, result, elapsed)
     if args.plot_dir and result.density_field is not None:
         args.plot_dir.mkdir(parents=True, exist_ok=True)
         from ggp.visualization.plot import save_density_plot_2d
+        tag = args.algo.lower()
         save_density_plot_2d(result.density_field, result.eval_coords,
-                             args.plot_dir / "short_cantilever_ge_sbo.png",
-                             title="short_cantilever GE_SBO")
+                             args.plot_dir / f"short_cantilever_{tag}.png",
+                             title=f"short_cantilever {args.algo}")
 
     if args.with_mma_baseline:
         base, base_elapsed = run_mma(spec, args.max_evals)

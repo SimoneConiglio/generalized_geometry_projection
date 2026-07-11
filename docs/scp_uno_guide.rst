@@ -11,7 +11,7 @@ The core idea of SCP is to replace a difficult, non-convex optimization problem 
 Algorithms
 ----------
 
-The framework provides four major algorithms:
+The framework provides five major algorithms:
 
 1. **Method of Moving Asymptotes (MMA)**:
    The gold standard for topology optimization. It builds a strictly convex approximation by introducing reciprocal variables with dynamically updated asymptotes. This naturally injects curvature, safely preventing reciprocal singularities and steering the optimizer efficiently away from constraint boundaries.
@@ -46,6 +46,18 @@ The framework provides four major algorithms:
    ``max_iter`` is the total budget of true model evaluations. The engine lives in
    ``scp_uno.gesbo_core`` (pure NumPy/SciPy) and is also usable standalone via
    ``gesbo_minimize``.
+
+5. **Transformer Learned Optimizer (TRANSFORMER_OPT)** *(experimental, requires JAX)*:
+   A "learning to optimize" approach: a small set-transformer policy reads the
+   recent history (positions, merit values, gradients — encoded in the same
+   gradient active subspace as GE_SBO, trust-region-relative and
+   scale-normalized) and directly proposes the next **batch** of query points;
+   a classical trust-region loop safeguards acceptance. The policy is trained
+   offline by imitating a privileged teacher on synthetic tasks of random
+   dimension (``scripts/train_transformer_opt.py``); the packaged default
+   weights transfer unchanged across problem dimensions and objective scales.
+   Invoke with ``scenario.execute(algo_name="TRANSFORMER_OPT", max_iter=200)``.
+   Engine: ``scp_uno.transformer_opt_core`` (NumPy + JAX).
 
 Monotone Backtracking Line-Search
 ---------------------------------

@@ -35,6 +35,18 @@ scenario.execute(algo_name="GE_SBO", max_iter=200, batch_size=4, max_latent_dim=
 
 `max_iter` is the total budget of *true model evaluations*; each iteration consumes up to `batch_size` of them. The core engine (`scp_uno.gesbo_core`) is pure NumPy/SciPy and can be used standalone through `gesbo_minimize(evaluate, x0, lb, ub, config)`.
 
+## Transformer Learned Optimizer (`TRANSFORMER_OPT`)
+
+`TRANSFORMER_OPT` replaces the hand-designed acquisition with a **learned proposer**: a small set-transformer policy (~110k parameters, pure JAX) reads the recent optimization history — sample positions, merit values and gradients, encoded in the same gradient active subspace used by `GE_SBO` — and directly emits the next **batch** of query points (one per output head). A classical trust-region accept/shrink loop safeguards every step, so a bad proposal costs one batch, not the run.
+
+The policy is trained offline (`scripts/train_transformer_opt.py`, a few CPU-minutes) by behaviour cloning of a *privileged teacher* on synthetic tasks (anisotropic quadratics, two-well multimodal functions, curved valleys) of random dimension: the teacher knows each task's optimum and the winner-takes-all loss over the output heads lets heads specialize on distinct basins. Because all features are trust-region-relative, merit-scale-normalized and live in a fixed-size latent, **one trained model transfers across dimensions and objective scales** — the packaged default weights (`scp_uno/weights/transformer_opt_default.npz`) were trained only on toy functions yet run unchanged on the 108-variable GGP cantilever.
+
+```python
+scenario.execute(algo_name="TRANSFORMER_OPT", max_iter=200)  # requires JAX
+```
+
+Compared with `GE_SBO`: no kriging system to factorize (inference is one forward pass), the same multi-point batch structure, but model quality depends on the training distribution rather than on principled uncertainty — treat it as the experimental, research-grade option of the family.
+
 ## Monotone Backtracking Line-Search
 
 A key feature available to *all* algorithms in this framework is an optional **Monotone Backtracking Line-Search**. Enabled via `use_line_search=True` in the settings, this mechanism:
