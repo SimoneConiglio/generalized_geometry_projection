@@ -18,6 +18,45 @@ pip install -e .          # editable install for development
 
 The `environment.yml` pins `fenics=2019.1.0`, `dolfin-adjoint=2019.1.0`, and installs `gemseo-mma` via pip.
 
+### Bootstrapping conda in a fresh sandbox (Claude Code remote sessions)
+
+Fresh containers have no conda. Install **Miniforge** and build the `ggp`
+environment from `environment.yml` — activating it is what provides GEMSEO
+(and FEniCS, dolfin-adjoint, gemseo-mma):
+
+```bash
+curl -sSL -o /tmp/miniforge.sh \
+  "https://github.com/conda-forge/miniforge/releases/latest/download/Miniforge3-Linux-x86_64.sh"
+bash /tmp/miniforge.sh -b -p ~/miniforge3
+source ~/miniforge3/etc/profile.d/conda.sh
+
+conda env create -f environment.yml   # ~5-10 min (FEniCS stack)
+conda activate ggp
+pip install -e .                      # editable install; registers the scp_uno GEMSEO plugin
+```
+
+If the sandbox's network policy blocks the GitHub-hosted Miniforge installer
+(403 from the proxy), fall back to Miniconda restricted to conda-forge —
+functionally equivalent to Miniforge:
+
+```bash
+curl -sSL -o /tmp/miniconda.sh \
+  "https://repo.anaconda.com/miniconda/Miniconda3-latest-Linux-x86_64.sh"
+bash /tmp/miniconda.sh -b -p ~/miniconda3
+printf 'channels:\n  - conda-forge\n' > ~/miniconda3/.condarc   # drop 'defaults' (avoids the Anaconda ToS gate)
+source ~/miniconda3/etc/profile.d/conda.sh
+# if environment.yml still lists 'defaults', create from a conda-forge-only copy:
+grep -v '^  - defaults$' environment.yml > /tmp/environment_forge.yml
+conda env create -f /tmp/environment_forge.yml
+conda activate ggp
+pip install -e .
+```
+
+Behind the sandbox HTTPS proxy, point conda at the proxy CA bundle before
+creating the environment: `conda config --set ssl_verify /root/.ccr/ca-bundle.crt`
+(pip already honours `PIP_CERT`). **Every test/CLI command below assumes the
+`ggp` environment is active** (`conda activate ggp`).
+
 ## Commands
 
 ```bash

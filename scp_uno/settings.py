@@ -127,6 +127,10 @@ class GESBOSettings(BaseOptimizerSettings):
     )
     seed: int = Field(0, description="Random seed (DOE, acquisition multistarts).")
 
+    # Expected by GEMSEO's base driver (KKT-based stopping hooks).
+    kkt_tol_abs: float = Field(1e-6, description="Absolute KKT tolerance.")
+    kkt_tol_rel: float = Field(1e-6, description="Relative KKT tolerance.")
+
 
 class UnoSettings(BaseOptimizerSettings):
     """Settings for the Uno solver wrapper."""
