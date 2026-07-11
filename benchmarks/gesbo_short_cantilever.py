@@ -68,8 +68,10 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--max-evals", type=int, default=200,
                         help="True-evaluation budget (default 200).")
-    parser.add_argument("--algo", choices=["GE_SBO", "TRANSFORMER_OPT"],
-                        default="GE_SBO", help="Algorithm to benchmark.")
+    parser.add_argument(
+        "--algo",
+        choices=["GE_SBO", "TRANSFORMER_OPT", "GEK2D", "TRANSFORMER_2D"],
+        default="GE_SBO", help="Algorithm to benchmark.")
     parser.add_argument("--batch-size", type=int, default=4,
                         help="Points acquired per GE_SBO iteration (default 4).")
     parser.add_argument("--seed", type=int, default=0)

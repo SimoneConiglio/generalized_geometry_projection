@@ -197,6 +197,24 @@ class TeacherTask:
                     if np.all(x_star > 0.02) and np.all(x_star < 0.98):
                         break
                 self.x_star = x_star
+        elif kind == "quad_ball":
+            # quadratic objective with a ball constraint; the optimum is
+            # *constructed* on the boundary so it is known exactly by KKT:
+            # 2 A (x* - xu) = -lam * 2 (x* - ctr) / R^2  with lam > 0.
+            self.m = 1
+            k = rng.integers(2, min(d, 12) + 1)
+            B = rng.standard_normal((d, k)) / np.sqrt(d)
+            self.A = B @ B.T + 10 ** rng.uniform(-2.5, -1) * np.eye(d)
+            self.scale = 10 ** rng.uniform(-1, 2)
+            self.ctr = rng.uniform(0.35, 0.65, d)
+            self.Rb = float(rng.uniform(0.15, 0.35))
+            u = rng.standard_normal(d)
+            u /= np.linalg.norm(u)
+            self.x_star = self.ctr + self.Rb * u
+            lam = 10 ** rng.uniform(-1.5, 0.5)
+            self.xu = self.x_star + lam / self.Rb ** 2 * np.linalg.solve(
+                self.A, self.x_star - self.ctr
+            )
         elif kind == "valley":
             self.R, _ = np.linalg.qr(rng.standard_normal((d, d)))
             self.x_star = rng.uniform(0.25, 0.75, d)
@@ -234,12 +252,16 @@ class TeacherTask:
             g = -self.scale * self.kappa / (x + self.eps) ** 2
             c = float(self.v @ x / self.V - 1.0)
             return f, g, c, self.v / self.V
-        if self.kind in ("quad_lin", "quad_free"):
+        if self.kind in ("quad_lin", "quad_free", "quad_ball"):
             e = x - self.xu
             f = self.scale * float(e @ self.A @ e)
             g = self.scale * 2.0 * self.A @ e
             if self.kind == "quad_free":
                 return f, g, None, None
+            if self.kind == "quad_ball":
+                r = x - self.ctr
+                c = float(r @ r) / self.Rb ** 2 - 1.0
+                return f, g, c, 2.0 * r / self.Rb ** 2
             c = float(self.a @ x - self.b) / max(np.linalg.norm(self.a), 1e-30)
             return f, g, c, self.a / max(np.linalg.norm(self.a), 1e-30)
         y = self.R @ (x - self.x_star)
@@ -250,6 +272,31 @@ class TeacherTask:
         gy[:-1] = -400 * t * a + 2 * a
         gy[1:] += 200 * t
         return f, self.scale * self.R.T @ gy, None, None
+
+    def values_batch(self, X: np.ndarray):
+        """Vectorized values-only evaluation: ``(f (n,), c (n,) or None)``.
+
+        Used by the reduced-space grid teacher, which needs the true objective
+        and aggregated constraint at many plane points but no gradients.
+        """
+        X = np.atleast_2d(np.asarray(X, float))
+        if self.kind == "toy_simp":
+            f = self.scale * np.sum(self.kappa / (X + self.eps), axis=1)
+            return f, X @ self.v / self.V - 1.0
+        if self.kind in ("quad_lin", "quad_free", "quad_ball"):
+            E = X - self.xu
+            f = self.scale * np.einsum("nd,dk,nk->n", E, self.A, E)
+            if self.kind == "quad_free":
+                return f, None
+            if self.kind == "quad_ball":
+                R = X - self.ctr
+                return f, np.sum(R * R, axis=1) / self.Rb ** 2 - 1.0
+            an = max(np.linalg.norm(self.a), 1e-30)
+            return f, (X @ self.a - self.b) / an
+        Y = (X - self.x_star) @ self.R.T
+        A, B = Y[:, :-1], Y[:, 1:]
+        T = B - A * A
+        return self.scale * (100 * np.sum(T * T, 1) + np.sum(A * A, 1)), None
 
 
 def sample_teacher_task(rng: np.random.Generator, dims=(16, 32, 64, 108, 160)

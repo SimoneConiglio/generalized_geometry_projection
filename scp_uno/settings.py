@@ -192,6 +192,52 @@ class TransformerOptSettings(BaseOptimizerSettings):
     kkt_tol_rel: float = Field(1e-6, description="Relative KKT tolerance.")
 
 
+class _ReducedSpaceBaseSettings(BaseOptimizerSettings):
+    """Shared settings of the reduced-space (2D) optimizers."""
+
+    max_iter: int = Field(200, description="Total budget of true model evaluations.")
+    delta_init: float = Field(0.1, description="Initial trust radius (normalized box).")
+    delta_min: float = Field(1e-6, description="Minimum trust radius (stopping).")
+    delta_max: float = Field(0.5, description="Maximum trust radius.")
+    shrink: float = Field(0.5, description="Radius shrink factor on rejected steps.")
+    expand: float = Field(1.6, description="Radius expansion factor on boundary steps.")
+    penalty: float = Field(
+        10.0, description="l1 merit safety factor over the multiplier estimate."
+    )
+    constraint_tol: float = Field(1e-6, description="Feasibility tolerance.")
+    ks_rho: float = Field(50.0, description="KS constraint-aggregation parameter.")
+    stall_limit: int = Field(10, description="Consecutive rejections before stopping.")
+    n_resets: int = Field(
+        3, description="Trust-region restarts from the incumbent best before stopping."
+    )
+    seed: int = Field(0, description="Random seed (frame fallbacks).")
+
+    # Expected by GEMSEO's base driver (KKT-based stopping hooks).
+    kkt_tol_abs: float = Field(1e-6, description="Absolute KKT tolerance.")
+    kkt_tol_rel: float = Field(1e-6, description="Relative KKT tolerance.")
+
+
+class GEK2DSettings(_ReducedSpaceBaseSettings):
+    """Settings of the GEK2D reduced-space algorithm."""
+
+    n_inner: int = Field(
+        3, description="True evaluations spent on the 2D plane per iteration."
+    )
+    grid: int = Field(41, description="Surrogate grid resolution for the 2D solve.")
+
+
+class RSTransformerSettings(_ReducedSpaceBaseSettings):
+    """Settings of the TRANSFORMER_2D reduced-space algorithm."""
+
+    weights_path: str = Field(
+        "",
+        description=(
+            "Path to trained reduced-space policy weights "
+            "(scripts/train_rs_transformer.py); empty selects the packaged default."
+        ),
+    )
+
+
 class UnoSettings(BaseOptimizerSettings):
     """Settings for the Uno solver wrapper."""
     preset: str = Field("filtersmma", description="Uno configuration preset.")

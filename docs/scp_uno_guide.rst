@@ -11,7 +11,7 @@ The core idea of SCP is to replace a difficult, non-convex optimization problem 
 Algorithms
 ----------
 
-The framework provides five major algorithms:
+The framework provides seven major algorithms:
 
 1. **Method of Moving Asymptotes (MMA)**:
    The gold standard for topology optimization. It builds a strictly convex approximation by introducing reciprocal variables with dynamically updated asymptotes. This naturally injects curvature, safely preventing reciprocal singularities and steering the optimizer efficiently away from constraint boundaries.
@@ -62,6 +62,26 @@ The framework provides five major algorithms:
    ~74.5 for the preset MMA (77.4 vs 75.7 at 200). Invoke with
    ``scenario.execute(algo_name="TRANSFORMER_OPT", max_iter=320)``.
    Engine: ``scp_uno.transformer_opt_core`` + ``scp_uno.mma_teacher``.
+
+6. **Reduced-space GEK (GEK2D)**:
+   At each iterate, a 2D frame is built from :math:`e_1 = -\nabla f/\|\nabla f\|`
+   and the KS-aggregated constraint gradient orthogonalized w.r.t.
+   :math:`e_1`; the trust-region subproblem on that plane is solved with a
+   gradient-enhanced kriging surrogate fitted from a few true evaluations per
+   iteration (exact projected directional derivatives). A local-descent
+   method for multimodal problems — efficient convergence to a local minimum,
+   no optimality claim. Engine: ``scp_uno.reduced_space``.
+
+7. **Reduced-space transformer (TRANSFORMER_2D)** *(requires JAX)*:
+   The same 2D formulation with the GEK sub-optimization replaced by a
+   transformer that predicts the step :math:`(\alpha, \beta)` from the
+   iteration history at zero inner-evaluation cost. All features are frame
+   projections, so the policy is **independent of the design-space dimension
+   by construction**; it is trained only on generic synthetic families
+   (``scripts/train_rs_transformer.py`` — no topology-optimization data) and
+   generalizes zero-shot: on the short cantilever (never seen) it reaches a
+   better objective than GEK2D at the same budget. Engine:
+   ``scp_uno.rs_transformer``.
 
 Monotone Backtracking Line-Search
 ---------------------------------
