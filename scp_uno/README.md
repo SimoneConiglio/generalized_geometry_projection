@@ -37,15 +37,22 @@ scenario.execute(algo_name="GE_SBO", max_iter=200, batch_size=4, max_latent_dim=
 
 ## Transformer Learned Optimizer (`TRANSFORMER_OPT`)
 
-`TRANSFORMER_OPT` replaces the hand-designed acquisition with a **learned proposer**: a small set-transformer policy (~110k parameters, pure JAX) reads the recent optimization history — sample positions, merit values and gradients, encoded in the same gradient active subspace used by `GE_SBO` — and directly emits the next **batch** of query points (one per output head). A classical trust-region accept/shrink loop safeguards every step, so a bad proposal costs one batch, not the run.
+`TRANSFORMER_OPT` is a **learned optimizer that reaches MMA-level performance** on GGP topology optimization. A small per-variable-token transformer (~70k parameters, pure JAX) reads one token per design variable — signed-log gradient magnitudes of objective and constraint, constraint activity, the per-variable asymptote width / previous step / oscillation triplet (the same sufficient statistics MMA's own update rule uses), and bound headroom, all dimensionless — and emits a full-dimension step every iteration. Self-attention across the variable tokens supplies the global coupling that MMA obtains from its dual multiplier, and makes the policy permutation-equivariant and dimension-agnostic.
 
-The policy is trained offline (`scripts/train_transformer_opt.py`, a few CPU-minutes) by behaviour cloning of a *privileged teacher* on synthetic tasks (anisotropic quadratics, two-well multimodal functions, curved valleys) of random dimension: the teacher knows each task's optimum and the winner-takes-all loss over the output heads lets heads specialize on distinct basins. Because all features are trust-region-relative, merit-scale-normalized and live in a fixed-size latent, **one trained model transfers across dimensions and objective scales** — the packaged default weights (`scp_uno/weights/transformer_opt_default.npz`) were trained only on toy functions yet run unchanged on the 108-variable GGP cantilever.
+Training (`scripts/train_transformer_opt.py`) is behaviour cloning of **MMA's step map**: a compact NumPy MMA teacher (`scp_uno/mma_teacher.py`, single-constraint dual bisection with classical oscillation-adaptive asymptotes) is rolled out on synthetic families — most importantly a *toy-SIMP* family `min Σ kᵢ/(xᵢ+ε) s.t. v·x ≤ V` that mirrors the reciprocal/volume structure of compliance problems — and head 0 learns the teacher step in per-variable *asymptote-width units* (O(1) in every convergence regime). Heads 1–3 are far-sighted multi-scale proposals (direction to the task optimum at 1/4/16 move lengths) used by the multi-point batch mode (`eval_heads=k`). Recorded GEMSEO-MMA trajectories of the real problem family (`scripts/collect_ggp_mma_trajectories.py`, random initial layouts) are mixed in to close the domain gap.
+
+**Short cantilever (108 variables, 40 % volume, preset MMA settings as baseline):**
+
+| Evaluations | TRANSFORMER_OPT | MMA (gemseo-mma) |
+| :--- | :--- | :--- |
+| 200 | 77.4 | 75.7 |
+| 320 | **74.6** | ~74.5 (converged reference) |
 
 ```python
-scenario.execute(algo_name="TRANSFORMER_OPT", max_iter=200)  # requires JAX
+scenario.execute(algo_name="TRANSFORMER_OPT", max_iter=320)  # requires JAX
 ```
 
-Compared with `GE_SBO`: no kriging system to factorize (inference is one forward pass), the same multi-point batch structure, but model quality depends on the training distribution rather than on principled uncertainty — treat it as the experimental, research-grade option of the family.
+By default the policy steps sequentially like MMA (`eval_heads=1`, `accept_mode="always"` — MMA never rejects a step; best-so-far bookkeeping guards the reported result). It handles one inequality constraint natively (multiple constraints are reduced to the most active one for the features, while the merit safeguard sees them all).
 
 ## Monotone Backtracking Line-Search
 

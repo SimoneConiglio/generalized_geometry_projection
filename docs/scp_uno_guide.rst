@@ -47,17 +47,21 @@ The framework provides five major algorithms:
    ``scp_uno.gesbo_core`` (pure NumPy/SciPy) and is also usable standalone via
    ``gesbo_minimize``.
 
-5. **Transformer Learned Optimizer (TRANSFORMER_OPT)** *(experimental, requires JAX)*:
-   A "learning to optimize" approach: a small set-transformer policy reads the
-   recent history (positions, merit values, gradients — encoded in the same
-   gradient active subspace as GE_SBO, trust-region-relative and
-   scale-normalized) and directly proposes the next **batch** of query points;
-   a classical trust-region loop safeguards acceptance. The policy is trained
-   offline by imitating a privileged teacher on synthetic tasks of random
-   dimension (``scripts/train_transformer_opt.py``); the packaged default
-   weights transfer unchanged across problem dimensions and objective scales.
-   Invoke with ``scenario.execute(algo_name="TRANSFORMER_OPT", max_iter=200)``.
-   Engine: ``scp_uno.transformer_opt_core`` (NumPy + JAX).
+5. **Transformer Learned Optimizer (TRANSFORMER_OPT)** *(requires JAX)*:
+   A "learning to optimize" approach that reaches **MMA-level performance** on
+   GGP problems: one token per design variable (signed-log gradients,
+   constraint activity, asymptote width / previous step / oscillation — the
+   statistics MMA's own update uses), self-attention for the global dual
+   coupling, and a full-dimension step per evaluation. Head 0 is trained by
+   behaviour cloning of a NumPy MMA teacher on synthetic constrained families
+   (incl. a toy-SIMP family mirroring compliance/volume structure) mixed with
+   recorded GEMSEO-MMA trajectories of the real problem
+   (``scripts/collect_ggp_mma_trajectories.py``); heads 1..3 provide
+   far-sighted multi-scale proposals for the batch mode (``eval_heads``).
+   On the short cantilever it reaches compliance 74.6 in 320 evaluations vs
+   ~74.5 for the preset MMA (77.4 vs 75.7 at 200). Invoke with
+   ``scenario.execute(algo_name="TRANSFORMER_OPT", max_iter=320)``.
+   Engine: ``scp_uno.transformer_opt_core`` + ``scp_uno.mma_teacher``.
 
 Monotone Backtracking Line-Search
 ---------------------------------

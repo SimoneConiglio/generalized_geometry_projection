@@ -1,54 +1,57 @@
 # Copyright (c) 2026 Simone Coniglio
 # Licensed under the MIT license. See LICENSE file in the project directory for details.
-"""Transformer-based learned optimizer ("learning to optimize") — core engine.
+"""Transformer learned optimizer — per-variable-token core ("learned MMA").
 
-This module implements approach "B": instead of a hand-designed acquisition
-(GE-SBO) or convex approximation (MMA), a **small set-transformer policy**
-reads the recent optimization history and directly proposes the next **batch**
-of query points. The policy is trained offline by imitating a *privileged
-teacher* on synthetic differentiable tasks whose optimum is known, then reused
-as-is on real problems (the GGP FEM pipeline) through the ``TRANSFORMER_OPT``
-GEMSEO algorithm in :mod:`scp_uno.transformer_opt`.
+Second-generation design of the ``TRANSFORMER_OPT`` engine, targeting MMA-level
+performance on gradient-cheap problems such as GGP topology optimization:
 
-Design choices that make one trained model transfer across problems:
+* **One token per design variable** (not per history sample): the policy
+  outputs a full-dimension step every iteration, exactly like MMA. Attention
+  over the variable tokens supplies the global coupling (the constraint's
+  dual multiplier is a global quantity), and the architecture remains
+  dimension-agnostic because variables are a *set* of tokens.
+* **Head 0 imitates MMA's step map.** A compact NumPy MMA teacher
+  (:mod:`scp_uno.mma_teacher`, single-constraint dual bisection with the
+  classical oscillation-adaptive asymptotes) is rolled out on synthetic task
+  families — including a *toy-SIMP* family (``sum k_i/(x_i+eps)`` under a
+  volume cap) that mirrors the reciprocal/volume structure of compliance
+  topology optimization — and head 0 is trained on ``dx_MMA / move``.
+  In sequential mode (``eval_heads=1``) the optimizer therefore moves on
+  every evaluation, like MMA itself.
+* **Heads 1..3 are far-sighted multi-scale proposals**: head ``j`` is trained
+  on the trust-clipped direction to the true optimum at reach
+  ``sigma_j in {1, 4, 16}`` move lengths. Evaluating several heads per
+  iteration gives the multi-point batch mode.
+* **Scale/oscillation state as features**: per-variable asymptote widths
+  (maintained with the same classical update rule), previous step and
+  oscillation sign — i.e. the sufficient statistics MMA itself uses — plus
+  log-scaled gradient magnitudes and constraint-activity features, all
+  dimensionless.
+* Optional **fine-tuning on recorded GEMSEO-MMA trajectories** of the real
+  problem family (``scripts/collect_ggp_mma_trajectories.py``) closes the
+  domain gap between synthetic teachers and FEM compliance landscapes.
 
-* **Dimension-agnostic latent**: all features live in the gradient
-  *active subspace* ``z = W^T x`` of fixed size ``r`` (reusing
-  :func:`scp_uno.gesbo_core.active_subspace`), padded when ``d < r``.
-  The design-space dimension never appears in the network.
-* **Scale invariance**: token features are trust-region-relative
-  (positions divided by the radius) and merit-scale-normalized (values and
-  gradients divided by the window's merit spread), and actions are steps in
-  ``[-1, 1]^r`` *relative to the trust region*. A policy trained on toy
-  functions therefore sees exactly the same feature distribution on a FEM
-  compliance landscape.
-* **Set structure**: history samples are tokens with no positional encoding
-  (recency enters as an explicit ``age`` feature), so the policy is
-  permutation-invariant over the history, and a learned query token reads out
-  ``q`` proposal heads — the multi-point batch.
-* **Trust-region safeguard**: the classical accept / shrink / expand loop
-  wraps the learned proposer, so a bad proposal costs one batch, not the run.
-
-Training is behaviour cloning with a winner-takes-all loss: the teacher's
-target is the (trust-region-clipped) step towards the true optimum, the loss
-is ``min_j ||s_j - t||^2`` over the ``q`` heads (plus a small mean term), so
-heads specialize on the distinct modes seen across multimodal tasks.
-
-Everything here needs only NumPy + JAX (no GEMSEO, no FEniCS); JAX is used
-for the network and its training. Inference reuses the same JAX forward.
+At run time a merit-based backtracking safeguard wraps the learned step, so
+one bad proposal cannot derail the run. Requires NumPy + JAX only.
 """
 
 from __future__ import annotations
 
 import dataclasses
 import logging
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import numpy as np
 
-from scp_uno.gesbo_core import EvaluateFn, active_subspace
+from scp_uno.gesbo_core import EvaluateFn
+from scp_uno.mma_teacher import AsymptoteTracker, mma_step, sample_teacher_task
 
 LOGGER = logging.getLogger(__name__)
+
+#: reach (in move lengths) of the far-sighted output heads 1..3
+HEAD_SIGMAS = (1.0, 1.0, 4.0, 16.0)
+
+N_FEATURES = 10
 
 
 # --------------------------------------------------------------------------- #
@@ -56,11 +59,9 @@ LOGGER = logging.getLogger(__name__)
 # --------------------------------------------------------------------------- #
 @dataclasses.dataclass
 class PolicyConfig:
-    """Architecture of the proposer network (fixed at training time)."""
+    """Architecture of the per-variable-token policy (fixed at training)."""
 
-    latent_dim: int = 12       # r: active-subspace size seen by the policy
-    context: int = 16          # K: history tokens fed to the policy
-    n_heads_out: int = 4       # q: proposal heads = batch size per iteration
+    n_heads_out: int = 4
     d_model: int = 64
     n_layers: int = 2
     n_attn_heads: int = 4
@@ -68,23 +69,27 @@ class PolicyConfig:
 
     @property
     def n_features(self) -> int:
-        # [z_off (r), f_rel (1), grad (r), viol (1), age (1), is_center (1)]
-        return 2 * self.latent_dim + 4
+        return N_FEATURES
 
 
 @dataclasses.dataclass
 class TransformerOptConfig:
-    """Rollout / trust-region configuration of the learned optimizer."""
+    """Rollout configuration of the learned optimizer."""
 
     max_evals: int = 200
-    max_outer_iter: int = 200
-    tr_init: float = 0.25
-    tr_min: float = 1e-5
-    tr_max: float = 0.75
-    tr_shrink: float = 0.5
-    tr_expand: float = 2.0
-    penalty: float = 100.0          # l1 merit weight for constraints
+    move: float = 0.01          # move limit (fraction of range), as in MMA
+    eval_heads: int = 1         # 1 = sequential (MMA-like); k>1 = batch best-of-k
+    n_backtracks: int = 2       # halvings tried when the step worsens the merit
+    stall_limit: int = 8        # consecutive rejected iterations before stopping
+    accept_mode: str = "always"   # "always": advance unconditionally like MMA
+                                  # (best-so-far bookkeeping guards the result);
+                                  # "watchdog": accept vs the worst of the last
+                                  # `nonmonotone_window` merits; "monotone": strict
+    nonmonotone_window: int = 10
+    penalty: float = 10.0       # l1 merit safety factor over the multiplier estimate
     constraint_tol: float = 1e-6
+    asy_incr: float = 1.2
+    asy_decr: float = 0.4
     seed: int = 0
 
 
@@ -101,62 +106,59 @@ class TransformerOptResult:
 
 
 # --------------------------------------------------------------------------- #
-# Tokenization (shared verbatim between training and inference)
+# Tokenization (identical in training, GGP-trajectory replay and inference)
 # --------------------------------------------------------------------------- #
-def latent_basis(gradients: np.ndarray, d: int, r: int,
-                 rng: np.random.Generator) -> np.ndarray:
-    """Basis ``W (d, r)`` of the policy latent: active subspace, zero-padded
-    when the design space is smaller than the latent."""
-    if d <= r:
-        W = np.zeros((d, r))
-        W[:, :d] = np.eye(d)
-        return W
-    return active_subspace(np.atleast_2d(gradients), r, rng)
+def _slog(v: np.ndarray, scale: float) -> np.ndarray:
+    """Signed log magnitude ``sign(v) * log1p(|v|/scale) / 4``, clipped."""
+    return np.clip(np.sign(v) * np.log1p(np.abs(v) / max(scale, 1e-300)) / 4.0,
+                   -2.5, 2.5)
 
 
-def build_tokens(
-    X: np.ndarray,          # (n, d) normalized samples, most recent last
-    merit: np.ndarray,      # (n,) merit values (objective + penalty)
-    G: np.ndarray,          # (n, d) merit gradients
-    viol: np.ndarray,       # (n,) max constraint violation (<=0 if feasible)
-    center_idx: int,
-    W: np.ndarray,          # (d, r) latent basis
-    delta: float,
-    cfg: PolicyConfig,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Encode the most recent ``K`` samples as policy tokens.
+def build_var_tokens(
+    x: np.ndarray,
+    grad_f: np.ndarray,
+    c_val: Optional[float],
+    grad_c: Optional[np.ndarray],
+    width: np.ndarray,
+    last_step: np.ndarray,     # fractions of range
+    osc: np.ndarray,
+    lb: np.ndarray,
+    ub: np.ndarray,
+    move: float,
+) -> np.ndarray:
+    """Per-variable feature tokens ``(d, N_FEATURES)``, all dimensionless.
 
-    Returns ``(tokens (K, F), mask (K,))`` with padding rows masked out. All
-    features are trust-region-relative and merit-scale-normalized, so the
-    encoding is invariant to affine rescaling of the objective and to the
-    design-space dimension.
+    Gradient magnitudes are signed-log scaled by their median (so orderings
+    across many decades survive), the constraint value is expressed in
+    "move-steps to the boundary", and the asymptote width / previous step /
+    oscillation triplet is the same sufficient statistic MMA's own update
+    uses. The encoding is invariant to affine objective rescaling and to the
+    variable count.
     """
-    K, r = cfg.context, cfg.latent_dim
-    n = len(X)
-    take = np.arange(max(0, n - K), n)
-    # always keep the center in context even if it scrolled out of the window
-    if center_idx not in take:
-        take = np.concatenate([[center_idx], take[1:]])
+    d = len(x)
+    rng = np.maximum(ub - lb, 1e-30)
+    g0r = np.asarray(grad_f, float) * rng
+    # mean (not median) scale: converged designs have many near-zero gradients,
+    # a median scale would collapse and saturate the features of the active set
+    s0 = float(np.mean(np.abs(g0r))) + 1e-300
 
-    fc = merit[center_idx]
-    scale = float(np.std(merit[take]))
-    scale = scale if scale > 1e-12 else max(abs(fc), 1.0)
-
-    tokens = np.zeros((K, cfg.n_features))
-    mask = np.zeros(K, dtype=bool)
-    for slot, i in enumerate(take):
-        z_off = np.clip(W.T @ (X[i] - X[center_idx]) / delta, -3.0, 3.0)
-        f_rel = np.clip((merit[i] - fc) / scale, -3.0, 3.0)
-        g_tok = np.clip((W.T @ G[i]) * delta / scale, -3.0, 3.0)
-        age = (n - 1 - i) / max(K, 1)
-        tokens[slot, :r] = z_off
-        tokens[slot, r] = f_rel
-        tokens[slot, r + 1 : 2 * r + 1] = g_tok
-        tokens[slot, 2 * r + 1] = 1.0 if viol[i] > 0 else 0.0
-        tokens[slot, 2 * r + 2] = age
-        tokens[slot, 2 * r + 3] = 1.0 if i == center_idx else 0.0
-        mask[slot] = True
-    return tokens, mask
+    tok = np.zeros((d, N_FEATURES))
+    tok[:, 0] = _slog(g0r, s0)
+    if c_val is not None and grad_c is not None:
+        g1r = np.asarray(grad_c, float) * rng
+        s1 = float(np.mean(np.abs(g1r))) + 1e-300
+        tok[:, 1] = _slog(g1r, s1)
+        tok[:, 2] = np.clip(
+            np.sign(c_val) * np.log1p(abs(c_val) / (s1 * move)) / 4.0, -2.5, 2.5
+        )
+        tok[:, 3] = 1.0
+    tok[:, 4] = np.log(np.clip(width / (move * rng), 1e-3, 10.0)) / 2.0
+    tok[:, 5] = np.clip(last_step / move, -1.5, 1.5)
+    tok[:, 6] = osc
+    tok[:, 7] = (x - lb) / rng
+    tok[:, 8] = np.minimum((ub - x) / (move * rng), 1.0)
+    tok[:, 9] = np.minimum((x - lb) / (move * rng), 1.0)
+    return tok
 
 
 # --------------------------------------------------------------------------- #
@@ -169,7 +171,6 @@ def _jax():
 
 
 def init_params(cfg: PolicyConfig, seed: int = 0) -> Dict[str, np.ndarray]:
-    """Initialize transformer parameters (returned as NumPy arrays)."""
     rng = np.random.default_rng(seed)
 
     def dense(shape, fan_in):
@@ -178,9 +179,8 @@ def init_params(cfg: PolicyConfig, seed: int = 0) -> Dict[str, np.ndarray]:
     p: Dict[str, np.ndarray] = {
         "embed_w": dense((cfg.n_features, cfg.d_model), cfg.n_features),
         "embed_b": np.zeros(cfg.d_model, np.float32),
-        "query": dense((1, cfg.d_model), cfg.d_model),
-        "out_w": dense((cfg.d_model, cfg.n_heads_out * cfg.latent_dim), cfg.d_model),
-        "out_b": np.zeros(cfg.n_heads_out * cfg.latent_dim, np.float32),
+        "out_w": dense((cfg.d_model, cfg.n_heads_out), cfg.d_model),
+        "out_b": np.zeros(cfg.n_heads_out, np.float32),
     }
     for layer in range(cfg.n_layers):
         p[f"l{layer}_qkv_w"] = dense((cfg.d_model, 3 * cfg.d_model), cfg.d_model)
@@ -199,214 +199,190 @@ def init_params(cfg: PolicyConfig, seed: int = 0) -> Dict[str, np.ndarray]:
     return p
 
 
-def forward(params, tokens, mask, cfg: PolicyConfig):
-    """Policy forward pass: ``(K, F), (K,) -> (q, r)`` steps in ``[-1, 1]``.
+def forward(params, tokens, cfg: PolicyConfig):
+    """Policy forward pass: ``(d, F) -> (q, d)`` steps in ``[-1, 1]``.
 
-    JAX-traceable; batch with ``jax.vmap``. The learned query token attends to
-    the (masked) history tokens through ``n_layers`` pre-norm blocks, and a
-    linear head reads out the ``q`` proposals.
+    Self-attention over the variable tokens (permutation-equivariant: permuting
+    variables permutes the steps), per-token linear read-out of the ``q`` heads.
+    JAX-traceable; batch with ``jax.vmap``.
     """
     jax, jnp = _jax()
 
-    def layer_norm(x, g, b):
-        mu = jnp.mean(x, axis=-1, keepdims=True)
-        var = jnp.var(x, axis=-1, keepdims=True)
-        return g * (x - mu) / jnp.sqrt(var + 1e-6) + b
+    def layer_norm(h, g, b):
+        mu = jnp.mean(h, axis=-1, keepdims=True)
+        var = jnp.var(h, axis=-1, keepdims=True)
+        return g * (h - mu) / jnp.sqrt(var + 1e-6) + b
 
-    h = tokens @ params["embed_w"] + params["embed_b"]          # (K, D)
-    h = jnp.concatenate([params["query"], h], axis=0)            # (K+1, D)
-    full_mask = jnp.concatenate([jnp.ones(1, bool), mask])       # query visible
-
-    D = cfg.d_model
-    nh = cfg.n_attn_heads
+    h = tokens @ params["embed_w"] + params["embed_b"]          # (d, D)
+    D, nh = cfg.d_model, cfg.n_attn_heads
     dh = D // nh
-    neg = jnp.asarray(-1e9, h.dtype)
 
     for layer in range(cfg.n_layers):
-        x = layer_norm(h, params[f"l{layer}_ln1_g"], params[f"l{layer}_ln1_b"])
-        qkv = x @ params[f"l{layer}_qkv_w"] + params[f"l{layer}_qkv_b"]
+        z = layer_norm(h, params[f"l{layer}_ln1_g"], params[f"l{layer}_ln1_b"])
+        qkv = z @ params[f"l{layer}_qkv_w"] + params[f"l{layer}_qkv_b"]
         q, k, v = jnp.split(qkv, 3, axis=-1)
-        q = q.reshape(-1, nh, dh).transpose(1, 0, 2)             # (nh, K+1, dh)
+        q = q.reshape(-1, nh, dh).transpose(1, 0, 2)
         k = k.reshape(-1, nh, dh).transpose(1, 0, 2)
         v = v.reshape(-1, nh, dh).transpose(1, 0, 2)
-        att = (q @ k.transpose(0, 2, 1)) / np.sqrt(dh)           # (nh, K+1, K+1)
-        att = jnp.where(full_mask[None, None, :], att, neg)
-        att = jax.nn.softmax(att, axis=-1)
+        att = jax.nn.softmax((q @ k.transpose(0, 2, 1)) / np.sqrt(dh), axis=-1)
         y = (att @ v).transpose(1, 0, 2).reshape(-1, D)
         h = h + y @ params[f"l{layer}_proj_w"] + params[f"l{layer}_proj_b"]
-        x = layer_norm(h, params[f"l{layer}_ln2_g"], params[f"l{layer}_ln2_b"])
-        x = jax.nn.gelu(x @ params[f"l{layer}_mlp1_w"] + params[f"l{layer}_mlp1_b"])
-        h = h + x @ params[f"l{layer}_mlp2_w"] + params[f"l{layer}_mlp2_b"]
+        z = layer_norm(h, params[f"l{layer}_ln2_g"], params[f"l{layer}_ln2_b"])
+        z = jax.nn.gelu(z @ params[f"l{layer}_mlp1_w"] + params[f"l{layer}_mlp1_b"])
+        h = h + z @ params[f"l{layer}_mlp2_w"] + params[f"l{layer}_mlp2_b"]
 
-    out = layer_norm(h[0], params["ln_f_g"], params["ln_f_b"])
-    steps = out @ params["out_w"] + params["out_b"]
-    return jnp.tanh(steps).reshape(cfg.n_heads_out, cfg.latent_dim)
+    out = layer_norm(h, params["ln_f_g"], params["ln_f_b"])
+    steps = out @ params["out_w"] + params["out_b"]              # (d, q)
+    return jnp.tanh(steps).T                                     # (q, d)
 
 
 # --------------------------------------------------------------------------- #
-# Synthetic task families (privileged teacher: the optimum is known)
+# Training data: teacher rollouts on synthetic tasks
 # --------------------------------------------------------------------------- #
-class _Task:
-    """Differentiable synthetic problem with known optimum in [0, 1]^d."""
-
-    def __init__(self, kind: str, d: int, rng: np.random.Generator):
-        self.d = d
-        self.kind = kind
-        self.x_star = rng.uniform(0.15, 0.85, d)
-        if kind == "quadratic":
-            k = rng.integers(2, min(d, 10) + 1)
-            B = rng.standard_normal((d, k)) / np.sqrt(d)
-            self.A = B @ B.T + 10 ** rng.uniform(-3, -1) * np.eye(d)
-            self.scale = 10 ** rng.uniform(-1, 2)
-        elif kind == "two_well":
-            self.x_star2 = np.clip(
-                self.x_star + rng.uniform(-0.6, 0.6, d), 0.05, 0.95
-            )
-            self.depth2 = rng.uniform(0.2, 0.9)     # second well is shallower
-            self.scale = 10 ** rng.uniform(-1, 2)
-        elif kind == "valley":                       # Rosenbrock-like curved valley
-            self.R, _ = np.linalg.qr(rng.standard_normal((d, d)))
-            self.scale = 10 ** rng.uniform(-2, 0)
-        else:
-            raise ValueError(kind)
-
-    def evaluate(self, x: np.ndarray) -> Tuple[float, np.ndarray]:
-        if self.kind == "quadratic":
-            e = x - self.x_star
-            return self.scale * float(e @ self.A @ e), self.scale * 2 * self.A @ e
-        if self.kind == "two_well":
-            e1, e2 = x - self.x_star, x - self.x_star2
-            f1, f2 = float(e1 @ e1), self.depth2 + float(e2 @ e2)
-            if f1 <= f2:
-                return self.scale * f1, self.scale * 2 * e1
-            return self.scale * f2, self.scale * 2 * e2
-        # curved valley: f = sum 100 (y[i+1] - y[i]^2)^2 + (y[i])^2, y = R(x-x*)
-        y = self.R @ (x - self.x_star)
-        a, b = y[:-1], y[1:]
-        t = b - a * a
-        f = float(100 * t @ t + a @ a)
-        gy = np.zeros(self.d)
-        gy[:-1] = -400 * t * a + 2 * a
-        gy[1:] += 200 * t
-        return self.scale * f, self.scale * self.R.T @ gy
-
-
-def _sample_task(rng: np.random.Generator, r: int) -> _Task:
-    kind = rng.choice(["quadratic", "two_well", "valley"], p=[0.5, 0.3, 0.2])
-    # cover d < r, d ~ r and d >> r so both padding and reduction are learned
-    d = int(rng.choice([max(2, r // 2), r, 2 * r, 4 * r, 8 * r]))
-    return _Task(kind, d, rng)
-
-
 def generate_training_batch(
     rng: np.random.Generator,
     cfg: PolicyConfig,
-    n_tasks: int = 8,
-    rollout_len: int = 10,
-) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
-    """Roll out a noisy teacher on fresh synthetic tasks and record states.
+    d: int,
+    n_states: int = 48,
+    rollout_len: int = 24,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Roll the MMA teacher out on synthetic tasks of dimension ``d``.
 
-    Returns ``(tokens (S, K, F), masks (S, K), targets (S, r))`` where each
-    state's target is the trust-region-clipped latent step towards the true
-    optimum — exactly what the winner-takes-all loss trains heads to hit.
-    The rollout follows the teacher with noise (plus trust-region updates),
-    so recorded states match the distribution the policy visits at test time.
+    Returns ``(tokens (S, d, F), targets (S, q, d))``. Target of head 0 is
+    the teacher's own step in move units; heads 1..3 get the trust-clipped
+    direction to the known optimum at reaches ``HEAD_SIGMAS[1:]``. A fraction
+    of the transitions is perturbed so off-trajectory states are covered.
     """
-    K, r = cfg.context, cfg.latent_dim
-    S: List[np.ndarray] = []
-    M: List[np.ndarray] = []
-    T: List[np.ndarray] = []
+    S_tok: List[np.ndarray] = []
+    S_tgt: List[np.ndarray] = []
+    lb, ub = np.zeros(d), np.ones(d)
 
-    for _ in range(n_tasks):
-        task = _sample_task(rng, r)
-        d = task.d
-        delta = float(rng.uniform(0.05, 0.4))
-        X: List[np.ndarray] = []
-        F: List[float] = []
-        G: List[np.ndarray] = []
-        center = rng.uniform(0.0, 1.0, d)
-
-        def record(x):
-            f, g = task.evaluate(x)
-            X.append(x.copy())
-            F.append(f)
-            G.append(g)
-            return len(X) - 1
-
-        ci = record(center)
+    while len(S_tok) < n_states:
+        task = sample_teacher_task(rng, dims=(d,))
+        move = float(10 ** rng.uniform(np.log10(0.01), np.log10(0.15)))
+        tracker = AsymptoteTracker(
+            lb, ub, asy_init=move, asy_min=0.01 * move, asy_max=move
+        )
+        x = rng.uniform(0.05, 0.95, d)
+        tracker.update(x)
         for _ in range(rollout_len):
-            Xa, Fa, Ga = np.asarray(X), np.asarray(F), np.asarray(G)
-            W = latent_basis(Ga[-K:], d, r, rng)
-            tokens, mask = build_tokens(
-                Xa, Fa, Ga, np.full(len(Xa), -1.0), ci, W, delta, cfg
+            f, g, c, gc = task.evaluate(x)
+            tok = build_var_tokens(
+                x, g, c, gc, tracker.width, tracker.last_step(),
+                tracker.oscillation(), lb, ub, move,
             )
-            target = np.clip(W.T @ (task.x_star - Xa[ci]) / delta, -1.0, 1.0)
-            S.append(tokens)
-            M.append(mask)
-            T.append(target)
+            dx = mma_step(x, g, lb, ub, tracker.width, move, c, gc)
+            tgt = np.empty((cfg.n_heads_out, d))
+            # head 0 in per-variable *width* units: O(1) in every regime, so
+            # late tiny-asymptote steps carry as much training signal as early ones
+            tgt[0] = np.clip(dx / tracker.width, -1.0, 1.0)
+            for j in range(1, cfg.n_heads_out):
+                sig = HEAD_SIGMAS[min(j, len(HEAD_SIGMAS) - 1)]
+                tgt[j] = np.clip((task.x_star - x) / (sig * move), -1.0, 1.0)
+            S_tok.append(tok)
+            S_tgt.append(tgt)
+            if len(S_tok) >= n_states:
+                break
+            if rng.random() < 0.15:       # exploration: off-trajectory states
+                dx = dx + 0.5 * tracker.width * rng.standard_normal(d)
+            x = np.clip(x + dx, lb, ub)
+            tracker.update(x)
 
-            # noisy-teacher transition (records realistic accept/shrink states)
-            step = np.clip(target + 0.3 * rng.standard_normal(r), -1.0, 1.0)
-            x_new = np.clip(Xa[ci] + delta * (W @ step), 0.0, 1.0)
-            j = record(x_new)
-            if F[j] < F[ci]:
-                ci = j
-                if np.max(np.abs(step)) > 0.9:
-                    delta = min(delta * 2.0, 0.5)
-            else:
-                delta = max(delta * 0.5, 1e-3)
+    return np.asarray(S_tok, np.float32), np.asarray(S_tgt, np.float32)
 
-    return (
-        np.asarray(S, np.float32),
-        np.asarray(M, bool),
-        np.asarray(T, np.float32),
-    )
+
+def replay_trajectory_states(
+    X: np.ndarray,           # (n, d) recorded iterates (normalized [0,1] space)
+    G0: np.ndarray,          # (n, d) objective gradients
+    C: np.ndarray,           # (n,)   constraint values (c <= 0), or empty
+    G1: np.ndarray,          # (n, d) constraint gradients, or empty
+    move: float,
+    cfg: PolicyConfig,
+) -> Tuple[np.ndarray, np.ndarray]:
+    """Convert a recorded optimizer trajectory (e.g. GEMSEO-MMA on the GGP
+    pipeline) into training states.
+
+    Head-0 targets are the *recorded* steps in move units; far-sighted heads
+    target the trajectory's final iterate (the converged design). The
+    asymptote-width features are replayed with the same classical rule.
+    """
+    n, d = X.shape
+    lb, ub = np.zeros(d), np.ones(d)
+    has_c = len(C) == n
+    tracker = AsymptoteTracker(lb, ub, asy_init=move, asy_min=0.01 * move,
+                               asy_max=move)
+    x_final = X[-1]
+    toks, tgts = [], []
+    for k in range(n - 1):
+        tracker.update(X[k])
+        tok = build_var_tokens(
+            X[k], G0[k], float(C[k]) if has_c else None,
+            G1[k] if has_c else None, tracker.width, tracker.last_step(),
+            tracker.oscillation(), lb, ub, move,
+        )
+        tgt = np.empty((cfg.n_heads_out, d))
+        tgt[0] = np.clip((X[k + 1] - X[k]) / tracker.width, -1.0, 1.0)
+        for j in range(1, cfg.n_heads_out):
+            sig = HEAD_SIGMAS[min(j, len(HEAD_SIGMAS) - 1)]
+            tgt[j] = np.clip((x_final - X[k]) / (sig * move), -1.0, 1.0)
+        toks.append(tok)
+        tgts.append(tgt)
+    return np.asarray(toks, np.float32), np.asarray(tgts, np.float32)
 
 
 # --------------------------------------------------------------------------- #
-# Training (behaviour cloning, winner-takes-all over the q heads)
+# Training loop
 # --------------------------------------------------------------------------- #
 def train_policy(
     cfg: PolicyConfig,
-    steps: int = 3000,
+    steps: int = 4000,
     lr: float = 3e-4,
-    n_tasks: int = 8,
-    rollout_len: int = 10,
+    batch_states: int = 48,
+    dims: Sequence[int] = (16, 32, 64, 108, 160),
     seed: int = 0,
+    extra_data: Optional[Sequence[Tuple[np.ndarray, np.ndarray]]] = None,
+    extra_prob: float = 0.3,
     log_every: int = 200,
     on_step: Optional[Callable[[int, float], None]] = None,
 ) -> Dict[str, np.ndarray]:
-    """Train the proposer by imitation of the privileged teacher.
+    """Behaviour cloning of the MMA teacher (+ optional recorded trajectories).
 
-    Loss per state: ``min_j ||s_j - t||^2 + 0.05 * mean_j ||s_j - t||^2``.
-    The winner-takes-all term lets heads specialize (multimodal tasks pull
-    different heads towards different basins); the small mean term keeps
-    losing heads from drifting. Returns the trained parameters as NumPy.
+    ``extra_data`` is a list of ``(tokens, targets)`` state pools (e.g. from
+    :func:`replay_trajectory_states` on GGP runs); with probability
+    ``extra_prob`` a training batch is drawn from those pools instead of
+    fresh synthetic rollouts. Loss: per-head MSE with double weight on the
+    MMA-imitation head 0.
     """
     jax, jnp = _jax()
 
     params = {k: jnp.asarray(v) for k, v in init_params(cfg, seed).items()}
     rng = np.random.default_rng(seed)
 
-    def loss_fn(p, tokens, masks, targets):
-        pred = jax.vmap(lambda t, m: forward(p, t, m, cfg))(tokens, masks)
-        err = jnp.sum((pred - targets[:, None, :]) ** 2, axis=-1)   # (S, q)
-        return jnp.mean(jnp.min(err, axis=1)) + 0.05 * jnp.mean(err)
+    def loss_fn(p, tokens, targets):
+        pred = jax.vmap(lambda t: forward(p, t, cfg))(tokens)    # (B, q, d)
+        err = jnp.mean((pred - targets) ** 2, axis=-1)           # (B, q)
+        w = jnp.asarray([2.0] + [1.0] * (cfg.n_heads_out - 1))
+        return jnp.mean(err @ w) / (2.0 + cfg.n_heads_out - 1)
 
     grad_fn = jax.jit(jax.value_and_grad(loss_fn))
 
-    # hand-rolled Adam (keeps dependencies to jax alone)
     m = {k: jnp.zeros_like(v) for k, v in params.items()}
     v = {k: jnp.zeros_like(v_) for k, v_ in params.items()}
     b1, b2, eps = 0.9, 0.999, 1e-8
 
+    pools = list(extra_data or [])
     last = float("nan")
     for it in range(1, steps + 1):
-        tokens, masks, targets = generate_training_batch(
-            rng, cfg, n_tasks=n_tasks, rollout_len=rollout_len
-        )
-        val, g = grad_fn(params, jnp.asarray(tokens), jnp.asarray(masks),
-                         jnp.asarray(targets))
+        if pools and rng.random() < extra_prob:
+            toks, tgts = pools[rng.integers(len(pools))]
+            idx = rng.integers(0, len(toks), size=min(batch_states, len(toks)))
+            tokens, targets = toks[idx], tgts[idx]
+        else:
+            d = int(rng.choice(dims))
+            tokens, targets = generate_training_batch(
+                rng, cfg, d, n_states=batch_states
+            )
+        val, g = grad_fn(params, jnp.asarray(tokens), jnp.asarray(targets))
         last = float(val)
         for k in params:
             m[k] = b1 * m[k] + (1 - b1) * g[k]
@@ -417,7 +393,7 @@ def train_policy(
         if on_step is not None:
             on_step(it, last)
         if log_every and it % log_every == 0:
-            LOGGER.info("train step %d: loss=%.4f", it, last)
+            LOGGER.info("train step %d: loss=%.5f", it, last)
 
     return {k: np.asarray(v_) for k, v_ in params.items()}
 
@@ -425,30 +401,40 @@ def train_policy(
 def save_params(path, params: Dict[str, np.ndarray], cfg: PolicyConfig) -> None:
     meta = {f"cfg_{f.name}": np.asarray(getattr(cfg, f.name))
             for f in dataclasses.fields(cfg)}
-    np.savez_compressed(path, **params, **meta)
+    np.savez_compressed(path, **params, **meta, cfg_version=np.asarray(2))
 
 
 def load_params(path) -> Tuple[Dict[str, np.ndarray], PolicyConfig]:
     data = np.load(path)
+    version = int(data["cfg_version"]) if "cfg_version" in data else 1
+    if version != 2:
+        raise ValueError(
+            f"policy weights at {path} are version {version}; retrain with "
+            "scripts/train_transformer_opt.py (current version: 2)."
+        )
     cfg = PolicyConfig(**{
         f.name: int(data[f"cfg_{f.name}"])
         for f in dataclasses.fields(PolicyConfig)
         if f"cfg_{f.name}" in data
     })
-    params = {k: data[k] for k in data.files if not k.startswith("cfg_")}
+    params = {k: data[k] for k in data.files
+              if not (k.startswith("cfg_") or k == "cfg_version")}
     return params, cfg
 
 
 # --------------------------------------------------------------------------- #
-# Rollout driver (trust-region-safeguarded learned proposer)
+# Rollout driver
 # --------------------------------------------------------------------------- #
 class TransformerOptimizer:
-    """Run the trained proposer inside the classical trust-region loop.
+    """Run the trained per-variable policy with a merit backtracking safeguard.
 
-    Same evaluation contract as :class:`scp_uno.gesbo_core.GESBOptimizer`
-    (``evaluate: x -> (f, grad_f, cons, jac_cons)``, ``c(x) <= 0``); the
-    policy proposes ``q`` points per iteration (the batch), the best batch
-    point by l1 merit moves the center, otherwise the radius shrinks.
+    Evaluation contract as in :class:`scp_uno.gesbo_core.GESBOptimizer`
+    (``evaluate: x -> (f, grad_f, cons, jac_cons)``, ``c(x) <= 0``).
+    With ``eval_heads=1`` (default) the optimizer moves on every evaluation
+    like MMA; with ``eval_heads=k`` it evaluates the first ``k`` heads
+    (MMA-imitation + far-sighted multi-scale proposals) and takes the best.
+    Multiple constraints are reduced to the most-active one for the policy
+    features (the merit safeguard still sees them all).
     """
 
     def __init__(
@@ -464,46 +450,43 @@ class TransformerOptimizer:
         self.evaluate = evaluate
         self.lb = np.asarray(lower_bounds, float)
         self.ub = np.asarray(upper_bounds, float)
-        self.scale = np.maximum(self.ub - self.lb, 1e-30)
+        self.range = np.maximum(self.ub - self.lb, 1e-30)
         self.pcfg = policy_cfg
         self.cfg = config or TransformerOptConfig()
         self.on_iteration = on_iteration
-        self._rng = np.random.default_rng(self.cfg.seed)
 
         jax, jnp = _jax()
         p = {k: jnp.asarray(v) for k, v in params.items()}
-        self._policy = jax.jit(
-            lambda tokens, mask: forward(p, tokens, mask, self.pcfg)
-        )
+        self._policy = jax.jit(lambda tokens: forward(p, tokens, self.pcfg))
 
         self.X: List[np.ndarray] = []
-        self.F: List[float] = []        # raw objective
+        self.F: List[float] = []
         self.C: List[np.ndarray] = []
-        self.Gm: List[np.ndarray] = []  # merit gradient
         self.n_evals = 0
+        # adaptive l1 penalty: ratcheted to penalty * (multiplier estimate), so
+        # feasibility-restoring steps are accepted whatever the objective scale
+        self._mu = 0.0
 
-    # ------------------------------------------------------------- sampling
-    def _eval(self, xi: np.ndarray) -> int:
-        x = self.lb + self.scale * xi
+    def _update_mu(self, g: np.ndarray, J: np.ndarray) -> None:
+        if len(J):
+            s0 = float(np.mean(np.abs(g * self.range)))
+            s1 = float(np.mean(np.abs(J * self.range[None, :])))
+            self._mu = max(self._mu, self.cfg.penalty * s0 / max(s1, 1e-300))
+
+    def _eval(self, x: np.ndarray):
         f, g, c, J = self.evaluate(x)
-        g = np.asarray(g, float).flatten() * self.scale
+        g = np.asarray(g, float).flatten()
         c = np.asarray(c, float).flatten()
-        J = (np.asarray(J, float).reshape(len(c), len(self.lb))
-             * self.scale[None, :])
-        gm = g.copy()
-        for i in range(len(c)):
-            if c[i] > 0:
-                gm += self.cfg.penalty * J[i]
-        self.X.append(np.asarray(xi, float).copy())
+        J = np.asarray(J, float).reshape(len(c), len(x))
+        self.X.append(np.asarray(x, float).copy())
         self.F.append(float(f))
         self.C.append(c)
-        self.Gm.append(gm)
         self.n_evals += 1
-        return len(self.X) - 1
+        return len(self.X) - 1, f, g, c, J
 
-    def _merit(self, i: int) -> float:
-        viol = float(np.sum(np.maximum(0.0, self.C[i]))) if len(self.C[i]) else 0.0
-        return self.F[i] + self.cfg.penalty * viol
+    def _merit_of(self, f: float, c: np.ndarray) -> float:
+        viol = float(np.sum(np.maximum(0.0, c))) if len(c) else 0.0
+        return f + self._mu * viol
 
     def _violation(self, i: int) -> float:
         return float(np.max(self.C[i])) if len(self.C[i]) else -np.inf
@@ -515,77 +498,104 @@ class TransformerOptimizer:
             return min(feas, key=lambda i: self.F[i])
         return min(range(len(self.X)), key=self._violation)
 
-    # ----------------------------------------------------------------- run
     def run(self, x0: np.ndarray) -> TransformerOptResult:
-        cfg, pcfg = self.cfg, self.pcfg
+        cfg = self.cfg
         d = len(self.lb)
-        K, r = pcfg.context, pcfg.latent_dim
-        delta = cfg.tr_init
+        move = cfg.move
+        tracker = AsymptoteTracker(
+            self.lb, self.ub, asy_init=move, asy_min=0.01 * move,
+            asy_max=move, incr=cfg.asy_incr, decr=cfg.asy_decr,
+        )
         history: List[dict] = []
-        status = "max_outer_iter reached"
+        status = "evaluation budget exhausted"
 
-        xi0 = np.clip((np.asarray(x0, float) - self.lb) / self.scale, 0.0, 1.0)
-        ci = self._eval(xi0)
+        x = np.clip(np.asarray(x0, float), self.lb, self.ub)
+        _, f, g, c, J = self._eval(x)
+        tracker.update(x)
+        stall = 0
+        it = 0
+        recent_fc: List[Tuple[float, np.ndarray]] = [(f, c)]   # watchdog window
 
-        for it in range(cfg.max_outer_iter):
-            if self.n_evals >= cfg.max_evals:
-                status = "evaluation budget exhausted"
-                break
-            if delta < cfg.tr_min:
-                status = "trust region collapsed"
-                break
+        while self.n_evals < cfg.max_evals:
+            # refresh the adaptive penalty, then the acceptance thresholds under it
+            self._update_mu(g, J)
+            merit = self._merit_of(f, c)
+            if cfg.accept_mode == "always":
+                accept_ref = np.inf
+            elif cfg.accept_mode == "watchdog" and cfg.nonmonotone_window > 0:
+                accept_ref = max(self._merit_of(fw, cw) for fw, cw in recent_fc)
+            else:
+                accept_ref = merit
+            # most-active constraint for the policy features
+            if len(c):
+                ic = int(np.argmax(c))
+                c_val, g_c = float(c[ic]), J[ic]
+            else:
+                c_val, g_c = None, None
+            tokens = build_var_tokens(
+                x, g, c_val, g_c, tracker.width, tracker.last_step(),
+                tracker.oscillation(), self.lb, self.ub, move,
+            )
+            steps = np.asarray(self._policy(tokens))             # (q, d)
 
-            Xa = np.asarray(self.X)
-            Fm = np.asarray([self._merit(i) for i in range(len(self.X))])
-            Ga = np.asarray(self.Gm)
-            Va = np.asarray([self._violation(i) for i in range(len(self.X))])
-            W = latent_basis(Ga[-K:], d, r, self._rng)
-            tokens, mask = build_tokens(Xa, Fm, Ga, Va, ci, W, delta, pcfg)
-            steps = np.asarray(self._policy(tokens, mask))       # (q, r)
-
-            # ---- evaluate the proposed batch (independent: parallelizable) ----
-            new_idx: List[int] = []
-            for s in steps:
+            # candidate points from the first eval_heads heads
+            n_heads = max(1, min(cfg.eval_heads, self.pcfg.n_heads_out))
+            best = None                                           # (merit, idx, f, g, c, J)
+            for j in range(n_heads):
                 if self.n_evals >= cfg.max_evals:
                     break
-                xi = np.clip(Xa[ci] + delta * (W @ s), 0.0, 1.0)
-                if any(np.linalg.norm(xi - self.X[j]) < 1e-12 for j in new_idx):
-                    xi = np.clip(
-                        xi + 0.1 * delta * self._rng.standard_normal(d) / np.sqrt(d),
-                        0.0, 1.0,
-                    )
-                new_idx.append(self._eval(xi))
-            if not new_idx:
-                status = "evaluation budget exhausted"
+                if j == 0:      # MMA-imitation head steps in width units
+                    raw = tracker.width * steps[0]
+                else:           # far-sighted heads step in move units
+                    sig = HEAD_SIGMAS[min(j, len(HEAD_SIGMAS) - 1)]
+                    raw = sig * move * self.range * steps[j]
+                x_c = np.clip(x + raw, self.lb, self.ub)
+                idx, f_c, g_new, c_c, J_c = self._eval(x_c)
+                m_c = self._merit_of(f_c, c_c)
+                if best is None or m_c < best[0]:
+                    best = (m_c, idx, f_c, g_new, c_c, J_c)
+
+            if best is None:
                 break
 
-            # ---- trust-region acceptance on the merit ----
-            cand = min(new_idx, key=self._merit)
-            step_inf = float(np.max(np.abs(self.X[cand] - Xa[ci])))
-            if self._merit(cand) < self._merit(ci):
-                ci = cand
-                if step_inf >= 0.8 * delta:
-                    delta = min(delta * cfg.tr_expand, cfg.tr_max)
-            else:
-                delta *= cfg.tr_shrink
+            # backtracking safeguard on the best candidate
+            n_bt = 0
+            while (best[0] > accept_ref and n_bt < cfg.n_backtracks
+                   and self.n_evals < cfg.max_evals):
+                n_bt += 1
+                x_c = x + (self.X[best[1]] - x) * 0.5 ** n_bt
+                idx, f_c, g_new, c_c, J_c = self._eval(x_c)
+                m_c = self._merit_of(f_c, c_c)
+                if m_c < best[0]:
+                    best = (m_c, idx, f_c, g_new, c_c, J_c)
 
+            if best[0] <= accept_ref + 1e-12 * (1.0 + abs(accept_ref)):
+                x = self.X[best[1]].copy()
+                f, g, c, J = best[2], best[3], best[4], best[5]
+                tracker.update(x)
+                recent_fc.append((f, c))
+                if len(recent_fc) > max(cfg.nonmonotone_window, 1):
+                    recent_fc.pop(0)
+                stall = 0
+            else:
+                stall += 1
+                if stall >= cfg.stall_limit:
+                    status = "stalled (no merit improvement)"
+                    break
+
+            it += 1
             rec = {
-                "iter": it, "n_evals": self.n_evals, "delta": delta,
-                "batch_indices": new_idx,
-                "merit_center": self._merit(ci),
-                "best_f": self.F[self._best_index()],
+                "iter": it, "n_evals": self.n_evals,
+                "merit_center": merit, "best_f": self.F[self._best_index()],
+                "stall": stall,
             }
             history.append(rec)
             if self.on_iteration is not None:
                 self.on_iteration(rec)
-            LOGGER.info(
-                "TransformerOpt iter %d: evals=%d f_best=%.6e merit=%.6e delta=%.3e",
-                it, self.n_evals, rec["best_f"], rec["merit_center"], delta,
-            )
 
         ib = self._best_index()
         return TransformerOptResult(
-            x_opt=self.lb + self.scale * self.X[ib],
+            x_opt=self.X[ib].copy(),
             f_opt=self.F[ib],
             constraints=self.C[ib].copy(),
             is_feasible=self._violation(ib) <= cfg.constraint_tol,
@@ -606,7 +616,7 @@ def transformer_opt_minimize(
     config: Optional[TransformerOptConfig] = None,
     on_iteration: Optional[Callable[[dict], None]] = None,
 ) -> TransformerOptResult:
-    """Functional entry point mirroring :func:`scp_uno.gesbo_core.gesbo_minimize`."""
+    """Functional entry point of the learned optimizer."""
     return TransformerOptimizer(
         evaluate, lower_bounds, upper_bounds, params, policy_cfg, config,
         on_iteration,

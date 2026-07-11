@@ -51,10 +51,10 @@ class TransformerOpt(BaseOptimizationLibrary[TransformerOptSettings]):
             internal_algorithm_name="TRANSFORMER_OPT",
             library_name="TRANSFORMER_OPT",
             description=(
-                "Learned optimizer: a set-transformer policy trained by "
-                "teacher imitation proposes multi-point batches from the "
-                "optimization history (values + gradients in a gradient "
-                "active subspace), inside a trust-region safeguard."
+                "Learned optimizer: a per-variable-token transformer trained "
+                "to imitate MMA's step map (plus far-sighted multi-scale "
+                "heads) steps in full dimension on every evaluation, inside "
+                "a merit backtracking safeguard."
             ),
             Settings=TransformerOptSettings,
             require_gradient=True,
@@ -113,11 +113,12 @@ class TransformerOpt(BaseOptimizationLibrary[TransformerOptSettings]):
 
         config = TransformerOptConfig(
             max_evals=s.max_iter,
-            tr_init=s.tr_init,
-            tr_min=s.tr_min,
-            tr_max=s.tr_max,
-            tr_shrink=s.tr_shrink,
-            tr_expand=s.tr_expand,
+            move=s.move,
+            eval_heads=s.eval_heads,
+            n_backtracks=s.n_backtracks,
+            stall_limit=s.stall_limit,
+            accept_mode=s.accept_mode,
+            nonmonotone_window=s.nonmonotone_window,
             penalty=s.penalty,
             constraint_tol=s.constraint_tol,
             seed=s.seed,

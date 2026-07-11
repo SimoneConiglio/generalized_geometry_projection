@@ -148,19 +148,44 @@ class TransformerOptSettings(BaseOptimizerSettings):
         ),
     )
 
-    # -- trust region --
-    tr_init: float = Field(0.25, description="Initial trust-region half-width.")
-    tr_min: float = Field(1e-5, description="Minimum trust-region half-width (stopping).")
-    tr_max: float = Field(0.75, description="Maximum trust-region half-width.")
-    tr_shrink: float = Field(0.5, description="Radius shrink factor on rejected steps.")
-    tr_expand: float = Field(2.0, description="Radius expansion factor on good boundary steps.")
+    # -- stepping --
+    move: float = Field(
+        0.01,
+        description="Move limit as a fraction of each variable's range (as in MMA).",
+    )
+    eval_heads: int = Field(
+        1,
+        description=(
+            "Policy heads evaluated per iteration: 1 = sequential MMA-like "
+            "stepping (one move per evaluation); k>1 = best-of-k batch of the "
+            "MMA-imitation head plus far-sighted multi-scale proposals."
+        ),
+    )
+    n_backtracks: int = Field(
+        2, description="Step halvings tried when a proposal worsens the merit."
+    )
+    stall_limit: int = Field(
+        8, description="Consecutive rejected iterations before stopping."
+    )
+    accept_mode: str = Field(
+        "always",
+        description=(
+            "'always' advances unconditionally like MMA (best-so-far "
+            "bookkeeping guards the reported result); 'watchdog' accepts "
+            "against the worst of the last nonmonotone_window merits; "
+            "'monotone' is strict."
+        ),
+    )
+    nonmonotone_window: int = Field(
+        10, description="Window size for accept_mode='watchdog'."
+    )
 
     # -- merit / misc --
     penalty: float = Field(
         100.0, description="mu of the l1 merit function f + mu * sum(max(0, c))."
     )
     constraint_tol: float = Field(1e-6, description="Feasibility tolerance on constraints.")
-    seed: int = Field(0, description="Random seed (latent basis fallback, dedup jitter).")
+    seed: int = Field(0, description="Random seed.")
 
     # Expected by GEMSEO's base driver (KKT-based stopping hooks).
     kkt_tol_abs: float = Field(1e-6, description="Absolute KKT tolerance.")
