@@ -165,6 +165,7 @@ class Transformer2D(BaseOptimizationLibrary[RSTransformerSettings]):
         result = rs_transformer_minimize(
             evaluate, x0, lb, ub, params, policy_cfg, _config_from(s),
             use_policy_radius=s.use_policy_radius,
+            gek_refresh=s.gek_refresh,
         )
         LOGGER.info(
             "TRANSFORMER_2D: %s after %d evaluations (%d iterations), f_opt=%.6e",

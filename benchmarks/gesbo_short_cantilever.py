@@ -89,6 +89,11 @@ def main() -> None:
     parser.add_argument("--no-policy-radius", action="store_true",
                         help="TRANSFORMER_2D: use the driver radius rule instead "
                              "of the learned multiplier.")
+    parser.add_argument("--gek-refresh", type=int, default=None,
+                        help="TRANSFORMER_2D: hybrid schedule, GEK iteration "
+                             "every k-th step.")
+    parser.add_argument("--weights", type=str, default=None,
+                        help="TRANSFORMER_2D: policy weights path override.")
     parser.add_argument("--with-mma-baseline", action="store_true",
                         help="Also run the preset MMA with the same evaluation budget.")
     parser.add_argument("--plot-dir", type=Path, default=None,
@@ -120,6 +125,10 @@ def main() -> None:
             "use_policy_radius": (False if (args.no_policy_radius
                                             and args.algo == "TRANSFORMER_2D")
                                   else None),
+            "gek_refresh": (args.gek_refresh
+                            if args.algo == "TRANSFORMER_2D" else None),
+            "weights_path": (args.weights
+                             if args.algo == "TRANSFORMER_2D" else None),
         }.items() if v is not None}
     result, elapsed = run_algo(spec, args.algo, args.max_evals, args.seed, **extra)
     report(args.algo, result, elapsed)

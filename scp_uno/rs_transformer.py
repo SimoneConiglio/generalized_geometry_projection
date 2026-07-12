@@ -275,6 +275,29 @@ class RecordingTeacherProposer:
         return alpha, float(self.gamma_max ** t_gamma)
 
 
+class HybridProposer:
+    """GEK refresh every ``refresh_every``-th iteration, policy in between.
+
+    The GEK iterations spend inner evaluations that *measure* the objective
+    and constraint along the current frame; those samples enter the shared
+    history, so the policy iterations in between extrapolate from real local
+    data instead of relying on priors — this is what makes learned
+    momentum/secant steps transfer to unseen landscapes. Amortized cost with
+    ``refresh_every = k``: ``(n_inner + k) / k`` evaluations per iteration.
+    """
+
+    def __init__(self, policy_proposer, gek_proposer, refresh_every: int = 4):
+        self.policy = policy_proposer
+        self.gek = gek_proposer
+        self.k = max(1, int(refresh_every))
+        self._i = 0
+
+    def propose(self, ctx: IterationContext):
+        use_gek = self._i % self.k == 0
+        self._i += 1
+        return self.gek.propose(ctx) if use_gek else self.policy.propose(ctx)
+
+
 def sample_rs_task(rng: np.random.Generator,
                    dims: Sequence[int] = (4, 8, 16, 32, 64, 128, 256)
                    ) -> TeacherTask:
@@ -290,9 +313,17 @@ def generate_training_batch(
     cfg: RSPolicyConfig,
     n_states: int = 64,
     rollout_evals: int = 20,
+    gek_refresh: int = 0,
 ) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Roll the recording noisy teacher through the *actual* driver on fresh
-    synthetic tasks; returns ``(tokens, masks, targets)`` arrays."""
+    synthetic tasks; returns ``(tokens, masks, targets)`` arrays.
+
+    With ``gek_refresh = k > 0`` the rollout follows the hybrid schedule
+    (a true GEK iteration every k-th step), so the recorded states include
+    the GEK inner samples in their token history — matching inference.
+    """
+    from scp_uno.reduced_space import GEKProposer
+
     toks: List[np.ndarray] = []
     masks: List[np.ndarray] = []
     tgts: List[np.ndarray] = []
@@ -306,7 +337,9 @@ def generate_training_batch(
                 return f, g, np.zeros(0), np.zeros((0, len(x)))
             return f, g, np.array([c]), gc[None, :]
 
-        proposer = RecordingTeacherProposer(task, cfg, rng)
+        recorder = RecordingTeacherProposer(task, cfg, rng)
+        proposer = (HybridProposer(recorder, GEKProposer(), gek_refresh)
+                    if gek_refresh > 0 else recorder)
         driver = ReducedSpaceDriver(
             ev, np.zeros(d), np.ones(d), proposer,
             ReducedSpaceConfig(
@@ -317,7 +350,7 @@ def generate_training_batch(
             ),
         )
         driver.run(rng.uniform(0.05, 0.95, d))
-        for t, m, y in proposer.records:
+        for t, m, y in recorder.records:
             toks.append(t)
             masks.append(m)
             tgts.append(y)
@@ -341,6 +374,8 @@ def train_policy(
     on_step: Optional[Callable[[int, float], None]] = None,
     checkpoint_path=None,
     checkpoint_every: int = 0,
+    rollout_evals: int = 20,
+    gek_refresh: int = 0,
 ) -> Dict[str, np.ndarray]:
     """MSE behaviour cloning of the subspace teacher (step + radius signal)."""
     jax, jnp = _jax()
@@ -361,7 +396,8 @@ def train_policy(
 
     for it in range(1, steps + 1):
         tokens, masks, targets = generate_training_batch(
-            rng, cfg, n_states=batch_states
+            rng, cfg, n_states=batch_states, rollout_evals=rollout_evals,
+            gek_refresh=gek_refresh,
         )
         val, g = grad_fn(params, jnp.asarray(tokens), jnp.asarray(masks),
                          jnp.asarray(targets))
@@ -445,13 +481,22 @@ def rs_transformer_minimize(
     config: Optional[ReducedSpaceConfig] = None,
     on_iteration: Optional[Callable[[dict], None]] = None,
     use_policy_radius: bool = True,
+    gek_refresh: int = 0,
 ) -> ReducedSpaceResult:
-    """Reduced-space optimization with the transformer proposer."""
+    """Reduced-space optimization with the transformer proposer.
+
+    ``gek_refresh = k > 0`` enables the hybrid schedule: every k-th iteration
+    is a full GEK sub-optimization (measured refresh of the history), the
+    iterations in between are pure policy predictions at one evaluation each.
+    """
+    from scp_uno.reduced_space import GEKProposer
+
     config = config or ReducedSpaceConfig()
     config.subspace_dim = policy_cfg.subspace_dim
+    proposer = TransformerRSProposer(params, policy_cfg, config.gamma_max,
+                                     use_policy_radius)
+    if gek_refresh > 0:
+        proposer = HybridProposer(proposer, GEKProposer(), gek_refresh)
     return ReducedSpaceDriver(
-        evaluate, lower_bounds, upper_bounds,
-        TransformerRSProposer(params, policy_cfg, config.gamma_max,
-                              use_policy_radius),
-        config, on_iteration,
+        evaluate, lower_bounds, upper_bounds, proposer, config, on_iteration,
     ).run(x0)

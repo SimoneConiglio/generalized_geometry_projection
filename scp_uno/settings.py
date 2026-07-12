@@ -256,6 +256,14 @@ class RSTransformerSettings(_ReducedSpaceBaseSettings):
             "back to the driver's boundary-expand / interior-shrink rule."
         ),
     )
+    gek_refresh: int = Field(
+        0,
+        description=(
+            "Hybrid schedule: every k-th iteration runs a full GEK "
+            "sub-optimization (measured refresh) and the policy drives the "
+            "iterations in between (0 = pure policy)."
+        ),
+    )
 
 
 class UnoSettings(BaseOptimizerSettings):

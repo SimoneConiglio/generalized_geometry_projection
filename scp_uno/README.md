@@ -68,7 +68,7 @@ A different, **fully generic** route: at each iterate build a low-dimensional co
 | 200 | **203** | 340 |
 | 320 | **136** | 328 |
 
-(The original 2-direction GEK2D scored 435/364 — the momentum + secant directions are worth ~3×.) The packaged policy weights are the 2D-frame model: a 4D policy (`rs_transformer_4d.npz`, shipped for research) is excellent on-distribution and on held-out toy-SIMP, but its momentum/secant step priors transfer poorly to the rugged GGP landscape (~600); learning transferable higher-order directions — rather than measuring them like GEK2D does — is the open problem of this line.
+(The original 2-direction GEK2D scored 435/364 — the momentum + secant directions are worth ~3×.) The packaged policy weights are the 2D-frame model: a 4D policy (`rs_transformer_4d.npz`, shipped for research) is excellent on-distribution and on held-out toy-SIMP, but its momentum/secant step priors transfer poorly to the rugged GGP landscape (~600); learning transferable higher-order directions — rather than measuring them like GEK2D does — is the open problem of this line. A **hybrid schedule** (`gek_refresh=k`: a full GEK iteration every k-th step, policy in between at one evaluation each; weights `rs_transformer_hybrid.npz`) was also evaluated and did *not* close the gap on GGP (~500 at 200 evaluations): measured samples in the token history are not, at these training scales, enough to make 4D learned steps transfer. The mode remains available for experimentation.
 
 Other zero-shot results (packaged weights): the same model drives a 3-variable and a 300-variable sphere to ~1e-13, and on held-out toy-SIMP restores feasibility from infeasible starts to within a few percent of the exact constrained optimum.
 
