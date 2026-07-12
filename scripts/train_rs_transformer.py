@@ -38,9 +38,20 @@ def main() -> None:
     cfg = RSPolicyConfig()
     t0 = time.time()
     losses = []
+    args.out.parent.mkdir(parents=True, exist_ok=True)
+
+    def on_step(i, l):
+        losses.append(l)
+        if i % 200 == 0:
+            print(f"step {i}: loss={l:.5f} ({time.time() - t0:.0f}s)", flush=True)
+
+    # checkpoint every 500 steps so a wall-clock kill never loses the run
+    from scp_uno.rs_transformer import train_policy as _tp  # noqa: F401
+
     params = train_policy(cfg, steps=args.steps, lr=args.lr,
                           batch_states=args.batch_states, seed=args.seed,
-                          on_step=lambda i, l: losses.append(l))
+                          on_step=on_step,
+                          checkpoint_path=args.out, checkpoint_every=500)
     print(f"trained {args.steps} steps in {time.time() - t0:.0f}s: "
           f"loss {sum(losses[:10]) / 10:.4f} -> {sum(losses[-50:]) / 50:.4f}")
     args.out.parent.mkdir(parents=True, exist_ok=True)

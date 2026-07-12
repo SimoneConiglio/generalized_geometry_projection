@@ -72,6 +72,7 @@ def _config_from(s) -> "ReducedSpaceConfig":
 
     return ReducedSpaceConfig(
         max_evals=s.max_iter,
+        subspace_dim=s.subspace_dim,
         delta_init=s.delta_init,
         delta_min=s.delta_min,
         delta_max=s.delta_max,
@@ -81,10 +82,11 @@ def _config_from(s) -> "ReducedSpaceConfig":
         constraint_tol=s.constraint_tol,
         ks_rho=s.ks_rho,
         stall_limit=s.stall_limit,
+        n_backtracks=s.n_backtracks,
         n_resets=s.n_resets,
         seed=s.seed,
-        n_inner=getattr(s, "n_inner", 3),
-        grid=getattr(s, "grid", 41),
+        n_inner=getattr(s, "n_inner", 4),
+        n_candidates=getattr(s, "n_candidates", 4096),
     )
 
 
@@ -161,7 +163,8 @@ class Transformer2D(BaseOptimizationLibrary[RSTransformerSettings]):
         params, policy_cfg = load_params(weights)
         evaluate, x0, lb, ub = _adapt_problem(problem)
         result = rs_transformer_minimize(
-            evaluate, x0, lb, ub, params, policy_cfg, _config_from(s)
+            evaluate, x0, lb, ub, params, policy_cfg, _config_from(s),
+            use_policy_radius=s.use_policy_radius,
         )
         LOGGER.info(
             "TRANSFORMER_2D: %s after %d evaluations (%d iterations), f_opt=%.6e",

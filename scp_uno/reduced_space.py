@@ -1,33 +1,35 @@
 # Copyright (c) 2026 Simone Coniglio
 # Licensed under the MIT license. See LICENSE file in the project directory for details.
-"""Reduced-space (2D) sequential optimization: frame, driver and GEK proposer.
+"""Reduced-space sequential optimization: subspace frame, driver, GEK proposer.
 
-At every iterate the algorithm builds a **two-dimensional coordinate system**
-from the information any SCP method has anyway:
+At every iterate a low-dimensional orthonormal frame is built from the
+information any SCP method has anyway (SESOP-style subspace optimization):
 
-* ``e1 = -grad f / ||grad f||``            (steepest-descent direction), and
-* ``e2 =  orth(grad c_agg, e1)``           (the aggregated-constraint gradient
-  orthogonalized w.r.t. the objective gradient; for unconstrained problems the
-  previous accepted step, orthogonalized, acts as a momentum direction).
+* ``e1 = -grad f / ||grad f||``          steepest descent;
+* ``e2 =  orth(grad c_agg)``             aggregated-constraint restoration;
+* ``e3 =  orth(previous step)``          momentum — with e1 this span contains
+  the conjugate-gradient step, curing steepest-descent zig-zag;
+* ``e4 =  orth(g_k - g_{k-1})``          secant — the span then also contains
+  the memory-1 quasi-Newton direction.
 
-The next iterate is searched *inside a trust region on that plane*:
-``x_next = x + delta * (alpha e1 + beta e2)`` with ``(alpha, beta)`` in
-``[-1, 1]^2``. How ``(alpha, beta)`` is chosen is delegated to a *proposer*:
+Degenerate directions are replaced by random orthonormal fill so the frame
+always has ``subspace_dim`` columns. The next iterate is searched inside a
+trust region on that subspace, ``x_next = x + delta * E @ alpha`` with
+``alpha in [-1, 1]^r``, by a *proposer*:
 
-* :class:`GEKProposer` — spends a few true evaluations on the plane, fits a
-  gradient-enhanced kriging model of the objective and aggregated constraint
-  over ``(alpha, beta)`` (exact projected directional derivatives), and picks
-  the best-predicted feasible point on the surrogate — the classical
-  reduced-space GEK sub-optimization;
-* the transformer proposer in :mod:`scp_uno.rs_transformer` — predicts
-  ``(alpha, beta)`` directly from the iteration history at **zero** inner
-  evaluation cost.
+* :class:`GEKProposer` — a few true evaluations on the subspace, one
+  gradient-enhanced kriging model of objective + aggregated constraint over
+  ``alpha`` (exact projected directional derivatives), candidate set solved
+  feasibility-first — the classical reduced-space GEK sub-optimization;
+* the transformer proposer of :mod:`scp_uno.rs_transformer` — predicts
+  ``alpha`` (and a trust-radius multiplier) from the iteration history at
+  zero inner-evaluation cost.
 
-Because everything the proposers see lives in the 2D frame, the approach is
-independent of the number of design variables by construction. The driver
-provides l1-merit acceptance with an adaptive penalty, trust-region radius
-adaptation and feasibility-first result bookkeeping. It aims at *efficiently
-reaching a local minimum* of a multimodal problem — no global claims.
+The driver provides l1-merit acceptance with an adaptive penalty,
+radius adaptation (proposer-supplied multiplier when available, otherwise
+boundary-expand / interior-shrink), restarts from the incumbent best, and
+feasibility-first result bookkeeping. These are *local-descent* methods for
+multimodal problems — no optimality claim.
 """
 
 from __future__ import annotations
@@ -37,6 +39,7 @@ import logging
 from typing import Callable, List, Optional, Tuple
 
 import numpy as np
+from scipy.stats import qmc
 
 from scp_uno.gesbo_core import EvaluateFn, GradientEnhancedGP
 
@@ -44,7 +47,7 @@ LOGGER = logging.getLogger(__name__)
 
 
 # --------------------------------------------------------------------------- #
-# Constraint aggregation and frame construction
+# Constraint aggregation and subspace construction
 # --------------------------------------------------------------------------- #
 def ks_aggregate(c: np.ndarray, J: np.ndarray, rho: float = 50.0
                  ) -> Tuple[Optional[float], Optional[np.ndarray]]:
@@ -59,35 +62,46 @@ def ks_aggregate(c: np.ndarray, J: np.ndarray, rho: float = 50.0
     return m + np.log(s) / rho, (w / s) @ J
 
 
-def build_frame(
+def build_subspace(
     grad_f: np.ndarray,
-    grad_c: Optional[np.ndarray],
-    prev_dir: Optional[np.ndarray],
+    directions: List[Optional[np.ndarray]],
+    dim: int,
     rng: np.random.Generator,
-) -> Tuple[np.ndarray, np.ndarray]:
-    """Orthonormal 2D frame ``(e1, e2)`` of the reduced space.
-
-    ``e1`` is the steepest-descent direction; ``e2`` is the aggregated
-    constraint gradient orthogonalized w.r.t. ``e1`` (falling back to the
-    previous accepted step, then to a random direction, when degenerate).
-    """
+) -> np.ndarray:
+    """Orthonormal frame ``E (d, dim)``: steepest descent first, then the given
+    directions Gram-Schmidt-orthogonalized in order, random fill for the rest."""
     d = len(grad_f)
+    n_real = min(dim, d)        # at most d orthonormal directions exist in R^d
     n1 = float(np.linalg.norm(grad_f))
-    e1 = -grad_f / n1 if n1 > 1e-300 else _random_unit(d, rng)
+    cols = [(-grad_f / n1) if n1 > 1e-300 else _random_unit(d, rng)]
 
-    for v in (grad_c, prev_dir):
-        if v is None:
-            continue
-        w = np.asarray(v, float) - (np.asarray(v, float) @ e1) * e1
+    def try_add(v) -> None:
+        if v is None or len(cols) >= n_real:
+            return
+        w = np.asarray(v, float).copy()
+        nv = float(np.linalg.norm(w))
+        if nv <= 1e-300:
+            return
+        for e in cols:
+            w -= (w @ e) * e
         n2 = float(np.linalg.norm(w))
-        if n2 > 1e-10 * max(np.linalg.norm(v), 1.0):
-            return e1, w / n2
-    while True:
-        w = _random_unit(d, rng)
-        w = w - (w @ e1) * e1
-        n2 = float(np.linalg.norm(w))
-        if n2 > 1e-8:
-            return e1, w / n2
+        if n2 > 1e-10 * nv:
+            cols.append(w / n2)
+
+    for v in directions:
+        try_add(v)
+    while len(cols) < n_real:
+        try_add(_random_unit(d, rng))
+    E = np.column_stack(cols)
+    if E.shape[1] < dim:        # d < dim: pad with inert zero columns
+        E = np.concatenate([E, np.zeros((d, dim - E.shape[1]))], axis=1)
+    return E
+
+
+# backward-compatible 2D helper (kept for tests / external use)
+def build_frame(grad_f, grad_c, prev_dir, rng):
+    E = build_subspace(np.asarray(grad_f, float), [grad_c, prev_dir], 2, rng)
+    return E[:, 0], E[:, 1]
 
 
 def _random_unit(d: int, rng: np.random.Generator) -> np.ndarray:
@@ -101,21 +115,26 @@ def _random_unit(d: int, rng: np.random.Generator) -> np.ndarray:
 @dataclasses.dataclass
 class ReducedSpaceConfig:
     max_evals: int = 200
+    subspace_dim: int = 4          # r: steepest descent, constraint, momentum, secant
     delta_init: float = 0.1        # trust radius in the normalized design box
     delta_min: float = 1e-6
     delta_max: float = 0.5
-    shrink: float = 0.5
-    expand: float = 1.6
-    boundary_frac: float = 0.9     # step at TR boundary => try expanding
+    shrink: float = 0.5            # radius factor on rejected steps
+    expand: float = 1.6            # radius factor on accepted boundary steps
+    interior_shrink: float = 0.7   # radius factor on accepted small interior steps
+    boundary_frac: float = 0.9
+    interior_frac: float = 0.3
+    gamma_max: float = 2.5         # range of a proposer-supplied radius multiplier
     penalty: float = 10.0          # merit safety factor over multiplier estimate
     constraint_tol: float = 1e-6
     ks_rho: float = 50.0
     stall_limit: int = 10
-    n_resets: int = 3          # trust-region restarts from the incumbent best
+    n_backtracks: int = 2          # step halvings tried when a proposal is rejected
+    n_resets: int = 6              # trust-region restarts from the incumbent best
     seed: int = 0
     # GEK proposer
-    n_inner: int = 3               # true evaluations spent on the plane per iter
-    grid: int = 41                 # surrogate grid resolution for the 2D solve
+    n_inner: int = 5               # true evaluations spent on the subspace per iter
+    n_candidates: int = 4096       # surrogate candidate points for the subspace solve
 
 
 @dataclasses.dataclass
@@ -144,84 +163,117 @@ class IterationContext:
     """Everything a proposer may use for the current iteration."""
 
     def __init__(self, driver: "ReducedSpaceDriver", center: Sample,
-                 e1: np.ndarray, e2: np.ndarray, delta: float):
+                 E: np.ndarray, delta: float):
         self.driver = driver
         self.center = center
-        self.e1, self.e2, self.delta = e1, e2, delta
+        self.E = E                                  # (d, r) orthonormal
+        self.delta = delta
         self.constrained = center.c_agg is not None
 
-    def x_of(self, alpha: float, beta: float) -> np.ndarray:
-        x = self.center.x + self.delta * (alpha * self.e1 + beta * self.e2)
+    @property
+    def dim(self) -> int:
+        return self.E.shape[1]
+
+    def x_of(self, alpha: np.ndarray) -> np.ndarray:
+        x = self.center.x + self.delta * (self.E @ np.asarray(alpha, float))
         return np.clip(x, self.driver.lb, self.driver.ub)
 
-    def eval_plane(self, alpha: float, beta: float) -> Optional[Sample]:
-        """Evaluate the true model on the plane (None if budget exhausted)."""
+    def eval_subspace(self, alpha: np.ndarray) -> Optional[Sample]:
+        """Evaluate the true model on the subspace (None if budget exhausted)."""
         if self.driver.n_evals >= self.driver.cfg.max_evals:
             return None
-        return self.driver._eval(self.x_of(alpha, beta))
+        return self.driver._eval(self.x_of(alpha))
 
-    def project(self, s: Sample) -> Tuple[float, float, float]:
-        """In-plane coordinates (alpha, beta) and out-of-plane distance of s."""
+    def project(self, s: Sample) -> Tuple[np.ndarray, float]:
+        """In-subspace coordinates (r,) and out-of-subspace distance of s."""
         p = s.x - self.center.x
-        a = float(p @ self.e1) / self.delta
-        b = float(p @ self.e2) / self.delta
-        r = float(np.linalg.norm(p - self.delta * (a * self.e1 + b * self.e2)))
-        return a, b, r / self.delta
+        a = (self.E.T @ p) / self.delta
+        r = float(np.linalg.norm(p - self.delta * (self.E @ a)))
+        return a, r / self.delta
 
-    def grad2d(self, s: Sample, which: str) -> Tuple[float, float]:
+    def gradk(self, s: Sample, which: str) -> np.ndarray:
         g = s.g if which == "f" else s.g_agg
-        return float(g @ self.e1), float(g @ self.e2)
+        return self.E.T @ g
 
 
 # --------------------------------------------------------------------------- #
 # Proposers
 # --------------------------------------------------------------------------- #
 class GEKProposer:
-    """Solve the 2D subproblem with a gradient-enhanced kriging surrogate.
+    """Solve the subspace subproblem with a gradient-enhanced kriging model.
 
     Spends ``n_inner`` true evaluations at a fixed descent-biased pattern in
-    the trust square, fits one GEK over ``(alpha, beta)`` for the objective
-    and (if present) the aggregated constraint — with the *exact* projected
-    directional derivatives as gradient observations — then returns the
-    feasibility-first best point of the surrogate on a grid.
+    the trust cube, fits one GEK over ``alpha`` for the objective and (if
+    present) the aggregated constraint — with exact projected directional
+    derivatives as gradient observations — and returns the feasibility-first
+    best of a Sobol candidate set on the surrogate.
     """
 
-    PATTERN = ((0.8, 0.0), (0.4, 0.7), (0.4, -0.7), (-0.5, 0.0), (0.0, 0.8))
-
-    def propose(self, ctx: IterationContext) -> Tuple[float, float]:
+    def propose(self, ctx: IterationContext
+                ) -> Tuple[np.ndarray, Optional[float]]:
         cfg = ctx.driver.cfg
+        r = ctx.dim
+        pattern = _inner_pattern(r)
         samples = [ctx.center]
-        for a, b in self.PATTERN[: max(1, cfg.n_inner)]:
-            s = ctx.eval_plane(a, b)
+        for a in pattern[: max(1, cfg.n_inner)]:
+            s = ctx.eval_subspace(a)
             if s is None:
                 break
             samples.append(s)
-        if len(samples) < 2:
-            return (1.0, 0.0)      # budget gone: plain descent step
+        if len(samples) < 2:                    # budget gone: plain descent step
+            return np.eye(r)[0], None
 
-        Z = np.array([ctx.project(s)[:2] for s in samples])
+        Z = np.array([ctx.project(s)[0] for s in samples])
         m = 1 + (1 if ctx.constrained else 0)
         Y = np.empty((len(samples), m))
-        G = np.empty((len(samples), 2, m))
+        G = np.empty((len(samples), r, m))
         for i, s in enumerate(samples):
             Y[i, 0] = s.f
-            G[i, :, 0] = ctx.grad2d(s, "f")
-            G[i, :, 0] = np.asarray(G[i, :, 0]) * ctx.delta
+            G[i, :, 0] = ctx.gradk(s, "f") * ctx.delta
             if ctx.constrained:
                 Y[i, 1] = s.c_agg
-                G[i, :, 1] = np.asarray(ctx.grad2d(s, "c")) * ctx.delta
+                G[i, :, 1] = ctx.gradk(s, "c") * ctx.delta
         gek = GradientEnhancedGP().fit(Z, Y, G)
 
-        n = cfg.grid
-        ax = np.linspace(-1.0, 1.0, n)
-        A, B = np.meshgrid(ax, ax, indexing="ij")
-        P = np.column_stack([A.ravel(), B.ravel()])
+        P = _candidate_set(r, cfg.n_candidates, ctx.driver.rng)
         mean, _ = gek.predict(P)
-        return _feasibility_first_pick(P, mean[:, 0],
-                                       mean[:, 1] if ctx.constrained else None)
+        alpha = _feasibility_first_pick(P, mean[:, 0],
+                                        mean[:, 1] if ctx.constrained else None)
+        return alpha, None
 
 
-def _feasibility_first_pick(P, f_hat, c_hat) -> Tuple[float, float]:
+def _inner_pattern(r: int) -> List[np.ndarray]:
+    """Descent-biased evaluation pattern in the trust cube [-1, 1]^r."""
+    pts = [np.zeros(r) for _ in range(2 * r)]
+    pts[0] = np.zeros(r)
+    pts[0][0] = 0.8                               # along steepest descent
+    k = 1
+    for j in range(1, r):
+        p = np.zeros(r)
+        p[0], p[j] = 0.3, 0.6
+        pts[k] = p
+        k += 1
+    for j in range(1, r):
+        p = np.zeros(r)
+        p[0], p[j] = 0.3, -0.6
+        pts[k] = p
+        k += 1
+    p = np.zeros(r)
+    p[0] = -0.4                                   # uphill probe (curvature)
+    pts[k] = p
+    return pts[: k + 1]
+
+
+def _candidate_set(r: int, n: int, rng: np.random.Generator) -> np.ndarray:
+    """Sobol candidates in [-1, 1]^r plus the axes and the origin."""
+    sob = qmc.Sobol(d=r, scramble=True, seed=int(rng.integers(1 << 31)))
+    P = 2.0 * sob.random(n) - 1.0
+    axes = np.concatenate([np.eye(r), -np.eye(r), 0.5 * np.eye(r),
+                           np.zeros((1, r))])
+    return np.concatenate([P, axes])
+
+
+def _feasibility_first_pick(P, f_hat, c_hat) -> np.ndarray:
     """Best candidate: min f among predicted-feasible, else min violation."""
     if c_hat is not None:
         feas = c_hat <= 0.0
@@ -229,14 +281,19 @@ def _feasibility_first_pick(P, f_hat, c_hat) -> Tuple[float, float]:
                else int(np.argmin(c_hat)))
     else:
         idx = int(np.argmin(f_hat))
-    return float(P[idx, 0]), float(P[idx, 1])
+    return np.asarray(P[idx], float)
 
 
 # --------------------------------------------------------------------------- #
 # Driver
 # --------------------------------------------------------------------------- #
 class ReducedSpaceDriver:
-    """Trust-region outer loop shared by the GEK and transformer proposers."""
+    """Trust-region outer loop shared by the GEK and transformer proposers.
+
+    A proposer returns ``(alpha, gamma)``: the step coordinates and an
+    optional trust-radius multiplier (``None`` -> the driver's own
+    boundary-expand / interior-shrink rule is applied on acceptance).
+    """
 
     def __init__(
         self,
@@ -299,22 +356,26 @@ class ReducedSpaceDriver:
         history: List[dict] = []
         status = "evaluation budget exhausted"
         center = self._eval(np.clip(np.asarray(x0, float), self.lb, self.ub))
-        prev_dir: Optional[np.ndarray] = None
+        steps_hist: List[np.ndarray] = []      # most recent first
+        secants_hist: List[np.ndarray] = []
         stall = 0
         it = 0
         resets = cfg.n_resets
 
         def _restart(reason: str) -> bool:
-            """Restart from the incumbent best with a fresh radius."""
-            nonlocal delta, stall, center, prev_dir, resets
+            nonlocal delta, stall, center, resets
             if resets <= 0:
                 return False
             resets -= 1
-            delta = cfg.delta_init
+            # progressively smaller fresh radius: a deterministic proposer would
+            # otherwise reproduce the same rejected step and re-stall immediately
+            delta = cfg.delta_init * 0.5 ** (cfg.n_resets - resets - 1)
             stall = 0
-            prev_dir = None
+            steps_hist.clear()
+            secants_hist.clear()
             center = self._best()
-            LOGGER.info("reduced-space restart (%s): %d left", reason, resets)
+            LOGGER.info("reduced-space restart (%s): %d left, delta=%.3g",
+                        reason, resets, delta)
             return True
 
         while self.n_evals < cfg.max_evals:
@@ -322,23 +383,51 @@ class ReducedSpaceDriver:
                 status = "trust region collapsed"
                 break
             self._update_mu(center)
-            e1, e2 = build_frame(center.g, center.g_agg, prev_dir, self.rng)
-            ctx = IterationContext(self, center, e1, e2, delta)
+            # direction pool: constraint, then interleaved momentum/secant history
+            pool: List[Optional[np.ndarray]] = [center.g_agg]
+            for s_v, y_v in zip(steps_hist, secants_hist):
+                pool.extend([s_v, y_v])
+            E = build_subspace(center.g, pool, cfg.subspace_dim, self.rng)
+            ctx = IterationContext(self, center, E, delta)
 
-            alpha, beta = self.proposer.propose(ctx)
-            cand = ctx.eval_plane(alpha, beta)
+            alpha, gamma = self.proposer.propose(ctx)
+            alpha = np.clip(np.asarray(alpha, float), -1.0, 1.0)
+            cand = ctx.eval_subspace(alpha)
             if cand is None:
                 break
 
             it += 1
+            # backtracking: a rejected proposal often has the right direction
+            # but too large a magnitude — halve it before counting a stall
+            tol = 1e-12 * (1.0 + abs(self._merit(center)))
+            for k in range(1, cfg.n_backtracks + 1):
+                if self._merit(cand) <= self._merit(center) + tol:
+                    break
+                shorter = ctx.eval_subspace(alpha * 0.5 ** k)
+                if shorter is None:
+                    break
+                if self._merit(shorter) < self._merit(cand):
+                    cand = shorter
+                    alpha = alpha * 0.5 ** k
+                    gamma = None              # radius follows the interior rule
+
             if self._merit(cand) <= self._merit(center) + 1e-12 * (
                     1.0 + abs(self._merit(center))):
                 step = cand.x - center.x
                 if np.linalg.norm(step) > 1e-300:
-                    prev_dir = step
+                    steps_hist.insert(0, step)
+                    secants_hist.insert(0, cand.g - center.g)
+                    del steps_hist[3:], secants_hist[3:]
                 center = cand
-                if max(abs(alpha), abs(beta)) >= cfg.boundary_frac:
-                    delta = min(delta * cfg.expand, cfg.delta_max)
+                if gamma is not None:
+                    delta = float(np.clip(gamma * delta, cfg.delta_min,
+                                          cfg.delta_max))
+                else:
+                    a_inf = float(np.max(np.abs(alpha)))
+                    if a_inf >= cfg.boundary_frac:
+                        delta = min(delta * cfg.expand, cfg.delta_max)
+                    elif a_inf <= cfg.interior_frac:
+                        delta = max(delta * cfg.interior_shrink, cfg.delta_min)
                 stall = 0
             else:
                 delta *= cfg.shrink
@@ -348,7 +437,7 @@ class ReducedSpaceDriver:
                     break
 
             rec = {"iter": it, "n_evals": self.n_evals, "delta": delta,
-                   "alpha": alpha, "beta": beta,
+                   "alpha": alpha.copy(),
                    "merit_center": self._merit(center),
                    "best_f": self._best().f}
             history.append(rec)
@@ -371,7 +460,11 @@ def gek2d_minimize(
     config: Optional[ReducedSpaceConfig] = None,
     on_iteration: Optional[Callable[[dict], None]] = None,
 ) -> ReducedSpaceResult:
-    """Reduced-space SCP with the GEK 2D sub-optimization (functional API)."""
+    """Reduced-space SCP with the GEK sub-optimization (functional API).
+
+    The name is kept from the original two-direction formulation; the default
+    subspace now has four directions (descent, constraint, momentum, secant).
+    """
     return ReducedSpaceDriver(
         evaluate, lower_bounds, upper_bounds, GEKProposer(), config,
         on_iteration,

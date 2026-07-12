@@ -80,6 +80,15 @@ def main() -> None:
     parser.add_argument("--max-grad-points", type=int, default=None)
     parser.add_argument("--tr-init", type=float, default=None)
     parser.add_argument("--kappa-base", type=float, default=None)
+    parser.add_argument("--n-inner", type=int, default=None,
+                        help="GEK2D: true evaluations on the subspace per iteration.")
+    parser.add_argument("--subspace-dim", type=int, default=None,
+                        help="GEK2D/TRANSFORMER_2D: reduced-space directions.")
+    parser.add_argument("--delta-init", type=float, default=None,
+                        help="GEK2D/TRANSFORMER_2D: initial trust radius.")
+    parser.add_argument("--no-policy-radius", action="store_true",
+                        help="TRANSFORMER_2D: use the driver radius rule instead "
+                             "of the learned multiplier.")
     parser.add_argument("--with-mma-baseline", action="store_true",
                         help="Also run the preset MMA with the same evaluation budget.")
     parser.add_argument("--plot-dir", type=Path, default=None,
@@ -100,9 +109,18 @@ def main() -> None:
                 "kappa_base": args.kappa_base,
             }.items() if v is not None
         }
-    else:                                       # TRANSFORMER_OPT
+    elif args.algo == "TRANSFORMER_OPT":
         extra = {k: v for k, v in {"tr_init": args.tr_init}.items()
                  if v is not None}
+    else:                                       # GEK2D / TRANSFORMER_2D
+        extra = {k: v for k, v in {
+            "n_inner": args.n_inner if args.algo == "GEK2D" else None,
+            "subspace_dim": args.subspace_dim,
+            "delta_init": args.delta_init,
+            "use_policy_radius": (False if (args.no_policy_radius
+                                            and args.algo == "TRANSFORMER_2D")
+                                  else None),
+        }.items() if v is not None}
     result, elapsed = run_algo(spec, args.algo, args.max_evals, args.seed, **extra)
     report(args.algo, result, elapsed)
     if args.plot_dir and result.density_field is not None:

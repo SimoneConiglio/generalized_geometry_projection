@@ -64,24 +64,27 @@ The framework provides seven major algorithms:
    Engine: ``scp_uno.transformer_opt_core`` + ``scp_uno.mma_teacher``.
 
 6. **Reduced-space GEK (GEK2D)**:
-   At each iterate, a 2D frame is built from :math:`e_1 = -\nabla f/\|\nabla f\|`
-   and the KS-aggregated constraint gradient orthogonalized w.r.t.
-   :math:`e_1`; the trust-region subproblem on that plane is solved with a
+   At each iterate, an orthonormal subspace is built from
+   :math:`e_1 = -\nabla f/\|\nabla f\|`, the KS-aggregated constraint
+   gradient, the previous step (momentum: the span contains the
+   conjugate-gradient step) and the gradient difference (secant); the
+   trust-region subproblem on that subspace is solved with a
    gradient-enhanced kriging surrogate fitted from a few true evaluations per
-   iteration (exact projected directional derivatives). A local-descent
-   method for multimodal problems — efficient convergence to a local minimum,
-   no optimality claim. Engine: ``scp_uno.reduced_space``.
+   iteration (exact projected directional derivatives), with backtracking on
+   rejections and restarts from the incumbent best. A local-descent method
+   for multimodal problems — efficient convergence to a local minimum, no
+   optimality claim. On the short cantilever: compliance 203 / 136 at
+   200 / 320 evaluations (from 42358). Engine: ``scp_uno.reduced_space``.
 
 7. **Reduced-space transformer (TRANSFORMER_2D)** *(requires JAX)*:
-   The same 2D formulation with the GEK sub-optimization replaced by a
-   transformer that predicts the step :math:`(\alpha, \beta)` from the
+   The same formulation with the GEK sub-optimization replaced by a
+   transformer that predicts the step and a trust-radius multiplier from the
    iteration history at zero inner-evaluation cost. All features are frame
    projections, so the policy is **independent of the design-space dimension
    by construction**; it is trained only on generic synthetic families
-   (``scripts/train_rs_transformer.py`` — no topology-optimization data) and
-   generalizes zero-shot: on the short cantilever (never seen) it reaches a
-   better objective than GEK2D at the same budget. Engine:
-   ``scp_uno.rs_transformer``.
+   (``scripts/train_rs_transformer.py`` — no topology-optimization data).
+   Zero-shot on the short cantilever (never seen): compliance ~340 at 200
+   evaluations. Engine: ``scp_uno.rs_transformer``.
 
 Monotone Backtracking Line-Search
 ---------------------------------

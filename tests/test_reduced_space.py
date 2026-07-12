@@ -138,7 +138,7 @@ TINY = RSPolicyConfig(context=8, d_model=32, n_layers=1, n_attn_heads=2,
 @pytest.fixture(scope="module")
 def tiny_trained_policy():
     losses = []
-    params = train_policy(TINY, steps=250, batch_states=48, seed=0,
+    params = train_policy(TINY, steps=120, batch_states=32, seed=0,
                           on_step=lambda i, l: losses.append(l))
     return params, losses
 
@@ -147,12 +147,12 @@ def test_rs_forward_shapes_and_bounds():
     rng = np.random.default_rng(0)
     tokens, masks, targets = generate_training_batch(rng, TINY, n_states=4)
     assert tokens.shape[1:] == (TINY.context, TINY.n_features)
-    assert targets.shape[1:] == (2,)
+    assert targets.shape[1:] == (TINY.n_outputs,)   # step coords + radius signal
     assert np.all(np.abs(targets) <= 1.0)
     params = {k: jax.numpy.asarray(v) for k, v in init_params(TINY).items()}
     out = np.asarray(forward(params, jax.numpy.asarray(tokens[0]),
                              jax.numpy.asarray(masks[0]), TINY))
-    assert out.shape == (2,)
+    assert out.shape == (TINY.n_outputs,)
     assert np.all(np.abs(out) <= 1.0)
 
 
@@ -201,13 +201,15 @@ def test_rs_transformer_heldout_family_feasible(tiny_trained_policy):
 def test_rs_transformer_one_eval_per_iteration(tiny_trained_policy):
     params, _ = tiny_trained_policy
     records = []
+    cfg = ReducedSpaceConfig(max_evals=40, seed=0)
     res = rs_transformer_minimize(
         sphere_problem(6), np.full(6, 0.7), np.zeros(6), np.ones(6),
-        params, TINY, ReducedSpaceConfig(max_evals=40, seed=0),
-        on_iteration=records.append,
+        params, TINY, cfg, on_iteration=records.append,
     )
-    # zero inner cost: evaluations = iterations + the initial point
-    assert res.n_evals == len(records) + 1
+    # zero inner cost: one evaluation per iteration plus the initial point
+    # and at most n_backtracks extra per rejected iteration
+    assert len(records) + 1 <= res.n_evals
+    assert res.n_evals <= 1 + len(records) * (1 + cfg.n_backtracks)
 
 
 def test_packaged_rs_weights_and_gemseo():

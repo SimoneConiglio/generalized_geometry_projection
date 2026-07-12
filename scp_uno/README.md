@@ -54,17 +54,26 @@ scenario.execute(algo_name="TRANSFORMER_OPT", max_iter=320)  # requires JAX
 
 By default the policy steps sequentially like MMA (`eval_heads=1`, `accept_mode="always"` — MMA never rejects a step; best-so-far bookkeeping guards the reported result). It handles one inequality constraint natively (multiple constraints are reduced to the most active one for the features, while the merit safeguard sees them all).
 
-## Reduced-Space 2D Optimizers (`GEK2D`, `TRANSFORMER_2D`)
+## Reduced-Space Subspace Optimizers (`GEK2D`, `TRANSFORMER_2D`)
 
-A different, **fully generic** route: at each iterate build a 2D coordinate system from the information every SCP method already has — `e1 = −∇f/‖∇f‖` and `e2 = orth(∇c_agg, e1)` (the KS-aggregated constraint gradient orthogonalized w.r.t. the objective gradient; the previous step serves as fallback for unconstrained problems) — and find the next iterate by a **trust-region sub-optimization on that plane**: `x⁺ = x + δ(α e1 + β e2)`, `(α, β) ∈ [−1,1]²`. These are local-descent methods for multimodal problems: the goal is reaching a good local minimum efficiently, with no optimality claim.
+A different, **fully generic** route: at each iterate build a low-dimensional coordinate system from the information every SCP method already has (SESOP-style subspace optimization) — `e1 = −∇f/‖∇f‖`, `e2 = orth(∇c_agg)` (KS-aggregated constraint gradient), `e3 = orth(previous step)` (momentum: with `e1` the span contains the conjugate-gradient step), `e4 = orth(gₖ−gₖ₋₁)` (secant: the span then contains the memory-1 quasi-Newton direction) — and find the next iterate by a **trust-region sub-optimization on that subspace**: `x⁺ = x + δ E α`, `α ∈ [−1,1]^r`. Rejected proposals are backtracked (step halving) before shrinking the radius, and stalls trigger restarts from the incumbent best with diversified radii. These are local-descent methods for multimodal problems: the goal is reaching a good local minimum efficiently, with no optimality claim.
 
-*   **`GEK2D`** solves the subproblem with a **gradient-enhanced kriging** surrogate: a few true evaluations on the plane per iteration (default 3), exact projected directional derivatives as gradient observations, feasibility-first selection on the surrogate grid.
-*   **`TRANSFORMER_2D`** replaces the GEK sub-optimization with a transformer that predicts `(α, β)` directly from the **iteration history** (all features are frame projections normalized by the trust radius and local gradient scales) at **zero inner-evaluation cost** — one true evaluation per iteration. Because the policy lives entirely in the 2D reduced space, it is **independent of the number of design variables by construction**, and it is trained **only on generic synthetic families** (free / linearly-constrained / ball-constrained quadratics, curved valleys, dimensions 4–256) by cloning a grid teacher that solves the true 2D subproblem. **No topology-optimization data is used**: the toy-SIMP family and the GGP problems are held out.
+*   **`GEK2D`** (name kept from the original 2-direction formulation; default subspace is now 4D) solves the subproblem with a **gradient-enhanced kriging** surrogate: a few true evaluations on the subspace per iteration (default 5), exact projected directional derivatives as gradient observations, feasibility-first selection on a Sobol candidate set.
+*   **`TRANSFORMER_2D`** replaces the GEK sub-optimization with a transformer that predicts the step — plus a **learned trust-radius multiplier** — directly from the **iteration history** (all features are frame projections normalized by the trust radius and local gradient scales) at **zero inner-evaluation cost**. The policy is **independent of the number of design variables by construction** and is trained **only on generic synthetic families** (free / linearly-constrained / ball-constrained quadratics, curved valleys, dimensions 4–256) by cloning a teacher that solves the true subspace subproblem (vectorized Sobol + refinement). **No topology-optimization data is used**: toy-SIMP and the GGP problems are held out.
 
-Zero-shot results with the packaged weights (`rs_transformer_default.npz`): the same model drives a 3-variable and a 300-variable sphere to ~1e-13; on the held-out toy-SIMP family it restores feasibility from infeasible starts and lands within a few percent of the exact constrained optimum; on the **short cantilever (108 variables, never seen in training)** at a 200-evaluation budget it reaches compliance **313 vs 435 for `GEK2D`** — the learned proposer is more evaluation-efficient than the surrogate subproblem it amortizes. (Full-space methods with problem-specific tuning remain stronger on this cheap-gradient benchmark: MMA 75.7, `TRANSFORMER_OPT` 77.4.)
+**Short cantilever, zero-shot (108 variables, never seen in training; MMA reference 75.7 / 74.5):**
+
+| Evaluations | GEK2D (4D subspace) | TRANSFORMER_2D (2D policy) |
+| :--- | :--- | :--- |
+| 200 | **203** | 340 |
+| 320 | **136** | 328 |
+
+(The original 2-direction GEK2D scored 435/364 — the momentum + secant directions are worth ~3×.) The packaged policy weights are the 2D-frame model: a 4D policy (`rs_transformer_4d.npz`, shipped for research) is excellent on-distribution and on held-out toy-SIMP, but its momentum/secant step priors transfer poorly to the rugged GGP landscape (~600); learning transferable higher-order directions — rather than measuring them like GEK2D does — is the open problem of this line.
+
+Other zero-shot results (packaged weights): the same model drives a 3-variable and a 300-variable sphere to ~1e-13, and on held-out toy-SIMP restores feasibility from infeasible starts to within a few percent of the exact constrained optimum.
 
 ```python
-scenario.execute(algo_name="GEK2D", max_iter=200)           # kriging subproblem
+scenario.execute(algo_name="GEK2D", max_iter=320)           # kriging subproblem
 scenario.execute(algo_name="TRANSFORMER_2D", max_iter=200)  # learned subproblem (JAX)
 ```
 

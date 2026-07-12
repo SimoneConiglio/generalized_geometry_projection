@@ -196,6 +196,14 @@ class _ReducedSpaceBaseSettings(BaseOptimizerSettings):
     """Shared settings of the reduced-space (2D) optimizers."""
 
     max_iter: int = Field(200, description="Total budget of true model evaluations.")
+    subspace_dim: int = Field(
+        4,
+        description=(
+            "Reduced-space directions: steepest descent, orthogonalized "
+            "constraint gradient, momentum (previous step), secant "
+            "(gradient difference)."
+        ),
+    )
     delta_init: float = Field(0.1, description="Initial trust radius (normalized box).")
     delta_min: float = Field(1e-6, description="Minimum trust radius (stopping).")
     delta_max: float = Field(0.5, description="Maximum trust radius.")
@@ -207,8 +215,11 @@ class _ReducedSpaceBaseSettings(BaseOptimizerSettings):
     constraint_tol: float = Field(1e-6, description="Feasibility tolerance.")
     ks_rho: float = Field(50.0, description="KS constraint-aggregation parameter.")
     stall_limit: int = Field(10, description="Consecutive rejections before stopping.")
+    n_backtracks: int = Field(
+        2, description="Step halvings tried when a proposal is rejected."
+    )
     n_resets: int = Field(
-        3, description="Trust-region restarts from the incumbent best before stopping."
+        6, description="Trust-region restarts from the incumbent best before stopping."
     )
     seed: int = Field(0, description="Random seed (frame fallbacks).")
 
@@ -221,9 +232,11 @@ class GEK2DSettings(_ReducedSpaceBaseSettings):
     """Settings of the GEK2D reduced-space algorithm."""
 
     n_inner: int = Field(
-        3, description="True evaluations spent on the 2D plane per iteration."
+        5, description="True evaluations spent on the subspace per iteration."
     )
-    grid: int = Field(41, description="Surrogate grid resolution for the 2D solve.")
+    n_candidates: int = Field(
+        4096, description="Surrogate candidate points for the subspace solve."
+    )
 
 
 class RSTransformerSettings(_ReducedSpaceBaseSettings):
@@ -234,6 +247,13 @@ class RSTransformerSettings(_ReducedSpaceBaseSettings):
         description=(
             "Path to trained reduced-space policy weights "
             "(scripts/train_rs_transformer.py); empty selects the packaged default."
+        ),
+    )
+    use_policy_radius: bool = Field(
+        True,
+        description=(
+            "Use the policy's learned trust-radius multiplier; False falls "
+            "back to the driver's boundary-expand / interior-shrink rule."
         ),
     )
 
