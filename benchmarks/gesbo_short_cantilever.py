@@ -70,7 +70,8 @@ def main() -> None:
                         help="True-evaluation budget (default 200).")
     parser.add_argument(
         "--algo",
-        choices=["GE_SBO", "TRANSFORMER_OPT", "GEK2D", "TRANSFORMER_2D"],
+        choices=["GE_SBO", "TRANSFORMER_OPT", "GEK2D", "TRANSFORMER_2D",
+                 "MLS_SBO"],
         default="GE_SBO", help="Algorithm to benchmark.")
     parser.add_argument("--batch-size", type=int, default=4,
                         help="Points acquired per GE_SBO iteration (default 4).")
@@ -110,6 +111,14 @@ def main() -> None:
                 "batch_size": args.batch_size,
                 "max_latent_dim": args.max_latent_dim,
                 "max_grad_points": args.max_grad_points,
+                "tr_init": args.tr_init,
+                "kappa_base": args.kappa_base,
+            }.items() if v is not None
+        }
+    elif args.algo == "MLS_SBO":
+        extra = {
+            k: v for k, v in {
+                "batch_size": args.batch_size,
                 "tr_init": args.tr_init,
                 "kappa_base": args.kappa_base,
             }.items() if v is not None
