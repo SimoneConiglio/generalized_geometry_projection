@@ -59,6 +59,9 @@ class GESBOSettings(BaseOptimizerSettings):
     """
 
     max_iter: int = Field(200, description="Total budget of true model evaluations.")
+    max_outer_iter: int = Field(
+        100, description="Cap on outer (batch) iterations regardless of the budget."
+    )
 
     # -- batch acquisition --
     batch_size: int = Field(
@@ -140,6 +143,9 @@ class MLSSBOSettings(BaseOptimizerSettings):
     """
 
     max_iter: int = Field(200, description="Total budget of true model evaluations.")
+    max_outer_iter: int = Field(
+        100, description="Cap on outer (batch) iterations regardless of the budget."
+    )
 
     # -- batch acquisition (shared with GE_SBO) --
     batch_size: int = Field(

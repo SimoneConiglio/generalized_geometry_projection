@@ -95,6 +95,7 @@ class MLSSurrogateSBO(BaseOptimizationLibrary[MLSSBOSettings]):
             batch_size=s.batch_size,
             n_init=(s.n_init_doe or None),
             max_evals=s.max_iter,
+            max_outer_iter=s.max_outer_iter,
             max_points=s.max_points,
             regularization=s.regularization,
             ls_factor=s.ls_factor,
