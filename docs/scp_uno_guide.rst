@@ -86,6 +86,28 @@ The framework provides seven major algorithms:
    Zero-shot on the short cantilever (never seen): compliance ~340 at 200
    evaluations. Engine: ``scp_uno.rs_transformer``.
 
+8. **Moving-Least-Squares SBO (MLS_SBO)**:
+   The same trust-region batch-SBO frame as GE_SBO, with the kriging surrogate
+   replaced by **gradient-enhanced Moving Least Squares** (Hermite MLS, linear
+   basis): every prediction solves a small local weighted normal system that
+   matches the sampled values *and* gradients, so there is no global
+   correlation matrix and the cost per query is :math:`O(n d^2)` — the full
+   ~100-variable GGP design space is handled directly, without an active
+   subspace. The MLS **length scale evolves with the sampling**:
+   :math:`h = \mathrm{ls\_factor} \cdot d_{\min}`, where :math:`d_{\min}` is
+   the minimal distance from the trust-region center to a sampled point inside
+   the trust region — the fit localizes automatically as the trust region
+   shrinks and samples cluster. The acquisition (penalized exploitation + LCB
+   ladder with repulsion, with a sample-density proxy standing in for the
+   kriging variance) is shared with GE_SBO. On the short cantilever:
+   compliance ~930 at 200 evaluations — comparable with GE_SBO's ~790,
+   i.e. still far from the gradient-based MMA baseline (75.7), the expected
+   gap for generic surrogates on a 108-variable topology-optimization
+   landscape. Invoke with
+   ``scenario.execute(algo_name="MLS_SBO", max_iter=200, batch_size=4)``;
+   engine: ``scp_uno.mls_sbo_core`` (pure NumPy/SciPy), standalone via
+   ``mls_sbo_minimize``.
+
 Monotone Backtracking Line-Search
 ---------------------------------
 
