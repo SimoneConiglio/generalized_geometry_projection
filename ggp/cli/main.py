@@ -63,7 +63,7 @@ def cli():
     help="Name of a built-in preset (e.g. short_cantilever, mbb, l_shape, alm_cantilever).",
 )
 @click.option("--max-iter", type=int, default=None, help="Override max iterations.")
-@click.option("--algorithm", type=str, default=None, help="Override algorithm (MMA, SLP, CONLIN, GE_SBO).")
+@click.option("--algorithm", type=str, default=None, help="Override algorithm (MMA, SLP, CONLIN, GE_SBO, MLS_SBO).")
 @click.option("--volfrac", type=float, default=None, help="Override volume fraction.")
 @click.option("--iterative", is_flag=True, default=False, help="Use PETSc iterative solver (shorthand for --fem-solver iterative).")
 @click.option(

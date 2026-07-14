@@ -132,6 +132,82 @@ class GESBOSettings(BaseOptimizerSettings):
     kkt_tol_rel: float = Field(1e-6, description="Relative KKT tolerance.")
 
 
+class MLSSBOSettings(BaseOptimizerSettings):
+    """Settings for the Moving-Least-Squares SBO (MLS_SBO) algorithm.
+
+    ``max_iter`` is the total budget of *true model evaluations* (each outer
+    iteration consumes up to ``batch_size`` of them, plus the initial DOE).
+    """
+
+    max_iter: int = Field(200, description="Total budget of true model evaluations.")
+
+    # -- batch acquisition (shared with GE_SBO) --
+    batch_size: int = Field(
+        4, description="Number of points acquired (and evaluated) per outer iteration."
+    )
+    n_init_doe: int = Field(
+        0,
+        description=(
+            "Initial DOE size (Latin Hypercube inside the initial trust region). "
+            "0 means batch_size + 1."
+        ),
+    )
+    kappa_base: float = Field(
+        1.0, description="First exploration weight of the LCB kappa ladder."
+    )
+    kappa_growth: float = Field(
+        2.0, description="Geometric growth of the LCB kappa ladder across the batch."
+    )
+    repulsion_weight: float = Field(
+        1.0, description="Batch-diversity repulsion weight in the acquisition."
+    )
+    acq_n_restarts: int = Field(
+        4, description="Random multistarts per acquisition sub-optimization."
+    )
+
+    # -- surrogate --
+    max_points: int = Field(
+        60, description="Training window: number of nearest samples kept."
+    )
+    regularization: float = Field(
+        1e-8, description="Tikhonov jitter on the local MLS normal system."
+    )
+
+    # -- length scale: tracks the sample spacing inside the trust region --
+    ls_factor: float = Field(
+        2.0,
+        description=(
+            "Length scale h = ls_factor * (minimal distance from the "
+            "trust-region center to a sampled point inside the trust region)."
+        ),
+    )
+    ls_min: float = Field(1e-3, description="Minimum length scale (normalized units).")
+    ls_max: float = Field(2.0, description="Maximum length scale (normalized units).")
+
+    # -- trust region --
+    tr_init: float = Field(
+        0.25, description="Initial trust-region half-width (fraction of the design box)."
+    )
+    tr_min: float = Field(1e-5, description="Minimum trust-region half-width (stopping).")
+    tr_max: float = Field(0.75, description="Maximum trust-region half-width.")
+    tr_shrink: float = Field(0.5, description="Radius shrink factor on rejected steps.")
+    tr_expand: float = Field(2.0, description="Radius expansion factor on very good steps.")
+
+    # -- merit / stopping --
+    penalty: float = Field(
+        100.0, description="mu of the l1 merit function f + mu * sum(max(0, c))."
+    )
+    constraint_tol: float = Field(1e-6, description="Feasibility tolerance on constraints.")
+    stall_limit: int = Field(
+        5, description="Consecutive non-improving iterations before declaring a stall."
+    )
+    seed: int = Field(0, description="Random seed (DOE, acquisition multistarts).")
+
+    # Expected by GEMSEO's base driver (KKT-based stopping hooks).
+    kkt_tol_abs: float = Field(1e-6, description="Absolute KKT tolerance.")
+    kkt_tol_rel: float = Field(1e-6, description="Relative KKT tolerance.")
+
+
 class TransformerOptSettings(BaseOptimizerSettings):
     """Settings for the transformer learned-optimizer (TRANSFORMER_OPT).
 

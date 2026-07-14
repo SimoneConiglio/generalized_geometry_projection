@@ -1,0 +1,485 @@
+# Copyright (c) 2026 Simone Coniglio
+# Licensed under the MIT license. See LICENSE file in the project directory for details.
+"""Core engine for the Moving-Least-Squares SBO (MLS-SBO) — pure NumPy/SciPy.
+
+Trust-region-managed, batch, surrogate-based optimizer in which **both the
+objective and the constraints are approximated by gradient-enhanced Moving
+Least Squares** (Hermite MLS): at every query point a *local* weighted linear
+model is fitted that matches the sampled function values **and** their
+gradients, with Gaussian weights ``w_i = exp(-||x - x_i||^2 / (2 h^2))``.
+
+Compared with the gradient-enhanced kriging of :mod:`scp_uno.gesbo_core`:
+
+* no global correlation system — each prediction solves one small
+  ``(d+1) x (d+1)`` normal system assembled analytically in ``O(n d^2)``,
+  so the method scales to the ~100-variable GGP regime with a *linear*
+  basis (a diagonal-Hessian basis is a possible later extension);
+* gradients enter as first-class observations (Hermite fit), so the linear
+  MLS reproduces any linear function exactly and inherits first-order
+  accuracy everywhere;
+* the **length scale ``h`` evolves with the sampling**: at every iteration it
+  is set proportional to the minimal distance from the trust-region center to
+  a sampled point *inside the trust region* (``h = ls_factor * d_min``,
+  clipped to bounds). As the trust region shrinks and the samples cluster,
+  the fit localises automatically at the pace of the sample spacing — one
+  knob, no error heuristics. The per-batch prediction error is still recorded
+  in the iteration history for diagnostics.
+
+The batch acquisition (penalized exploitation + LCB kappa ladder with
+diversity repulsion) is **shared with GE-SBO** — the surrogate exposes the
+same duck-typed interface, with the sample-density proxy
+``sigma(x) = sqrt(max(0, 1 - sum_i w_i(x)))`` standing in for the kriging
+variance, and the *diffuse* MLS derivative (the local slope ``b``) standing
+in for the mean gradient.
+
+References: Lancaster & Salkauskas (1981) for MLS; Nayroles et al. (1992)
+for the diffuse-derivative approximation; Alexandrov et al. (1998) for
+trust-region model management.
+"""
+
+from __future__ import annotations
+
+import dataclasses
+import logging
+from typing import Callable, List, Optional, Tuple
+
+import numpy as np
+from scipy.stats import qmc
+
+from scp_uno.gesbo_core import EvaluateFn, propose_batch
+
+LOGGER = logging.getLogger(__name__)
+
+
+# --------------------------------------------------------------------------- #
+# Configuration & result containers
+# --------------------------------------------------------------------------- #
+@dataclasses.dataclass
+class MLSSBOConfig:
+    """Configuration of the MLS-SBO driver (lengths in normalized [0,1] space)."""
+
+    batch_size: int = 4                # q: points acquired per outer iteration
+    n_init: Optional[int] = None       # initial DOE size (default: batch_size + 1)
+    max_evals: int = 200               # total budget of true evaluations
+    max_outer_iter: int = 100          # cap on outer (batch) iterations
+
+    # -- surrogate --
+    max_points: int = 60               # training window: nearest points kept
+    regularization: float = 1e-8       # Tikhonov jitter on the local normal system
+
+    # -- length scale: tracks the sample spacing inside the trust region --
+    ls_factor: float = 2.0             # h = ls_factor * (min distance to a TR sample)
+    ls_min: float = 1e-3               # absolute bounds (normalized units)
+    ls_max: float = 2.0
+
+    # -- trust region (same semantics as GE-SBO) --
+    tr_init: float = 0.25
+    tr_min: float = 1e-5
+    tr_max: float = 0.75
+    tr_shrink: float = 0.5
+    tr_expand: float = 2.0
+    eta_accept: float = 1e-4
+    eta_expand: float = 0.5
+
+    # -- acquisition (duck-typed fields consumed by gesbo_core.propose_batch) --
+    kappa_base: float = 1.0
+    kappa_growth: float = 2.0
+    repulsion_weight: float = 1.0
+    n_restarts: int = 4
+    acq_maxiter: int = 60
+    constraint_penalty_acq: float = 10.0
+
+    # -- merit / stopping --
+    penalty: float = 100.0             # mu of the l1 merit f + mu*sum(max(0, c))
+    constraint_tol: float = 1e-6
+    ftol_abs: float = 1e-10
+    stall_limit: int = 5
+
+    seed: int = 0
+
+
+@dataclasses.dataclass
+class MLSSBOResult:
+    """Outcome of an MLS-SBO run (raw, unnormalized coordinates)."""
+
+    x_opt: np.ndarray
+    f_opt: float
+    constraints: np.ndarray
+    is_feasible: bool
+    n_evals: int
+    n_iter: int
+    status: str
+    history: List[dict]
+
+
+# --------------------------------------------------------------------------- #
+# Gradient-enhanced Moving Least Squares (Hermite MLS, linear basis)
+# --------------------------------------------------------------------------- #
+class MovingLeastSquares:
+    """Multi-output gradient-enhanced MLS with a linear basis.
+
+    At a query point ``x`` the local model ``q(s) = c + b^T s``, ``s = x' - x``,
+    is fitted by weighted least squares to the value observations
+    (``c + b^T s_i ~ f_i``) and to the gradient observations (``b ~ g_i``),
+    all with Gaussian weight ``w_i = exp(-||x - x_i||^2 / (2 h^2))``. The
+    prediction mean is ``c`` and the *diffuse derivative* is ``b``.
+
+    The normal equations are assembled analytically::
+
+        [ S_w        S_w s^T          ] [c]   [ S_w f            ]
+        [ S_w s   S_w (s s^T + I) + rI] [b] = [ S_w (s f + g)    ]
+
+    (one shared system for all ``m`` outputs — objective and constraints —
+    since the weights do not depend on the output). Outputs are standardized
+    internally; the duck-typed interface (``predict``, ``predict_std``,
+    ``predict_std_single``, ``_m``, ``_ym``, ``_ys``) matches
+    :class:`scp_uno.gesbo_core.GradientEnhancedGP` so the GE-SBO batch
+    acquisition is reused unchanged. The uncertainty proxy is the sample
+    density ``sigma(x) = sqrt(max(0, 1 - sum_i w_i(x)))``.
+    """
+
+    def __init__(self, lengthscale: float, regularization: float = 1e-8,
+                 use_gradients: bool = True) -> None:
+        self.h = float(lengthscale)
+        self.reg = float(regularization)
+        self.use_gradients = bool(use_gradients)
+
+    def fit(self, X: np.ndarray, Y: np.ndarray,
+            G: Optional[np.ndarray] = None) -> "MovingLeastSquares":
+        """Store samples: inputs ``X (n, d)``, outputs ``Y (n, m)``, gradients
+        ``G (n, d, m)`` (``d(output)/dx``; zeros are used when absent)."""
+        X = np.atleast_2d(np.asarray(X, float))
+        Y = np.asarray(Y, float)
+        if Y.ndim == 1:
+            Y = Y[:, None]
+        n, d = X.shape
+        m = Y.shape[1]
+        self._ym = Y.mean(axis=0)
+        self._ys = np.maximum(Y.std(axis=0), 1e-12)
+        self._X = X.copy()
+        self._Yt = (Y - self._ym) / self._ys                    # (n, m)
+        if G is None or not self.use_gradients:
+            G = np.zeros((n, d, m))
+        else:
+            G = np.asarray(G, float)
+            if G.ndim == 2:
+                G = G[:, :, None]
+        self._Gt = G / self._ys[None, None, :]                  # (n, d, m)
+        self._m = m
+        self._d = d
+        return self
+
+    # ------------------------------------------------------------- internal
+    def _weights(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Fit weights, numerically shifted so the largest is always 1.
+
+        The weighted normal equations are invariant to a common scaling of the
+        weights, so factoring out the maximum (i.e. subtracting the smallest
+        squared distance in the exponent) changes nothing analytically while
+        preventing underflow at small length scales — this is what makes the
+        linear-exactness and interpolation limits hold for any ``h``.
+        """
+        S = self._X - x[None, :]                                # (n, d)
+        r2 = np.sum(S * S, axis=1)
+        w = np.exp(-(r2 - float(np.min(r2))) / (2.0 * self.h * self.h))
+        return w, S
+
+    def _density(self, x: np.ndarray) -> Tuple[float, np.ndarray]:
+        """Unshifted weight sum (sample density) and its gradient d(sum)/dx."""
+        S = self._X - x[None, :]
+        w = np.exp(-np.sum(S * S, axis=1) / (2.0 * self.h * self.h))
+        return float(np.sum(w)), (w @ S) / (self.h * self.h)
+
+    def _solve_local(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Return standardized ``(c (m,), B (d, m))`` of the local fit at x."""
+        w, S = self._weights(x)
+        d = self._d
+        sw = float(np.sum(w))
+        ws = w @ S                                              # (d,)
+        A = np.empty((d + 1, d + 1))
+        A[0, 0] = sw
+        A[0, 1:] = ws
+        A[1:, 0] = ws
+        A[1:, 1:] = (S.T * w) @ S + sw * np.eye(d)
+        A[np.diag_indices_from(A)] += self.reg + 1e-12 * max(sw, 1.0)
+        rhs = np.empty((d + 1, self._m))
+        rhs[0] = w @ self._Yt
+        rhs[1:] = (S.T * w) @ self._Yt + np.einsum("n,ndm->dm", w, self._Gt)
+        try:
+            theta = np.linalg.solve(A, rhs)
+        except np.linalg.LinAlgError:
+            theta = np.linalg.lstsq(A, rhs, rcond=None)[0]
+        return theta[0], theta[1:]
+
+    # -------------------------------------------------------------- predict
+    def predict(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Raw-unit means ``(q, m)`` and stds ``(q, m)`` at inputs ``X (q, d)``."""
+        mt, st = self.predict_std(X)
+        return self._ym + self._ys * mt, self._ys[None, :] * st[:, None]
+
+    def predict_std(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Standardized means ``(q, m)`` and shared density-proxy std ``(q,)``."""
+        X = np.atleast_2d(np.asarray(X, float))
+        mean = np.empty((len(X), self._m))
+        sig = np.empty(len(X))
+        for i, x in enumerate(X):
+            c, _ = self._solve_local(x)
+            mean[i] = c
+            dens, _ = self._density(x)
+            sig[i] = np.sqrt(max(0.0, 1.0 - dens))
+        return mean, sig
+
+    def predict_std_single(
+        self, x: np.ndarray
+    ) -> Tuple[np.ndarray, float, np.ndarray, np.ndarray]:
+        """Standardized prediction with derivatives at one point ``x (d,)``.
+
+        Returns ``(mean (m,), sigma, dmean/dx (d, m), dsigma/dx (d,))``. The
+        mean derivative is the diffuse MLS derivative (the local slope ``B``);
+        the sigma derivative is exact for the density proxy.
+        """
+        x = np.asarray(x, float)
+        c, B = self._solve_local(x)
+        dens, ddens = self._density(x)
+        sigma = np.sqrt(max(0.0, 1.0 - dens))
+        dsig = (-ddens / (2.0 * sigma)) if sigma > 1e-12 else np.zeros(self._d)
+        return c, sigma, B, dsig
+
+
+# --------------------------------------------------------------------------- #
+# Driver
+# --------------------------------------------------------------------------- #
+class MLSSBOptimizer:
+    """Trust-region-managed batch SBO on a gradient-enhanced MLS surrogate.
+
+    Same evaluation contract as :class:`scp_uno.gesbo_core.GESBOptimizer`
+    (``evaluate: x -> (f, grad_f, cons, jac_cons)``, ``c(x) <= 0``).
+    """
+
+    def __init__(
+        self,
+        evaluate: EvaluateFn,
+        lower_bounds: np.ndarray,
+        upper_bounds: np.ndarray,
+        config: Optional[MLSSBOConfig] = None,
+        on_iteration: Optional[Callable[[dict], None]] = None,
+    ) -> None:
+        self.evaluate = evaluate
+        self.lb = np.asarray(lower_bounds, float)
+        self.ub = np.asarray(upper_bounds, float)
+        self.scale = np.maximum(self.ub - self.lb, 1e-30)
+        self.cfg = config or MLSSBOConfig()
+        self.on_iteration = on_iteration
+        self._rng = np.random.default_rng(self.cfg.seed)
+        # sample store (normalized coordinates)
+        self.X: List[np.ndarray] = []
+        self.F: List[float] = []
+        self.Gf: List[np.ndarray] = []
+        self.C: List[np.ndarray] = []
+        self.Jc: List[np.ndarray] = []
+        self.n_evals = 0
+
+    # ------------------------------------------------------------- sampling
+    def _eval(self, xi: np.ndarray) -> int:
+        x = self.lb + self.scale * xi
+        f, g, c, J = self.evaluate(x)
+        g = np.asarray(g, float).flatten() * self.scale
+        c = np.asarray(c, float).flatten()
+        J = (np.asarray(J, float).reshape(len(c), len(self.lb))
+             * self.scale[None, :])
+        self.X.append(np.asarray(xi, float).copy())
+        self.F.append(float(f))
+        self.Gf.append(g)
+        self.C.append(c)
+        self.Jc.append(J)
+        self.n_evals += 1
+        return len(self.X) - 1
+
+    def _merit(self, i: int) -> float:
+        viol = float(np.sum(np.maximum(0.0, self.C[i]))) if len(self.C[i]) else 0.0
+        return self.F[i] + self.cfg.penalty * viol
+
+    def _violation(self, i: int) -> float:
+        return float(np.max(self.C[i])) if len(self.C[i]) else -np.inf
+
+    def _best_index(self) -> int:
+        feas = [i for i in range(len(self.X))
+                if self._violation(i) <= self.cfg.constraint_tol]
+        if feas:
+            return min(feas, key=lambda i: self.F[i])
+        return min(range(len(self.X)), key=self._violation)
+
+    # ------------------------------------------------------------ surrogate
+    def _fit_surrogate(self, center: np.ndarray, h: float
+                       ) -> Tuple[MovingLeastSquares, np.ndarray]:
+        cfg = self.cfg
+        Xa = np.asarray(self.X)
+        n = len(Xa)
+        order = np.argsort(np.linalg.norm(Xa - center[None, :], axis=1))
+        keep = order[: min(cfg.max_points, n)]
+        ib = self._best_index()
+        if ib not in keep:
+            keep = np.concatenate([keep[:-1], [ib]])
+        keep = np.array(sorted(set(int(i) for i in keep)))
+
+        m = len(self.C[0])
+        Y = np.column_stack(
+            [np.asarray(self.F)[keep]]
+            + [np.array([self.C[i][c] for i in keep]) for c in range(m)]
+        ) if m else np.asarray(self.F)[keep][:, None]
+        G = np.stack([
+            np.column_stack([self.Gf[i]] + [self.Jc[i][c] for c in range(m)])
+            for i in keep
+        ])                                                       # (nk, d, m+1)
+
+        mls = MovingLeastSquares(
+            lengthscale=h, regularization=cfg.regularization
+        ).fit(Xa[keep], Y, G)
+        cons_shift = (mls._ym[1:] / mls._ys[1:]) if m else np.empty(0)
+        return mls, cons_shift
+
+    def _min_dist_in_tr(self, center: np.ndarray, delta: float) -> float:
+        """Minimal distance from the center to another sample inside the
+        trust-region box (falling back to the nearest sample overall)."""
+        Xa = np.asarray(self.X)
+        inside = np.all(np.abs(Xa - center[None, :]) <= delta + 1e-15, axis=1)
+        dist = np.linalg.norm(Xa[inside] - center[None, :], axis=1)
+        dist = dist[dist > 1e-14]
+        if len(dist) == 0:
+            dist = np.linalg.norm(Xa - center[None, :], axis=1)
+            dist = dist[dist > 1e-14]
+        return float(np.min(dist)) if len(dist) else self.cfg.ls_min
+
+    def _predicted_merit_drop(self, mls, xi_from, xi_to) -> float:
+        mean, _ = mls.predict(np.asarray([xi_from, xi_to]))
+
+        def merit(row):
+            viol = float(np.sum(np.maximum(0.0, row[1:]))) if len(row) > 1 else 0.0
+            return float(row[0]) + self.cfg.penalty * viol
+
+        return merit(mean[0]) - merit(mean[1])
+
+    # ----------------------------------------------------------------- run
+    def run(self, x0: np.ndarray) -> MLSSBOResult:
+        cfg = self.cfg
+        d = len(self.lb)
+        xi0 = np.clip((np.asarray(x0, float) - self.lb) / self.scale, 0.0, 1.0)
+        delta = cfg.tr_init
+        history: List[dict] = []
+        status = "max_outer_iter reached"
+
+        # ---- initial DOE: x0 + LHS inside the initial trust region ----
+        n_init = cfg.n_init if cfg.n_init is not None else cfg.batch_size + 1
+        self._eval(xi0)
+        if n_init > 1:
+            lo = np.maximum(0.0, xi0 - delta)
+            hi = np.minimum(1.0, xi0 + delta)
+            S = qmc.LatinHypercube(d=d, seed=cfg.seed).random(n_init - 1)
+            for row in S:
+                if self.n_evals >= cfg.max_evals:
+                    break
+                self._eval(lo + (hi - lo) * row)
+
+        center = xi0.copy()
+        center_i = 0
+        stall = 0
+        W = np.eye(d)
+
+        for it in range(cfg.max_outer_iter):
+            if self.n_evals >= cfg.max_evals:
+                status = "evaluation budget exhausted"
+                break
+            if delta < cfg.tr_min:
+                status = "trust region collapsed"
+                break
+
+            # length scale tracks the sample spacing inside the trust region
+            d_min = self._min_dist_in_tr(center, delta)
+            h = float(np.clip(cfg.ls_factor * d_min, cfg.ls_min, cfg.ls_max))
+            mls, cons_shift = self._fit_surrogate(center, h)
+            lo = np.maximum(0.0, center - delta)
+            hi = np.minimum(1.0, center + delta)
+            best_i = self._best_index()
+            batch = propose_batch(
+                mls, W, center, self.X[best_i], lo, hi, cfg, self._rng,
+                cons_shift,
+            )
+
+            # surrogate predictions recorded *before* evaluating the truth
+            pred_std = mls.predict_std(np.asarray(batch))[0][:, 0]
+
+            new_idx = []
+            for xi in batch:
+                if self.n_evals >= cfg.max_evals:
+                    break
+                new_idx.append(self._eval(xi))
+            if not new_idx:
+                status = "evaluation budget exhausted"
+                break
+
+            # prediction error over the batch (diagnostics only)
+            true_std = (np.asarray([self.F[i] for i in new_idx]) - mls._ym[0]) \
+                / mls._ys[0]
+            err = float(np.median(np.abs(pred_std[: len(new_idx)] - true_std)))
+
+            # ---- trust-region ratio test on the l1 merit ----
+            cand_i = min(new_idx, key=self._merit)
+            actual = self._merit(center_i) - self._merit(cand_i)
+            pred = self._predicted_merit_drop(mls, self.X[center_i],
+                                              self.X[cand_i])
+            rho = actual / max(pred, 1e-14) if pred > 0 else (
+                np.inf if actual > 0 else -np.inf)
+
+            step = float(np.max(np.abs(self.X[cand_i] - center)))
+            if actual > 0 and rho >= cfg.eta_accept:
+                center, center_i = self.X[cand_i].copy(), cand_i
+                if rho >= cfg.eta_expand and step >= 0.8 * delta:
+                    delta = min(delta * cfg.tr_expand, cfg.tr_max)
+            else:
+                delta *= cfg.tr_shrink
+
+            stall = stall + 1 if actual <= cfg.ftol_abs else 0
+            rec = {
+                "iter": it, "n_evals": self.n_evals, "delta": delta,
+                "lengthscale": h, "min_dist": d_min, "pred_error": err,
+                "batch_indices": new_idx, "rho": float(rho),
+                "merit_center": self._merit(center_i),
+                "best_f": self.F[self._best_index()],
+            }
+            history.append(rec)
+            if self.on_iteration is not None:
+                self.on_iteration(rec)
+            LOGGER.info(
+                "MLS-SBO iter %d: evals=%d f_best=%.6e h=%.3e delta=%.3e "
+                "err=%.3f rho=%.2f",
+                it, self.n_evals, rec["best_f"], h, delta, err, rho,
+            )
+            if stall >= cfg.stall_limit and delta <= cfg.tr_min * 10:
+                status = "stalled"
+                break
+
+        ib = self._best_index()
+        return MLSSBOResult(
+            x_opt=self.lb + self.scale * self.X[ib],
+            f_opt=self.F[ib],
+            constraints=self.C[ib].copy(),
+            is_feasible=self._violation(ib) <= cfg.constraint_tol,
+            n_evals=self.n_evals,
+            n_iter=len(history),
+            status=status,
+            history=history,
+        )
+
+
+def mls_sbo_minimize(
+    evaluate: EvaluateFn,
+    x0: np.ndarray,
+    lower_bounds: np.ndarray,
+    upper_bounds: np.ndarray,
+    config: Optional[MLSSBOConfig] = None,
+    on_iteration: Optional[Callable[[dict], None]] = None,
+) -> MLSSBOResult:
+    """Functional entry point: minimize ``f(x)`` s.t. ``c(x) <= 0``, box bounds."""
+    return MLSSBOptimizer(
+        evaluate, lower_bounds, upper_bounds, config, on_iteration
+    ).run(x0)
