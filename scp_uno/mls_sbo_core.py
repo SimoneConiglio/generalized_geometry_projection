@@ -32,6 +32,16 @@ same duck-typed interface, with the sample-density proxy
 variance, and the *diffuse* MLS derivative (the local slope ``b``) standing
 in for the mean gradient.
 
+The **exploitation step** (the whole step in the sequential
+``batch_size=1`` regime) does not use the per-query MLS directly: it solves
+a constrained subproblem on the :class:`AnchoredSeparableQuadratic` model —
+the MLS weights frozen at the trust-region center, exact value/gradient
+interpolation of the incumbent, and a diagonal Hessian secant-fitted to the
+neighbours' gradients (see the class docstring for why per-query refits
+must not be handed to an SQP solver). A classical three-zone trust-region
+update with restarts from the incumbent best spends the entire evaluation
+budget, as a sequential optimizer such as MMA would.
+
 References: Lancaster & Salkauskas (1981) for MLS; Nayroles et al. (1992)
 for the diffuse-derivative approximation; Alexandrov et al. (1998) for
 trust-region model management.
@@ -258,40 +268,54 @@ class MovingLeastSquares:
         return c, sigma, B, dsig
 
 
-class AnchoredMLS:
-    """First-order-consistent (Taylor-anchored) view of an MLS correction.
+class AnchoredSeparableQuadratic:
+    """Center-frozen anchored model with a diagonal (separable) Hessian.
 
     Trust-region convergence needs the model to reproduce the incumbent's
-    value and gradient exactly (a "fully linear" model): a plain regression
-    surrogate can propose non-descent steps arbitrarily close to the center,
-    which the ratio test then punishes until the radius collapses. With exact
-    gradients available the anchor is free::
+    value and gradient exactly (a "fully linear" model), and the subproblem
+    solver needs the model's value and gradient to be *mutually consistent*.
+    A per-query MLS refit fails the second requirement: its diffuse slope is
+    not the true derivative of its value (the weights move with the query),
+    so an SQP solver fed that pair mis-converges. The remedy is to freeze
+    the MLS weights at the trust-region center each iteration — the "moving"
+    of Moving Least Squares happens *across* iterations, as the center and
+    its weights move — which makes the model an exact polynomial::
 
-        m(x)   = f_k + G_k^T (x - x_k) + [ r(x) - r(x_k) - B_r(x_k)^T (x - x_k) ]
-        dm/dx  = G_k + ( B_r(x) - B_r(x_k) )
+        m(x) = f_k + G_k^T s + 1/2 sum_j q_j s_j^2,   s = x - x_k
 
-    where ``r`` is a gradient-enhanced MLS fitted to the *residual* data
-    ``y_i - f_k - G_k^T s_i`` / ``g_i - G_k`` (all outputs share one system)
-    and ``B_r`` its diffuse slope. By construction ``m(x_k) = f_k`` and
-    ``dm/dx(x_k) = G_k`` exactly, while the sampled neighbours contribute
-    pure curvature information (quasi-Newton-like, from history).
+    Anchoring is exact by construction (``m(x_k) = f_k``,
+    ``dm/dx(x_k) = G_k``). The diagonal curvature ``q (d, m)`` is a
+    Gaussian-weighted per-coordinate secant fit to the neighbours' gradient
+    residuals (the gradient rows carry d observations per sample and
+    decouple coordinate-wise; a full Hessian would need O(d^2) coefficients)::
+
+        q_j = sum_i w_i s_ij (g_i - g_k)_j / ( sum_i w_i s_ij^2 + reg )
+
+    with the same shifted Gaussian weights ``w_i`` and length scale ``h`` as
+    the MLS. This is MMA-class structure — a separable second-order model at
+    the iterate — with curvature *measured from sampled gradients* instead
+    of heuristic asymptote updates.
     """
 
-    def __init__(self, mls_res: MovingLeastSquares, x_k: np.ndarray,
-                 f_k: np.ndarray, G_k: np.ndarray) -> None:
-        self.mls = mls_res
+    def __init__(self, x_k: np.ndarray, f_k: np.ndarray, G_k: np.ndarray,
+                 X: np.ndarray, G: np.ndarray, h: float) -> None:
         self.xk = np.asarray(x_k, float)
         self.fk = np.asarray(f_k, float)        # (m,)
         self.Gk = np.asarray(G_k, float)        # (d, m)
-        self.c0, self.B0 = mls_res.value_and_slope(self.xk)
+        S = np.atleast_2d(np.asarray(X, float)) - self.xk[None, :]   # (n, d)
+        r2 = np.sum(S * S, axis=1)
+        w = np.exp(-(r2 - float(np.min(r2))) / (2.0 * h * h))
+        dG = np.asarray(G, float) - self.Gk[None, :, :]              # (n, d, m)
+        num = np.einsum("n,nd,ndm->dm", w, S, dG)                    # (d, m)
+        den = w @ (S * S)                                            # (d,)
+        reg = 1e-10 * (1.0 + float(np.max(den, initial=0.0)))
+        self.q = num / (den + reg)[:, None]                          # (d, m)
 
     def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """Anchored raw-unit values ``(m,)`` and gradients ``(d, m)`` at ``x``."""
-        x = np.asarray(x, float)
-        s = x - self.xk
-        c, B = self.mls.value_and_slope(x)
-        val = self.fk + s @ self.Gk + (c - self.c0 - s @ self.B0)
-        grad = self.Gk + (B - self.B0)
+        """Anchored raw-unit values ``(m,)`` and exact gradients ``(d, m)``."""
+        s = np.asarray(x, float) - self.xk
+        val = self.fk + s @ self.Gk + 0.5 * (s * s) @ self.q
+        grad = self.Gk + s[:, None] * self.q
         return val, grad
 
 
@@ -392,12 +416,8 @@ class MLSSBOptimizer:
             f_k = np.concatenate([[self.F[ci]], self.C[ci]])          # (m+1,)
             G_k = np.column_stack([self.Gf[ci]]
                                   + [self.Jc[ci][c] for c in range(m)])  # (d, m+1)
-            S_k = Xa[keep] - np.asarray(self.X[ci])[None, :]
-            mls_res = MovingLeastSquares(
-                lengthscale=h, regularization=cfg.regularization
-            ).fit(Xa[keep], Y - f_k[None, :] - S_k @ G_k,
-                  G - G_k[None, :, :])
-            anchored = AnchoredMLS(mls_res, self.X[ci], f_k, G_k)
+            anchored = AnchoredSeparableQuadratic(
+                self.X[ci], f_k, G_k, Xa[keep], G, h)
         return mls, cons_shift, anchored
 
     def _min_dist_in_tr(self, center: np.ndarray, delta: float) -> float:
@@ -412,7 +432,8 @@ class MLSSBOptimizer:
             dist = dist[dist > 1e-14]
         return float(np.min(dist)) if len(dist) else self.cfg.ls_min
 
-    def _solve_subproblem(self, anchored: AnchoredMLS, center: np.ndarray,
+    def _solve_subproblem(self, anchored: AnchoredSeparableQuadratic,
+                          center: np.ndarray,
                           best: np.ndarray, lo: np.ndarray, hi: np.ndarray
                           ) -> Tuple[np.ndarray, str]:
         """Solve ``min m_0(x) s.t. m_j(x) <= 0`` on the anchored model inside
@@ -556,6 +577,24 @@ class MLSSBOptimizer:
                 # sequential (MMA-regime) step: solved constrained subproblem
                 x_new, sub_tag = self._solve_subproblem(
                     anchored, center, self.X[best_i], lo, hi)
+                if float(np.max(np.abs(x_new - center))) < 1e-12:
+                    # model KKT point at the center: no descent is possible in
+                    # this radius — classical null step, shrink WITHOUT
+                    # spending a true evaluation on a duplicate of the center.
+                    delta *= cfg.tr_shrink
+                    stall += 1
+                    rec = {
+                        "iter": it, "n_evals": self.n_evals, "delta": delta,
+                        "lengthscale": h, "min_dist": d_min, "pred_error": 0.0,
+                        "batch_indices": [], "rho": 0.0,
+                        "resets": resets, "subproblem": "null",
+                        "merit_center": self._merit(center_i),
+                        "best_f": self.F[self._best_index()],
+                    }
+                    history.append(rec)
+                    if self.on_iteration is not None:
+                        self.on_iteration(rec)
+                    continue
                 batch = [x_new]
             else:
                 batch = propose_batch(
@@ -565,8 +604,10 @@ class MLSSBOptimizer:
                 sub_tag = "batch"
                 if anchored is not None:
                     # exploitation point of the batch also uses the anchored model
-                    batch[0], sub_tag = self._solve_subproblem(
+                    x_new, tag = self._solve_subproblem(
                         anchored, center, self.X[best_i], lo, hi)
+                    if float(np.max(np.abs(x_new - center))) >= 1e-12:
+                        batch[0], sub_tag = x_new, tag
 
             # surrogate predictions recorded *before* evaluating the truth
             pred_std = mls.predict_std(np.asarray(batch))[0][:, 0]

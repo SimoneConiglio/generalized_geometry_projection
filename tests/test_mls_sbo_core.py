@@ -11,7 +11,7 @@ import numpy as np
 import pytest
 
 from scp_uno.mls_sbo_core import (
-    AnchoredMLS,
+    AnchoredSeparableQuadratic,
     MLSSBOConfig,
     MLSSBOptimizer,
     MovingLeastSquares,
@@ -137,14 +137,8 @@ def test_multi_output_shapes():
 # Anchored (first-order consistent) model
 # --------------------------------------------------------------------------- #
 def _anchored_from_data(X, Y, G, k, h=0.4):
-    """Build an AnchoredMLS exactly as the driver does, anchored at row k."""
-    f_k = Y[k]
-    G_k = G[k]
-    S_k = X - X[k][None, :]
-    mls_res = MovingLeastSquares(h).fit(
-        X, Y - f_k[None, :] - S_k @ G_k, G - G_k[None, :, :]
-    )
-    return AnchoredMLS(mls_res, X[k], f_k, G_k)
+    """Build the anchored model exactly as the driver does, anchored at row k."""
+    return AnchoredSeparableQuadratic(X[k], Y[k], G[k], X, G, h)
 
 
 def test_anchored_model_is_first_order_consistent_at_center():
@@ -155,28 +149,51 @@ def test_anchored_model_is_first_order_consistent_at_center():
     k = 4
     anchored = _anchored_from_data(X, Y, G, k)
     val, grad = anchored.value_and_slope(X[k])
-    assert np.allclose(val, Y[k], atol=1e-9)
-    assert np.allclose(grad, G[k], atol=1e-8)
+    assert np.allclose(val, Y[k], atol=1e-12)
+    assert np.allclose(grad, G[k], atol=1e-12)
 
 
-def test_anchored_model_descends_on_quadratic():
-    """With neighbors supplying curvature, the anchored subproblem step from
-    the center must decrease a true quadratic."""
+def test_anchored_model_gradient_is_consistent_with_value():
+    """The gradient handed to the subproblem solver must be the true
+    derivative of the model value (this is what the per-query diffuse MLS
+    derivative violated)."""
+    rng = np.random.default_rng(12)
+    X = rng.random((8, 3))
+    Y = rng.standard_normal((8, 2))
+    G = rng.standard_normal((8, 3, 2))
+    anchored = _anchored_from_data(X, Y, G, 2)
+    x0 = np.array([0.35, 0.55, 0.45])
+    _, grad = anchored.value_and_slope(x0)
+    eps = 1e-6
+    for k in range(3):
+        xp, xm = x0.copy(), x0.copy()
+        xp[k] += eps
+        xm[k] -= eps
+        fd = (anchored.value_and_slope(xp)[0]
+              - anchored.value_and_slope(xm)[0]) / (2 * eps)
+        assert np.allclose(grad[k], fd, rtol=1e-6, atol=1e-8)
+
+
+def test_anchored_model_recovers_separable_quadratic():
+    """On a separable quadratic the secant-fitted diagonal Hessian is exact,
+    so the model reproduces the function and its minimizer."""
     rng = np.random.default_rng(11)
     d = 4
+    a = np.array([1.0, 2.0, 0.5, 3.0])
+    b = np.array([0.3, 0.4, 0.6, 0.5])
 
     def f(x):
-        return float(np.sum((x - 0.3) ** 2)), 2.0 * (x - 0.3)
+        return float(a @ (x - b) ** 2), 2.0 * a * (x - b)
 
     X = 0.5 + 0.2 * rng.standard_normal((10, d))
     Y = np.array([[f(x)[0]] for x in X])
     G = np.stack([f(x)[1][:, None] for x in X])
-    k = 0
-    anchored = _anchored_from_data(X, Y, G, k)
-    # steepest-descent step on the anchored model within a small box
-    _, g0 = anchored.value_and_slope(X[k])
-    step = X[k] - 0.05 * g0[:, 0] / max(np.linalg.norm(g0[:, 0]), 1e-12)
-    assert f(step)[0] < f(X[k])[0]
+    anchored = _anchored_from_data(X, Y, G, 0)
+    assert np.allclose(anchored.q[:, 0], 2.0 * a, rtol=1e-6)
+    xq = rng.random(d)
+    val, grad = anchored.value_and_slope(xq)
+    assert np.isclose(val[0], f(xq)[0], rtol=1e-6, atol=1e-8)
+    assert np.allclose(grad[:, 0], f(xq)[1], rtol=1e-6, atol=1e-8)
 
 
 # --------------------------------------------------------------------------- #
