@@ -99,11 +99,24 @@ The framework provides seven major algorithms:
    the trust region — the fit localizes automatically as the trust region
    shrinks and samples cluster. The acquisition (penalized exploitation + LCB
    ladder with repulsion, with a sample-density proxy standing in for the
-   kriging variance) is shared with GE_SBO. On the short cantilever:
-   compliance ~930 at 200 evaluations — comparable with GE_SBO's ~790,
-   i.e. still far from the gradient-based MMA baseline (75.7), the expected
-   gap for generic surrogates on a 108-variable topology-optimization
-   landscape. Invoke with
+   kriging variance) is shared with GE_SBO. The model is **anchored** at the
+   trust-region center (it reproduces the incumbent's value and gradient
+   exactly — the fully-linear-model requirement of trust-region theory;
+   neighbours contribute pure curvature), and the exploitation step solves
+   the constrained model subproblem `min m_0 s.t. m_j <= 0` by SLSQP, with
+   trust-region restarts from the incumbent best until the evaluation budget
+   is spent. Short-cantilever results at 200 true evaluations (iso function
+   calls with MMA; one FEM + adjoint call per evaluation for every method):
+   compliance ~643 sequential (``batch_size=1``, the MMA-like regime) and
+   ~729 with ``batch_size=4``; the kriging GE_SBO gives ~790 (batch) / ~1277
+   (sequential) under the same protocol, and MMA reaches 75.7. The remaining
+   gap is approximation power, not budget accounting: an anchored linear MLS
+   step is preconditioned steepest descent with rank-starved curvature
+   (<=60 samples in 108 dimensions), whereas MMA's separable reciprocal
+   approximation is near-exact for compliance-type responses. A separable
+   (diagonal-Hessian) anchored basis — MMA-class curvature measured from
+   samples instead of heuristic asymptotes — is the designed-for next step.
+   Invoke with
    ``scenario.execute(algo_name="MLS_SBO", max_iter=200, batch_size=4)``;
    engine: ``scp_uno.mls_sbo_core`` (pure NumPy/SciPy), standalone via
    ``mls_sbo_minimize``.
