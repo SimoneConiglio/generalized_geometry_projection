@@ -29,13 +29,15 @@ from ggp.optimization.pipeline import GGPPipeline
 PRESET = Path(__file__).resolve().parents[1] / "ggp" / "cli" / "presets" / "short_cantilever.yaml"
 
 
-def run_algo(spec, algo: str, max_evals: int, seed: int, **options):
+def run_algo(spec, algo: str, max_evals: int, seed: int, fem_solver=None,
+             **options):
     run_spec = replace(
         spec,
         solver=replace(
             spec.solver,
             algorithm=algo,
             max_iter=max_evals,
+            **({"fem_solver": fem_solver} if fem_solver else {}),
             # the preset's options are MMA-specific (asymptotes, move limits):
             # replace them with the selected algorithm's settings.
             options={"seed": seed, **options},
@@ -93,6 +95,13 @@ def main() -> None:
     parser.add_argument("--model", type=str, default=None,
                         choices=["quadratic", "planar"],
                         help="MLS_SBO exploitation-subproblem model.")
+    parser.add_argument("--fem-solver", type=str, default=None,
+                        choices=["direct", "iterative", "amjax"],
+                        help=("Override the preset's FEM linear solver. "
+                              "'direct' (scipy SuperLU) is bit-deterministic "
+                              "across processes; the preset default 'amjax' "
+                              "(JAX/XLA) carries ~1e-13 per-process noise "
+                              "that chaotic optimizer trajectories amplify."))
     parser.add_argument("--kappa-base", type=float, default=None)
     parser.add_argument("--n-inner", type=int, default=None,
                         help="GEK2D: true evaluations on the subspace per iteration.")
@@ -157,7 +166,8 @@ def main() -> None:
             "weights_path": (args.weights
                              if args.algo == "TRANSFORMER_2D" else None),
         }.items() if v is not None}
-    result, elapsed = run_algo(spec, args.algo, args.max_evals, args.seed, **extra)
+    result, elapsed = run_algo(spec, args.algo, args.max_evals, args.seed,
+                               fem_solver=args.fem_solver, **extra)
     report(args.algo, result, elapsed)
     if args.plot_dir and result.density_field is not None:
         args.plot_dir.mkdir(parents=True, exist_ok=True)
