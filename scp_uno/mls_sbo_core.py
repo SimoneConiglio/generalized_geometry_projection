@@ -44,6 +44,7 @@ import logging
 from typing import Callable, List, Optional, Tuple
 
 import numpy as np
+from scipy.optimize import minimize
 from scipy.stats import qmc
 
 from scp_uno.gesbo_core import EvaluateFn, propose_batch
@@ -79,7 +80,13 @@ class MLSSBOConfig:
     tr_shrink: float = 0.5
     tr_expand: float = 2.0
     eta_accept: float = 1e-4
+    eta_shrink: float = 0.25           # rho below this shrinks the radius
     eta_expand: float = 0.5
+    n_resets: int = 8                  # TR restarts from the best point on collapse
+
+    # -- anchored model / sequential subproblem --
+    anchor_center: bool = True         # exact f, grad interpolation at the center
+    subproblem_maxiter: int = 100      # SLSQP iterations for the model subproblem
 
     # -- acquisition (duck-typed fields consumed by gesbo_core.propose_batch) --
     kappa_base: float = 1.0
@@ -229,6 +236,11 @@ class MovingLeastSquares:
             sig[i] = np.sqrt(max(0.0, 1.0 - dens))
         return mean, sig
 
+    def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Raw-unit local value ``(m,)`` and diffuse slope ``(d, m)`` at ``x``."""
+        c, B = self._solve_local(np.asarray(x, float))
+        return self._ym + self._ys * c, B * self._ys[None, :]
+
     def predict_std_single(
         self, x: np.ndarray
     ) -> Tuple[np.ndarray, float, np.ndarray, np.ndarray]:
@@ -244,6 +256,43 @@ class MovingLeastSquares:
         sigma = np.sqrt(max(0.0, 1.0 - dens))
         dsig = (-ddens / (2.0 * sigma)) if sigma > 1e-12 else np.zeros(self._d)
         return c, sigma, B, dsig
+
+
+class AnchoredMLS:
+    """First-order-consistent (Taylor-anchored) view of an MLS correction.
+
+    Trust-region convergence needs the model to reproduce the incumbent's
+    value and gradient exactly (a "fully linear" model): a plain regression
+    surrogate can propose non-descent steps arbitrarily close to the center,
+    which the ratio test then punishes until the radius collapses. With exact
+    gradients available the anchor is free::
+
+        m(x)   = f_k + G_k^T (x - x_k) + [ r(x) - r(x_k) - B_r(x_k)^T (x - x_k) ]
+        dm/dx  = G_k + ( B_r(x) - B_r(x_k) )
+
+    where ``r`` is a gradient-enhanced MLS fitted to the *residual* data
+    ``y_i - f_k - G_k^T s_i`` / ``g_i - G_k`` (all outputs share one system)
+    and ``B_r`` its diffuse slope. By construction ``m(x_k) = f_k`` and
+    ``dm/dx(x_k) = G_k`` exactly, while the sampled neighbours contribute
+    pure curvature information (quasi-Newton-like, from history).
+    """
+
+    def __init__(self, mls_res: MovingLeastSquares, x_k: np.ndarray,
+                 f_k: np.ndarray, G_k: np.ndarray) -> None:
+        self.mls = mls_res
+        self.xk = np.asarray(x_k, float)
+        self.fk = np.asarray(f_k, float)        # (m,)
+        self.Gk = np.asarray(G_k, float)        # (d, m)
+        self.c0, self.B0 = mls_res.value_and_slope(self.xk)
+
+    def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Anchored raw-unit values ``(m,)`` and gradients ``(d, m)`` at ``x``."""
+        x = np.asarray(x, float)
+        s = x - self.xk
+        c, B = self.mls.value_and_slope(x)
+        val = self.fk + s @ self.Gk + (c - self.c0 - s @ self.B0)
+        grad = self.Gk + (B - self.B0)
+        return val, grad
 
 
 # --------------------------------------------------------------------------- #
@@ -310,8 +359,8 @@ class MLSSBOptimizer:
         return min(range(len(self.X)), key=self._violation)
 
     # ------------------------------------------------------------ surrogate
-    def _fit_surrogate(self, center: np.ndarray, h: float
-                       ) -> Tuple[MovingLeastSquares, np.ndarray]:
+    def _fit_surrogate(self, center: np.ndarray, h: float,
+                       center_i: Optional[int] = None):
         cfg = self.cfg
         Xa = np.asarray(self.X)
         n = len(Xa)
@@ -336,7 +385,20 @@ class MLSSBOptimizer:
             lengthscale=h, regularization=cfg.regularization
         ).fit(Xa[keep], Y, G)
         cons_shift = (mls._ym[1:] / mls._ys[1:]) if m else np.empty(0)
-        return mls, cons_shift
+
+        anchored = None
+        if cfg.anchor_center:
+            ci = center_i if center_i is not None else self._best_index()
+            f_k = np.concatenate([[self.F[ci]], self.C[ci]])          # (m+1,)
+            G_k = np.column_stack([self.Gf[ci]]
+                                  + [self.Jc[ci][c] for c in range(m)])  # (d, m+1)
+            S_k = Xa[keep] - np.asarray(self.X[ci])[None, :]
+            mls_res = MovingLeastSquares(
+                lengthscale=h, regularization=cfg.regularization
+            ).fit(Xa[keep], Y - f_k[None, :] - S_k @ G_k,
+                  G - G_k[None, :, :])
+            anchored = AnchoredMLS(mls_res, self.X[ci], f_k, G_k)
+        return mls, cons_shift, anchored
 
     def _min_dist_in_tr(self, center: np.ndarray, delta: float) -> float:
         """Minimal distance from the center to another sample inside the
@@ -350,14 +412,93 @@ class MLSSBOptimizer:
             dist = dist[dist > 1e-14]
         return float(np.min(dist)) if len(dist) else self.cfg.ls_min
 
-    def _predicted_merit_drop(self, mls, xi_from, xi_to) -> float:
-        mean, _ = mls.predict(np.asarray([xi_from, xi_to]))
+    def _solve_subproblem(self, anchored: AnchoredMLS, center: np.ndarray,
+                          best: np.ndarray, lo: np.ndarray, hi: np.ndarray
+                          ) -> Tuple[np.ndarray, str]:
+        """Solve ``min m_0(x) s.t. m_j(x) <= 0`` on the anchored model inside
+        the trust-region box (the MMA-like exploitation step).
+
+        Returns the candidate and a tag describing which path produced it:
+        ``slsqp`` (constrained solve), ``phase1`` (feasibility restoration
+        first), or ``penalty`` (L-BFGS-B on the l1-penalized model merit).
+        """
+        d = len(center)
+        m = len(self.C[0])
+        cache: dict = {}
+
+        def eval_model(x: np.ndarray):
+            key = x.tobytes()
+            if key not in cache:
+                cache[key] = anchored.value_and_slope(x)
+            return cache[key]
+
+        bounds = list(zip(lo, hi))
+        starts = [np.clip(center, lo, hi), np.clip(best, lo, hi)]
+        starts += [lo + (hi - lo) * self._rng.random(d) for _ in range(2)]
+
+        def model_merit(x):
+            v, _ = eval_model(x)
+            viol = float(np.sum(np.maximum(0.0, v[1:]))) if m else 0.0
+            return float(v[0]) + self.cfg.penalty * viol
+
+        cand, tag = None, "slsqp"
+        if m:
+            cons = [{
+                "type": "ineq",
+                "fun": (lambda x, j=j: -float(eval_model(x)[0][1 + j])),
+                "jac": (lambda x, j=j: -eval_model(x)[1][:, 1 + j]),
+            } for j in range(m)]
+        else:
+            cons = ()
+        for x0 in starts:
+            try:
+                res = minimize(
+                    lambda x: (float(eval_model(x)[0][0]), eval_model(x)[1][:, 0]),
+                    x0, jac=True, method="SLSQP", bounds=bounds,
+                    constraints=cons,
+                    options={"maxiter": self.cfg.subproblem_maxiter,
+                             "ftol": 1e-12},
+                )
+            except Exception:                                # pragma: no cover
+                continue
+            x_c = np.clip(res.x, lo, hi)
+            if cand is None or model_merit(x_c) < model_merit(cand):
+                cand = x_c
+
+        # Feasibility restoration when SLSQP found nothing useful: minimize the
+        # model violation first, then accept the restored point.
+        if m and (cand is None or model_merit(cand) >= model_merit(center)):
+            def viol_fg(x):
+                v, gr = eval_model(x)
+                t = np.maximum(0.0, v[1:])
+                return float(np.sum(t * t)), 2.0 * gr[:, 1:] @ t
+            res = minimize(viol_fg, np.clip(center, lo, hi), jac=True,
+                           method="L-BFGS-B", bounds=bounds,
+                           options={"maxiter": self.cfg.subproblem_maxiter})
+            x_c = np.clip(res.x, lo, hi)
+            if model_merit(x_c) < model_merit(cand if cand is not None else center):
+                cand, tag = x_c, "phase1"
+
+        if cand is None or not np.all(np.isfinite(cand)):
+            res = minimize(
+                lambda x: model_merit(x), np.clip(center, lo, hi),
+                method="L-BFGS-B", bounds=bounds,
+                options={"maxiter": self.cfg.subproblem_maxiter})
+            cand, tag = np.clip(res.x, lo, hi), "penalty"
+        return cand, tag
+
+    def _predicted_merit_drop(self, mls, xi_from, xi_to, anchored=None) -> float:
+        if anchored is not None:
+            rows = [anchored.value_and_slope(np.asarray(xi_from))[0],
+                    anchored.value_and_slope(np.asarray(xi_to))[0]]
+        else:
+            rows, _ = mls.predict(np.asarray([xi_from, xi_to]))
 
         def merit(row):
             viol = float(np.sum(np.maximum(0.0, row[1:]))) if len(row) > 1 else 0.0
             return float(row[0]) + self.cfg.penalty * viol
 
-        return merit(mean[0]) - merit(mean[1])
+        return merit(rows[0]) - merit(rows[1])
 
     # ----------------------------------------------------------------- run
     def run(self, x0: np.ndarray) -> MLSSBOResult:
@@ -385,25 +526,47 @@ class MLSSBOptimizer:
         stall = 0
         W = np.eye(d)
 
+        resets = 0
         for it in range(cfg.max_outer_iter):
             if self.n_evals >= cfg.max_evals:
                 status = "evaluation budget exhausted"
                 break
-            if delta < cfg.tr_min:
-                status = "trust region collapsed"
-                break
+            if delta < cfg.tr_min or (stall >= cfg.stall_limit
+                                      and delta <= cfg.tr_min * 10):
+                # Restart from the incumbent best instead of terminating: MMA
+                # spends its whole budget, so a fair surrogate driver must too.
+                if resets >= cfg.n_resets:
+                    status = ("trust region collapsed" if delta < cfg.tr_min
+                              else "stalled")
+                    break
+                resets += 1
+                bi = self._best_index()
+                center, center_i = self.X[bi].copy(), bi
+                delta = max(cfg.tr_init / 4.0, cfg.tr_min * 100.0)
+                stall = 0
 
             # length scale tracks the sample spacing inside the trust region
             d_min = self._min_dist_in_tr(center, delta)
             h = float(np.clip(cfg.ls_factor * d_min, cfg.ls_min, cfg.ls_max))
-            mls, cons_shift = self._fit_surrogate(center, h)
+            mls, cons_shift, anchored = self._fit_surrogate(center, h, center_i)
             lo = np.maximum(0.0, center - delta)
             hi = np.minimum(1.0, center + delta)
             best_i = self._best_index()
-            batch = propose_batch(
-                mls, W, center, self.X[best_i], lo, hi, cfg, self._rng,
-                cons_shift,
-            )
+            if anchored is not None and cfg.batch_size == 1:
+                # sequential (MMA-regime) step: solved constrained subproblem
+                x_new, sub_tag = self._solve_subproblem(
+                    anchored, center, self.X[best_i], lo, hi)
+                batch = [x_new]
+            else:
+                batch = propose_batch(
+                    mls, W, center, self.X[best_i], lo, hi, cfg, self._rng,
+                    cons_shift,
+                )
+                sub_tag = "batch"
+                if anchored is not None:
+                    # exploitation point of the batch also uses the anchored model
+                    batch[0], sub_tag = self._solve_subproblem(
+                        anchored, center, self.X[best_i], lo, hi)
 
             # surrogate predictions recorded *before* evaluating the truth
             pred_std = mls.predict_std(np.asarray(batch))[0][:, 0]
@@ -426,23 +589,27 @@ class MLSSBOptimizer:
             cand_i = min(new_idx, key=self._merit)
             actual = self._merit(center_i) - self._merit(cand_i)
             pred = self._predicted_merit_drop(mls, self.X[center_i],
-                                              self.X[cand_i])
+                                              self.X[cand_i], anchored)
             rho = actual / max(pred, 1e-14) if pred > 0 else (
                 np.inf if actual > 0 else -np.inf)
 
             step = float(np.max(np.abs(self.X[cand_i] - center)))
             if actual > 0 and rho >= cfg.eta_accept:
                 center, center_i = self.X[cand_i].copy(), cand_i
-                if rho >= cfg.eta_expand and step >= 0.8 * delta:
-                    delta = min(delta * cfg.tr_expand, cfg.tr_max)
-            else:
+            # classical three-zone radius update: shrink only on poor
+            # agreement, hold in the middle band, expand on strong agreement
+            # at the trust-region boundary.
+            if actual <= 0 or rho < cfg.eta_shrink:
                 delta *= cfg.tr_shrink
+            elif rho >= cfg.eta_expand and step >= 0.8 * delta:
+                delta = min(delta * cfg.tr_expand, cfg.tr_max)
 
             stall = stall + 1 if actual <= cfg.ftol_abs else 0
             rec = {
                 "iter": it, "n_evals": self.n_evals, "delta": delta,
                 "lengthscale": h, "min_dist": d_min, "pred_error": err,
                 "batch_indices": new_idx, "rho": float(rho),
+                "resets": resets, "subproblem": sub_tag,
                 "merit_center": self._merit(center_i),
                 "best_f": self.F[self._best_index()],
             }
@@ -451,12 +618,9 @@ class MLSSBOptimizer:
                 self.on_iteration(rec)
             LOGGER.info(
                 "MLS-SBO iter %d: evals=%d f_best=%.6e h=%.3e delta=%.3e "
-                "err=%.3f rho=%.2f",
-                it, self.n_evals, rec["best_f"], h, delta, err, rho,
+                "err=%.3f rho=%.2f resets=%d",
+                it, self.n_evals, rec["best_f"], h, delta, err, rho, resets,
             )
-            if stall >= cfg.stall_limit and delta <= cfg.tr_min * 10:
-                status = "stalled"
-                break
 
         ib = self._best_index()
         return MLSSBOResult(

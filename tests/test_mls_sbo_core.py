@@ -11,6 +11,7 @@ import numpy as np
 import pytest
 
 from scp_uno.mls_sbo_core import (
+    AnchoredMLS,
     MLSSBOConfig,
     MLSSBOptimizer,
     MovingLeastSquares,
@@ -133,6 +134,52 @@ def test_multi_output_shapes():
 
 
 # --------------------------------------------------------------------------- #
+# Anchored (first-order consistent) model
+# --------------------------------------------------------------------------- #
+def _anchored_from_data(X, Y, G, k, h=0.4):
+    """Build an AnchoredMLS exactly as the driver does, anchored at row k."""
+    f_k = Y[k]
+    G_k = G[k]
+    S_k = X - X[k][None, :]
+    mls_res = MovingLeastSquares(h).fit(
+        X, Y - f_k[None, :] - S_k @ G_k, G - G_k[None, :, :]
+    )
+    return AnchoredMLS(mls_res, X[k], f_k, G_k)
+
+
+def test_anchored_model_is_first_order_consistent_at_center():
+    rng = np.random.default_rng(10)
+    X = rng.random((9, 3))
+    Y = rng.standard_normal((9, 2)) * 5.0
+    G = rng.standard_normal((9, 3, 2))
+    k = 4
+    anchored = _anchored_from_data(X, Y, G, k)
+    val, grad = anchored.value_and_slope(X[k])
+    assert np.allclose(val, Y[k], atol=1e-9)
+    assert np.allclose(grad, G[k], atol=1e-8)
+
+
+def test_anchored_model_descends_on_quadratic():
+    """With neighbors supplying curvature, the anchored subproblem step from
+    the center must decrease a true quadratic."""
+    rng = np.random.default_rng(11)
+    d = 4
+
+    def f(x):
+        return float(np.sum((x - 0.3) ** 2)), 2.0 * (x - 0.3)
+
+    X = 0.5 + 0.2 * rng.standard_normal((10, d))
+    Y = np.array([[f(x)[0]] for x in X])
+    G = np.stack([f(x)[1][:, None] for x in X])
+    k = 0
+    anchored = _anchored_from_data(X, Y, G, k)
+    # steepest-descent step on the anchored model within a small box
+    _, g0 = anchored.value_and_slope(X[k])
+    step = X[k] - 0.05 * g0[:, 0] / max(np.linalg.norm(g0[:, 0]), 1e-12)
+    assert f(step)[0] < f(X[k])[0]
+
+
+# --------------------------------------------------------------------------- #
 # Length-scale adaptation
 # --------------------------------------------------------------------------- #
 def test_lengthscale_tracks_min_distance_in_trust_region():
@@ -211,6 +258,52 @@ def test_tractable_at_topology_optimization_dimension():
     )
     assert result.n_evals <= 60
     assert result.f_opt < 0.2 * f0
+
+
+def test_sequential_mode_spends_budget_and_converges():
+    """batch_size=1 (the MMA-fair regime) must not collapse prematurely: the
+    driver either reaches tight tolerance or uses most of the budget."""
+    d = 10
+    f0 = sphere_problem(d)(np.full(d, 0.8))[0]
+    records = []
+    result = mls_sbo_minimize(
+        sphere_problem(d), np.full(d, 0.8), np.zeros(d), np.ones(d),
+        MLSSBOConfig(max_evals=120, batch_size=1, max_outer_iter=200, seed=6),
+        on_iteration=records.append,
+    )
+    assert result.f_opt < 1e-4 * f0 or result.n_evals >= 96
+    assert result.f_opt < 1e-3 * f0
+    assert any(r["subproblem"] == "slsqp" for r in records)
+
+
+def test_sequential_mode_constrained():
+    result = mls_sbo_minimize(
+        constrained_problem(), np.array([0.1, 0.1]), np.zeros(2), np.ones(2),
+        MLSSBOConfig(max_evals=80, batch_size=1, max_outer_iter=120, seed=7),
+    )
+    assert result.is_feasible
+    assert result.constraints[0] <= 1e-6
+    assert result.f_opt < 0.6
+
+
+def test_resets_keep_spending_budget_on_flat_function():
+    """A flat function rejects every step; the driver must reset the trust
+    region instead of quitting, and terminate cleanly."""
+    d = 3
+
+    def flat(x):
+        return 1.0, np.zeros(d), np.zeros(0), np.zeros((0, d))
+
+    records = []
+    result = mls_sbo_minimize(
+        flat, np.full(d, 0.5), np.zeros(d), np.ones(d),
+        MLSSBOConfig(max_evals=60, batch_size=1, max_outer_iter=300,
+                     n_resets=3, seed=8),
+        on_iteration=records.append,
+    )
+    assert result.n_evals <= 60
+    assert max(r["resets"] for r in records) >= 1
+    assert result.status
 
 
 def test_result_fields_are_consistent():

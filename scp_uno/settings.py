@@ -190,6 +190,19 @@ class MLSSBOSettings(BaseOptimizerSettings):
     ls_min: float = Field(1e-3, description="Minimum length scale (normalized units).")
     ls_max: float = Field(2.0, description="Maximum length scale (normalized units).")
 
+    # -- anchored model / sequential subproblem --
+    anchor_center: bool = Field(
+        True,
+        description=(
+            "Anchor the model to the exact value and gradient at the "
+            "trust-region center (first-order consistency, as in MMA); the "
+            "exploitation step solves the constrained model subproblem."
+        ),
+    )
+    subproblem_maxiter: int = Field(
+        100, description="SLSQP iterations for the anchored model subproblem."
+    )
+
     # -- trust region --
     tr_init: float = Field(
         0.25, description="Initial trust-region half-width (fraction of the design box)."
@@ -198,6 +211,13 @@ class MLSSBOSettings(BaseOptimizerSettings):
     tr_max: float = Field(0.75, description="Maximum trust-region half-width.")
     tr_shrink: float = Field(0.5, description="Radius shrink factor on rejected steps.")
     tr_expand: float = Field(2.0, description="Radius expansion factor on very good steps.")
+    n_resets: int = Field(
+        8,
+        description=(
+            "Trust-region restarts from the incumbent best after a collapse "
+            "or stall, until the evaluation budget is exhausted."
+        ),
+    )
 
     # -- merit / stopping --
     penalty: float = Field(
