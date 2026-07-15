@@ -214,6 +214,13 @@ class MLSSBOSettings(BaseOptimizerSettings):
     asy_init: float = Field(
         0.5, description="Minimum asymptote distance (normalized units)."
     )
+    min_fit_neighbors: int = Field(
+        10,
+        description=(
+            "The anchored-fit bandwidth always covers at least this many "
+            "samples, so accumulating data improves the learned shape."
+        ),
+    )
 
     # -- trust region --
     tr_init: float = Field(

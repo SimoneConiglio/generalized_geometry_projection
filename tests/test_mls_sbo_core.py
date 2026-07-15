@@ -139,7 +139,27 @@ def test_multi_output_shapes():
 def _anchored_from_data(X, Y, G, k, h=0.4, intermediate="linear", asy=0.5):
     """Build the anchored model exactly as the driver does, anchored at row k."""
     return AnchoredSeparableQuadratic(X[k], Y[k], G[k], X, G, h,
-                                      intermediate=intermediate, asy=asy)
+                                      intermediate=intermediate, asy=asy, Y=Y)
+
+
+def test_function_values_shape_the_curvature_fit():
+    """Hermite fit: samples whose *gradients* carry no curvature information
+    but whose *values* do must still bend the model (this is what a
+    gradient-residual-only secant misses)."""
+    rng = np.random.default_rng(15)
+    d, n = 2, 12
+    a = 3.0
+    X = 0.5 + 0.2 * rng.standard_normal((n, d))
+    k = 0
+    S = X - X[k]
+    g_k = np.array([0.7, -0.4])
+    # values from a curved function, gradients all equal to the center's
+    Y = (0.0 + S @ g_k + 0.5 * a * np.sum(S * S, axis=1))[:, None]
+    G = np.tile(g_k[:, None], (n, 1, 1)).astype(float)
+    anchored = AnchoredSeparableQuadratic(X[k], Y[k], G[k], X, G, 0.4, Y=Y)
+    # value rows demand q = a; gradient rows demand q = 0. The mixed LSQ
+    # must land clearly away from zero.
+    assert np.all(anchored.q[:, 0] > 0.2 * a)
 
 
 def test_anchored_model_is_first_order_consistent_at_center():

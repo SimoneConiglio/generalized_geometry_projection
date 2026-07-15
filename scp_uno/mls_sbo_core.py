@@ -99,6 +99,7 @@ class MLSSBOConfig:
     subproblem_maxiter: int = 100      # SLSQP iterations for the model subproblem
     intermediate: str = "mma"          # "mma" reciprocal variables or "linear"
     asy_init: float = 0.5              # minimum asymptote distance (normalized)
+    min_fit_neighbors: int = 10        # anchored-fit bandwidth covers >= k samples
 
     # -- acquisition (duck-typed fields consumed by gesbo_core.propose_batch) --
     kappa_base: float = 1.0
@@ -318,7 +319,8 @@ class AnchoredSeparableQuadratic:
 
     def __init__(self, x_k: np.ndarray, f_k: np.ndarray, G_k: np.ndarray,
                  X: np.ndarray, G: np.ndarray, h: float,
-                 intermediate: str = "linear", asy: float = 0.5) -> None:
+                 intermediate: str = "linear", asy: float = 0.5,
+                 Y: Optional[np.ndarray] = None) -> None:
         self.xk = np.asarray(x_k, float)
         self.fk = np.asarray(f_k, float)        # (m,)
         self.Gk = np.asarray(G_k, float)        # (d, m)
@@ -337,12 +339,39 @@ class AnchoredSeparableQuadratic:
         _, dydx0 = self._transform(self.xk[None, :])
         self._dydx0 = dydx0[0]                               # (d, m)
         self._c = self.Gk / self._dydx0                      # (d, m)
-        # gradient residuals in y-space: df/dy_i - df/dy_k
+        # Hermite curvature fit: BOTH observation types enter the weighted
+        # least squares for q —
+        #   gradient rows (d per sample, decoupled):  t_ij q_j = h_ij
+        #   value rows    (1 per sample, coupled):    1/2 sum_j q_j t_ij^2 = r_i
+        # so accumulating samples sharpens the learned shape through their
+        # values as well as their slopes.
         Hres = np.asarray(G, float) / dydx - self._c[None, :, :]
-        num = np.einsum("n,ndm,ndm->dm", w, T, Hres)
-        den = np.einsum("n,ndm,ndm->dm", w, T, T)
-        reg = 1e-10 * (1.0 + float(np.max(den, initial=0.0)))
-        self.q = num / (den + reg)                           # (d, m)
+        A_diag = np.einsum("n,ndm,ndm->dm", w, T, T)         # (d, m)
+        rhs = np.einsum("n,ndm,ndm->dm", w, T, Hres)         # (d, m)
+        reg = 1e-10 * (1.0 + float(np.max(A_diag, initial=0.0)))
+        self.q = np.empty((d, m))
+        if Y is not None:
+            Y = np.asarray(Y, float)
+            Rval = Y - self.fk[None, :] - np.einsum("ndm,dm->nm", T, self._c)
+            V = T * T                                        # (n, d, m)
+            # Scale balance: gradient equations are O(t) while value
+            # equations are O(t^2), so at local distances raw LSQ lets the
+            # gradients drown the values out. Normalize each value equation
+            # by its sample's ||t|| and give it mass d (one value equation
+            # balancing the sample's d gradient equations).
+            tnorm2 = np.sum(V, axis=1)                       # (n, m)
+            wv = 4.0 * d * w[:, None] / (tnorm2 + 1e-30)     # (n, m)
+            for o in range(m):
+                A = np.diag(A_diag[:, o] + reg)
+                Vw = V[:, :, o] * wv[:, o, None]
+                A += 0.25 * Vw.T @ V[:, :, o]
+                b = rhs[:, o] + 0.5 * Vw.T @ Rval[:, o]
+                try:
+                    self.q[:, o] = np.linalg.solve(A, b)
+                except np.linalg.LinAlgError:                # pragma: no cover
+                    self.q[:, o] = rhs[:, o] / (A_diag[:, o] + reg)
+        else:
+            self.q = rhs / (A_diag + reg)
 
     def _transform(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """``t_j = y_j(x) - y_j(x_k)`` and ``dy_j/dx`` per output, ``(n, d, m)``.
@@ -479,10 +508,19 @@ class MLSSBOptimizer:
             f_k = np.concatenate([[self.F[ci]], self.C[ci]])          # (m+1,)
             G_k = np.column_stack([self.Gf[ci]]
                                   + [self.Jc[ci][c] for c in range(m)])  # (d, m+1)
+            # Bandwidth floor: cover at least min_fit_neighbors samples, so
+            # that accumulating data IMPROVES the learned shape instead of
+            # shrinking the fit's support (h alone tracks the *minimum*
+            # sample distance, which collapses as sampling densifies).
+            dists = np.sort(np.linalg.norm(
+                Xa[keep] - np.asarray(self.X[ci])[None, :], axis=1))
+            dists = dists[dists > 1e-14]
+            k_nn = min(cfg.min_fit_neighbors, len(dists))
+            h_fit = max(h, float(dists[k_nn - 1])) if k_nn else h
             anchored = AnchoredSeparableQuadratic(
-                self.X[ci], f_k, G_k, Xa[keep], G, h,
+                self.X[ci], f_k, G_k, Xa[keep], G, h_fit,
                 intermediate=cfg.intermediate,
-                asy=max(cfg.asy_init, 1.3 * delta))
+                asy=max(cfg.asy_init, 1.3 * delta), Y=Y)
         return mls, cons_shift, anchored
 
     def _min_dist_in_tr(self, center: np.ndarray, delta: float) -> float:

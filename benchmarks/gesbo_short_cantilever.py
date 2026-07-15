@@ -82,6 +82,9 @@ def main() -> None:
     parser.add_argument("--tr-init", type=float, default=None)
     parser.add_argument("--max-outer-iter", type=int, default=None,
                         help="Cap on outer (batch) iterations (GE_SBO/MLS_SBO).")
+    parser.add_argument("--intermediate", type=str, default=None,
+                        choices=["mma", "linear"],
+                        help="MLS_SBO anchored-model intermediate variables.")
     parser.add_argument("--kappa-base", type=float, default=None)
     parser.add_argument("--n-inner", type=int, default=None,
                         help="GEK2D: true evaluations on the subspace per iteration.")
@@ -124,6 +127,7 @@ def main() -> None:
                 "tr_init": args.tr_init,
                 "kappa_base": args.kappa_base,
                 "max_outer_iter": args.max_outer_iter,
+                "intermediate": args.intermediate,
             }.items() if v is not None
         }
     elif args.algo == "TRANSFORMER_OPT":
