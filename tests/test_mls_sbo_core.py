@@ -15,6 +15,7 @@ from scp_uno.mls_sbo_core import (
     MLSSBOConfig,
     MLSSBOptimizer,
     MovingLeastSquares,
+    PlanarMLSModel,
     mls_sbo_minimize,
 )
 
@@ -360,6 +361,33 @@ def test_sequential_mode_spends_budget_and_converges():
     assert result.f_opt < 1e-4 * f0 or result.n_evals >= 96
     assert result.f_opt < 1e-3 * f0
     assert any(r["subproblem"] == "slsqp" for r in records)
+
+
+def test_planar_model_blends_values_and_gradients():
+    """The planar Hermite MLS model must be consistent (grad = true slope of
+    the plane) and reproduce a linear function exactly."""
+    rng = np.random.default_rng(16)
+    a, b = 0.7, np.array([1.0, -2.0, 0.5])
+    X = rng.random((10, 3))
+    Y = (a + X @ b)[:, None]
+    G = np.tile(b[:, None], (10, 1, 1)).astype(float)
+    mls = MovingLeastSquares(0.3).fit(X, Y, G)
+    planar = PlanarMLSModel(mls, X[4])
+    xq = rng.random(3)
+    val, grad = planar.value_and_slope(xq)
+    assert np.isclose(val[0], a + xq @ b, atol=1e-6)
+    assert np.allclose(grad[:, 0], b, atol=1e-6)
+
+
+def test_planar_model_drives_the_sequential_optimizer():
+    d = 6
+    f0 = sphere_problem(d)(np.full(d, 0.8))[0]
+    result = mls_sbo_minimize(
+        sphere_problem(d), np.full(d, 0.8), np.zeros(d), np.ones(d),
+        MLSSBOConfig(max_evals=100, batch_size=1, max_outer_iter=200,
+                     model="planar", seed=9),
+    )
+    assert result.f_opt < 0.05 * f0
 
 
 def test_sequential_mode_constrained():

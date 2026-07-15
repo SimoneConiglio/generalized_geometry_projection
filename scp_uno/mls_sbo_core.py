@@ -111,7 +111,16 @@ class MLSSBOConfig:
     # and the most local information gives the best steps. The knobs remain
     # for experimentation.
     min_fit_neighbors: int = 1         # anchored-fit bandwidth covers >= k samples
-    fit_values: bool = False           # include value rows in the curvature fit
+    # Value rows in the curvature fit: "none", "constraints" (default:
+    # feasibility is a statement about VALUES, so constraint models must
+    # track sampled values, while the objective keeps quasi-Newton
+    # gradient-only secants), or "all".
+    fit_values: str = "constraints"
+    # Model of the exploitation subproblem: "quadratic" (anchored separable
+    # quadratic) or "planar" (center-frozen planar Hermite MLS - the local
+    # linear regression through neighbour values AND gradients, no
+    # curvature term).
+    model: str = "quadratic"
 
     # -- acquisition (duck-typed fields consumed by gesbo_core.propose_batch) --
     kappa_base: float = 1.0
@@ -332,7 +341,8 @@ class AnchoredSeparableQuadratic:
     def __init__(self, x_k: np.ndarray, f_k: np.ndarray, G_k: np.ndarray,
                  X: np.ndarray, G: np.ndarray, h: float,
                  intermediate: str = "linear", asy: float = 0.5,
-                 Y: Optional[np.ndarray] = None) -> None:
+                 Y: Optional[np.ndarray] = None,
+                 value_mask: Optional[np.ndarray] = None) -> None:
         self.xk = np.asarray(x_k, float)
         self.fk = np.asarray(f_k, float)        # (m,)
         self.Gk = np.asarray(G_k, float)        # (d, m)
@@ -362,7 +372,13 @@ class AnchoredSeparableQuadratic:
         rhs = np.einsum("n,ndm,ndm->dm", w, T, Hres)         # (d, m)
         reg = 1e-10 * (1.0 + float(np.max(A_diag, initial=0.0)))
         self.q = np.empty((d, m))
-        if Y is not None:
+        # Which outputs learn from function values as well as gradients:
+        # default all outputs when Y is given (constraints in particular must
+        # track values, since feasibility is a statement about values).
+        vmask = (np.ones(m, bool) if value_mask is None
+                 else np.asarray(value_mask, bool))
+        self.q = rhs / (A_diag + reg)
+        if Y is not None and np.any(vmask):
             Y = np.asarray(Y, float)
             Rval = Y - self.fk[None, :] - np.einsum("ndm,dm->nm", T, self._c)
             V = T * T                                        # (n, d, m)
@@ -373,7 +389,7 @@ class AnchoredSeparableQuadratic:
             # balancing the sample's d gradient equations).
             tnorm2 = np.sum(V, axis=1)                       # (n, m)
             wv = 4.0 * d * w[:, None] / (tnorm2 + 1e-30)     # (n, m)
-            for o in range(m):
+            for o in np.nonzero(vmask)[0]:
                 A = np.diag(A_diag[:, o] + reg)
                 Vw = V[:, :, o] * wv[:, o, None]
                 A += 0.25 * Vw.T @ V[:, :, o]
@@ -381,9 +397,7 @@ class AnchoredSeparableQuadratic:
                 try:
                     self.q[:, o] = np.linalg.solve(A, b)
                 except np.linalg.LinAlgError:                # pragma: no cover
-                    self.q[:, o] = rhs[:, o] / (A_diag[:, o] + reg)
-        else:
-            self.q = rhs / (A_diag + reg)
+                    pass
 
     def _transform(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """``t_j = y_j(x) - y_j(x_k)`` and ``dy_j/dx`` per output, ``(n, d, m)``.
@@ -421,6 +435,29 @@ class AnchoredSeparableQuadratic:
         val = self.fk + np.sum(self._c * t + 0.5 * self.q * t * t, axis=0)
         grad = (self._c + self.q * t) * dydx[0]
         return val, grad
+
+
+class PlanarMLSModel:
+    """Center-frozen planar Hermite MLS model (no curvature term).
+
+    The per-query MLS's local weighted *linear* regression, evaluated once
+    with the weights frozen at the trust-region center: its value ``c`` and
+    slope ``B`` blend the neighbours' sampled **values and gradients**
+    (planar Hermite fit), so the plane tilts toward the data trend instead
+    of being the incumbent's tangent. Because the frozen fit is a polynomial
+    it is exactly value/gradient-consistent for the subproblem solver. It
+    does not hard-interpolate the incumbent — trust-region theory only needs
+    fully-linear accuracy — and as the length scale shrinks it approaches
+    interpolation of the nearest samples.
+    """
+
+    def __init__(self, mls: MovingLeastSquares, center: np.ndarray) -> None:
+        self.xk = np.asarray(center, float)
+        self.fk_model, self.B = mls.value_and_slope(self.xk)   # (m,), (d, m)
+
+    def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        s = np.asarray(x, float) - self.xk
+        return self.fk_model + s @ self.B, self.B
 
 
 # --------------------------------------------------------------------------- #
@@ -515,7 +552,10 @@ class MLSSBOptimizer:
         cons_shift = (mls._ym[1:] / mls._ys[1:]) if m else np.empty(0)
 
         anchored = None
-        if cfg.anchor_center:
+        if cfg.anchor_center and cfg.model == "planar":
+            ci = center_i if center_i is not None else self._best_index()
+            anchored = PlanarMLSModel(mls, self.X[ci])
+        elif cfg.anchor_center:
             ci = center_i if center_i is not None else self._best_index()
             f_k = np.concatenate([[self.F[ci]], self.C[ci]])          # (m+1,)
             G_k = np.column_stack([self.Gf[ci]]
@@ -529,11 +569,16 @@ class MLSSBOptimizer:
             dists = dists[dists > 1e-14]
             k_nn = min(cfg.min_fit_neighbors, len(dists))
             h_fit = max(h, float(dists[k_nn - 1])) if k_nn else h
+            fv = cfg.fit_values
+            if isinstance(fv, bool):                    # tolerate old configs
+                fv = "all" if fv else "none"
+            value_mask = np.array(
+                [fv == "all"] + [fv in ("all", "constraints")] * m, bool)
             anchored = AnchoredSeparableQuadratic(
                 self.X[ci], f_k, G_k, Xa[keep], G, h_fit,
                 intermediate=cfg.intermediate,
                 asy=max(cfg.asy_init, 1.3 * delta),
-                Y=(Y if cfg.fit_values else None))
+                Y=(Y if np.any(value_mask) else None), value_mask=value_mask)
         return mls, cons_shift, anchored
 
     def _min_dist_in_tr(self, center: np.ndarray, delta: float) -> float:

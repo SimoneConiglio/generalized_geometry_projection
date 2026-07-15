@@ -223,12 +223,21 @@ class MLSSBOSettings(BaseOptimizerSettings):
             "widen the curvature fit over more history."
         ),
     )
-    fit_values: bool = Field(
-        False,
+    fit_values: str = Field(
+        "constraints",
         description=(
-            "Include function-value rows (not only gradient rows) in the "
-            "Hermite curvature fit of the anchored model. Benchmarks favour "
-            "gradient-only secants (as in quasi-Newton methods)."
+            "Which outputs include function-value rows in the Hermite "
+            "curvature fit: 'none', 'constraints' (default - feasibility is "
+            "a statement about values, while the objective keeps "
+            "quasi-Newton gradient-only secants), or 'all'."
+        ),
+    )
+    model: str = Field(
+        "quadratic",
+        description=(
+            "Exploitation-subproblem model: 'quadratic' (anchored separable "
+            "quadratic) or 'planar' (center-frozen planar Hermite MLS "
+            "through neighbour values and gradients, no curvature term)."
         ),
     )
 

@@ -107,6 +107,7 @@ class MLSSurrogateSBO(BaseOptimizationLibrary[MLSSBOSettings]):
             asy_init=s.asy_init,
             min_fit_neighbors=s.min_fit_neighbors,
             fit_values=s.fit_values,
+            model=s.model,
             n_resets=s.n_resets,
             tr_init=s.tr_init,
             tr_min=s.tr_min,
