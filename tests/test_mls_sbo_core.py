@@ -136,9 +136,10 @@ def test_multi_output_shapes():
 # --------------------------------------------------------------------------- #
 # Anchored (first-order consistent) model
 # --------------------------------------------------------------------------- #
-def _anchored_from_data(X, Y, G, k, h=0.4):
+def _anchored_from_data(X, Y, G, k, h=0.4, intermediate="linear", asy=0.5):
     """Build the anchored model exactly as the driver does, anchored at row k."""
-    return AnchoredSeparableQuadratic(X[k], Y[k], G[k], X, G, h)
+    return AnchoredSeparableQuadratic(X[k], Y[k], G[k], X, G, h,
+                                      intermediate=intermediate, asy=asy)
 
 
 def test_anchored_model_is_first_order_consistent_at_center():
@@ -172,6 +173,54 @@ def test_anchored_model_gradient_is_consistent_with_value():
         fd = (anchored.value_and_slope(xp)[0]
               - anchored.value_and_slope(xm)[0]) / (2 * eps)
         assert np.allclose(grad[k], fd, rtol=1e-6, atol=1e-8)
+
+
+def test_mma_intermediates_are_consistent_and_anchored():
+    """MMA-variable model: exact anchor at the center and FD-consistent
+    gradients everywhere inside the asymptotes."""
+    rng = np.random.default_rng(13)
+    X = 0.5 + 0.15 * rng.standard_normal((8, 3))
+    Y = rng.standard_normal((8, 2))
+    G = rng.standard_normal((8, 3, 2)) + 0.5   # mixed gradient signs
+    k = 3
+    anchored = _anchored_from_data(X, Y, G, k, intermediate="mma")
+    val, grad = anchored.value_and_slope(X[k])
+    assert np.allclose(val, Y[k], atol=1e-10)
+    assert np.allclose(grad, G[k], atol=1e-10)
+    x0 = X[k] + 0.08 * rng.standard_normal(3)
+    _, grad = anchored.value_and_slope(x0)
+    eps = 1e-6
+    for j in range(3):
+        xp, xm = x0.copy(), x0.copy()
+        xp[j] += eps
+        xm[j] -= eps
+        fd = (anchored.value_and_slope(xp)[0]
+              - anchored.value_and_slope(xm)[0]) / (2 * eps)
+        assert np.allclose(grad[j], fd, rtol=1e-5, atol=1e-7)
+
+
+def test_mma_intermediates_fit_reciprocal_functions_better():
+    """On a compliance-like reciprocal response the MMA-variable model must
+    predict better than the plain quadratic in x."""
+    rng = np.random.default_rng(14)
+    d = 3
+    a = np.array([1.0, 2.0, 0.5])
+
+    def f(x):
+        return float(np.sum(a / (x + 0.3))), -a / (x + 0.3) ** 2
+
+    X = 0.45 + 0.25 * rng.random((12, d))
+    Y = np.array([[f(x)[0]] for x in X])
+    G = np.stack([f(x)[1][:, None] for x in X])
+    mdl_mma = _anchored_from_data(X, Y, G, 0, intermediate="mma", asy=0.75)
+    mdl_lin = _anchored_from_data(X, Y, G, 0, intermediate="linear")
+    Xq = 0.45 + 0.25 * rng.random((100, d))
+    err_mma = err_lin = 0.0
+    for xq in Xq:
+        truth = f(xq)[0]
+        err_mma += (mdl_mma.value_and_slope(xq)[0][0] - truth) ** 2
+        err_lin += (mdl_lin.value_and_slope(xq)[0][0] - truth) ** 2
+    assert err_mma < err_lin
 
 
 def test_anchored_model_recovers_separable_quadratic():

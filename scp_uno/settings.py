@@ -202,6 +202,18 @@ class MLSSBOSettings(BaseOptimizerSettings):
     subproblem_maxiter: int = Field(
         100, description="SLSQP iterations for the anchored model subproblem."
     )
+    intermediate: str = Field(
+        "mma",
+        description=(
+            "Intermediate variables of the anchored model: 'mma' places a "
+            "reciprocal transform on the descent side of each gradient "
+            "(Method of Moving Asymptotes / CONLIN style); 'linear' keeps "
+            "the plain separable quadratic in x."
+        ),
+    )
+    asy_init: float = Field(
+        0.5, description="Minimum asymptote distance (normalized units)."
+    )
 
     # -- trust region --
     tr_init: float = Field(

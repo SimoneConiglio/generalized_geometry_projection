@@ -97,6 +97,8 @@ class MLSSBOConfig:
     # -- anchored model / sequential subproblem --
     anchor_center: bool = True         # exact f, grad interpolation at the center
     subproblem_maxiter: int = 100      # SLSQP iterations for the model subproblem
+    intermediate: str = "mma"          # "mma" reciprocal variables or "linear"
+    asy_init: float = 0.5              # minimum asymptote distance (normalized)
 
     # -- acquisition (duck-typed fields consumed by gesbo_core.propose_batch) --
     kappa_base: float = 1.0
@@ -295,27 +297,88 @@ class AnchoredSeparableQuadratic:
     the MLS. This is MMA-class structure — a separable second-order model at
     the iterate — with curvature *measured from sampled gradients* instead
     of heuristic asymptote updates.
+
+    With ``intermediate="mma"`` the same construction is carried out in
+    **MMA-style intermediate variables**: per output and per coordinate the
+    model is quadratic in ``y_j`` with the reciprocal transform placed on
+    the *descent* side of the gradient (as in the Method of Moving
+    Asymptotes / CONLIN)::
+
+        dfk/dx_j < 0 :  y_j = 1/(x_j - L_j),  L_j = x_kj - asy   (lower asymptote)
+        dfk/dx_j > 0 :  y_j = 1/(U_j - x_j),  U_j = x_kj + asy   (upper asymptote)
+        dfk/dx_j = 0 :  y_j = x_j                                 (linear)
+
+    so ``m = f_k + sum_j c_j t_j + 1/2 q_j t_j^2`` with ``t_j = y_j - y_j(x_k)``,
+    ``c_j = g_kj / (dy_j/dx_j)(x_k)`` (exact gradient anchor) and ``q_j`` the
+    weighted secant in y-space. This reproduces the reciprocal-type
+    monotonicity of stiffness responses that a symmetric quadratic in ``x``
+    cannot represent; the asymptote distance ``asy`` must exceed the
+    trust-region radius (the driver passes ``max(asy_init, 1.3*delta)``).
     """
 
     def __init__(self, x_k: np.ndarray, f_k: np.ndarray, G_k: np.ndarray,
-                 X: np.ndarray, G: np.ndarray, h: float) -> None:
+                 X: np.ndarray, G: np.ndarray, h: float,
+                 intermediate: str = "linear", asy: float = 0.5) -> None:
         self.xk = np.asarray(x_k, float)
         self.fk = np.asarray(f_k, float)        # (m,)
         self.Gk = np.asarray(G_k, float)        # (d, m)
-        S = np.atleast_2d(np.asarray(X, float)) - self.xk[None, :]   # (n, d)
+        self.asy = float(asy)
+        d, m = self.Gk.shape
+        if intermediate == "mma":
+            self._branch = np.sign(self.Gk).astype(int)      # (d, m) in {-1,0,1}
+        else:
+            self._branch = np.zeros((d, m), dtype=int)
+
+        X = np.atleast_2d(np.asarray(X, float))
+        S = X - self.xk[None, :]                             # (n, d)
         r2 = np.sum(S * S, axis=1)
         w = np.exp(-(r2 - float(np.min(r2))) / (2.0 * h * h))
-        dG = np.asarray(G, float) - self.Gk[None, :, :]              # (n, d, m)
-        num = np.einsum("n,nd,ndm->dm", w, S, dG)                    # (d, m)
-        den = w @ (S * S)                                            # (d,)
+        T, dydx = self._transform(X)                         # (n, d, m) both
+        _, dydx0 = self._transform(self.xk[None, :])
+        self._dydx0 = dydx0[0]                               # (d, m)
+        self._c = self.Gk / self._dydx0                      # (d, m)
+        # gradient residuals in y-space: df/dy_i - df/dy_k
+        Hres = np.asarray(G, float) / dydx - self._c[None, :, :]
+        num = np.einsum("n,ndm,ndm->dm", w, T, Hres)
+        den = np.einsum("n,ndm,ndm->dm", w, T, T)
         reg = 1e-10 * (1.0 + float(np.max(den, initial=0.0)))
-        self.q = num / (den + reg)[:, None]                          # (d, m)
+        self.q = num / (den + reg)                           # (d, m)
+
+    def _transform(self, X: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """``t_j = y_j(x) - y_j(x_k)`` and ``dy_j/dx`` per output, ``(n, d, m)``.
+
+        Points beyond an asymptote (possible only for far *training* samples;
+        the subproblem box stays inside by construction) are clamped to a
+        safe margin so the secant fit never sees a singular transform.
+        """
+        X = np.atleast_2d(np.asarray(X, float))
+        S = X - self.xk[None, :]                             # (n, d)
+        n, d = S.shape
+        m = self.Gk.shape[1]
+        Sb = np.repeat(S[:, :, None], m, axis=2)             # (n, d, m)
+        T = Sb.copy()
+        dydx = np.ones_like(Sb)
+        margin = 0.05 * self.asy
+        neg = np.broadcast_to(self._branch[None] == -1, Sb.shape)
+        pos = np.broadcast_to(self._branch[None] == 1, Sb.shape)
+        if np.any(neg):
+            # y = 1/(x - L), L = xk - asy  ->  x - L = asy + s
+            u = np.maximum(self.asy + Sb, margin)
+            T = np.where(neg, 1.0 / u - 1.0 / self.asy, T)
+            dydx = np.where(neg, -1.0 / (u * u), dydx)
+        if np.any(pos):
+            # y = 1/(U - x), U = xk + asy  ->  U - x = asy - s
+            u = np.maximum(self.asy - Sb, margin)
+            T = np.where(pos, 1.0 / u - 1.0 / self.asy, T)
+            dydx = np.where(pos, 1.0 / (u * u), dydx)
+        return T, dydx
 
     def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Anchored raw-unit values ``(m,)`` and exact gradients ``(d, m)``."""
-        s = np.asarray(x, float) - self.xk
-        val = self.fk + s @ self.Gk + 0.5 * (s * s) @ self.q
-        grad = self.Gk + s[:, None] * self.q
+        T, dydx = self._transform(np.asarray(x, float)[None, :])
+        t = T[0]                                             # (d, m)
+        val = self.fk + np.sum(self._c * t + 0.5 * self.q * t * t, axis=0)
+        grad = (self._c + self.q * t) * dydx[0]
         return val, grad
 
 
@@ -384,7 +447,7 @@ class MLSSBOptimizer:
 
     # ------------------------------------------------------------ surrogate
     def _fit_surrogate(self, center: np.ndarray, h: float,
-                       center_i: Optional[int] = None):
+                       center_i: Optional[int] = None, delta: float = 0.25):
         cfg = self.cfg
         Xa = np.asarray(self.X)
         n = len(Xa)
@@ -417,7 +480,9 @@ class MLSSBOptimizer:
             G_k = np.column_stack([self.Gf[ci]]
                                   + [self.Jc[ci][c] for c in range(m)])  # (d, m+1)
             anchored = AnchoredSeparableQuadratic(
-                self.X[ci], f_k, G_k, Xa[keep], G, h)
+                self.X[ci], f_k, G_k, Xa[keep], G, h,
+                intermediate=cfg.intermediate,
+                asy=max(cfg.asy_init, 1.3 * delta))
         return mls, cons_shift, anchored
 
     def _min_dist_in_tr(self, center: np.ndarray, delta: float) -> float:
@@ -563,13 +628,24 @@ class MLSSBOptimizer:
                 resets += 1
                 bi = self._best_index()
                 center, center_i = self.X[bi].copy(), bi
-                delta = max(cfg.tr_init / 4.0, cfg.tr_min * 100.0)
+                # cycle the restart radius (full / half / quarter of tr_init)
+                # so successive restarts are not identical, and spend one
+                # evaluation on a random point in the new region: the refit
+                # then differs from the run that just stalled instead of
+                # deterministically reproducing it.
+                delta = max(cfg.tr_init / 2.0 ** ((resets - 1) % 3),
+                            cfg.tr_min * 100.0)
                 stall = 0
+                if self.n_evals < cfg.max_evals:
+                    lo_r = np.maximum(0.0, center - delta)
+                    hi_r = np.minimum(1.0, center + delta)
+                    self._eval(lo_r + (hi_r - lo_r) * self._rng.random(d))
 
             # length scale tracks the sample spacing inside the trust region
             d_min = self._min_dist_in_tr(center, delta)
             h = float(np.clip(cfg.ls_factor * d_min, cfg.ls_min, cfg.ls_max))
-            mls, cons_shift, anchored = self._fit_surrogate(center, h, center_i)
+            mls, cons_shift, anchored = self._fit_surrogate(
+                center, h, center_i, delta)
             lo = np.maximum(0.0, center - delta)
             hi = np.minimum(1.0, center + delta)
             best_i = self._best_index()
