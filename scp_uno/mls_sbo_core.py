@@ -100,6 +100,7 @@ class MLSSBOConfig:
     intermediate: str = "mma"          # "mma" reciprocal variables or "linear"
     asy_init: float = 0.5              # minimum asymptote distance (normalized)
     min_fit_neighbors: int = 10        # anchored-fit bandwidth covers >= k samples
+    fit_values: bool = True            # include value rows in the curvature fit
 
     # -- acquisition (duck-typed fields consumed by gesbo_core.propose_batch) --
     kappa_base: float = 1.0
@@ -520,7 +521,8 @@ class MLSSBOptimizer:
             anchored = AnchoredSeparableQuadratic(
                 self.X[ci], f_k, G_k, Xa[keep], G, h_fit,
                 intermediate=cfg.intermediate,
-                asy=max(cfg.asy_init, 1.3 * delta), Y=Y)
+                asy=max(cfg.asy_init, 1.3 * delta),
+                Y=(Y if cfg.fit_values else None))
         return mls, cons_shift, anchored
 
     def _min_dist_in_tr(self, center: np.ndarray, delta: float) -> float:

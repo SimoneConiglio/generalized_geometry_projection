@@ -221,6 +221,13 @@ class MLSSBOSettings(BaseOptimizerSettings):
             "samples, so accumulating data improves the learned shape."
         ),
     )
+    fit_values: bool = Field(
+        True,
+        description=(
+            "Include function-value rows (not only gradient rows) in the "
+            "Hermite curvature fit of the anchored model."
+        ),
+    )
 
     # -- trust region --
     tr_init: float = Field(

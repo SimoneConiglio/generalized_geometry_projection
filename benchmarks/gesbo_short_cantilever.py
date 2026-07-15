@@ -85,6 +85,10 @@ def main() -> None:
     parser.add_argument("--intermediate", type=str, default=None,
                         choices=["mma", "linear"],
                         help="MLS_SBO anchored-model intermediate variables.")
+    parser.add_argument("--min-fit-neighbors", type=int, default=None,
+                        help="MLS_SBO anchored-fit bandwidth floor (samples).")
+    parser.add_argument("--fit-values", type=int, default=None,
+                        help="MLS_SBO: 1/0 include value rows in the fit.")
     parser.add_argument("--kappa-base", type=float, default=None)
     parser.add_argument("--n-inner", type=int, default=None,
                         help="GEK2D: true evaluations on the subspace per iteration.")
@@ -128,6 +132,9 @@ def main() -> None:
                 "kappa_base": args.kappa_base,
                 "max_outer_iter": args.max_outer_iter,
                 "intermediate": args.intermediate,
+                "min_fit_neighbors": args.min_fit_neighbors,
+                "fit_values": (None if args.fit_values is None
+                               else bool(args.fit_values)),
             }.items() if v is not None
         }
     elif args.algo == "TRANSFORMER_OPT":
