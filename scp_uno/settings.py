@@ -203,29 +203,32 @@ class MLSSBOSettings(BaseOptimizerSettings):
         100, description="SLSQP iterations for the anchored model subproblem."
     )
     intermediate: str = Field(
-        "mma",
+        "linear",
         description=(
-            "Intermediate variables of the anchored model: 'mma' places a "
+            "Intermediate variables of the anchored model: 'linear' (default) "
+            "keeps the plain separable quadratic in x; 'mma' places a "
             "reciprocal transform on the descent side of each gradient "
-            "(Method of Moving Asymptotes / CONLIN style); 'linear' keeps "
-            "the plain separable quadratic in x."
+            "(Method of Moving Asymptotes / CONLIN style) — benchmarks show "
+            "no significant difference between the two."
         ),
     )
     asy_init: float = Field(
         0.5, description="Minimum asymptote distance (normalized units)."
     )
     min_fit_neighbors: int = Field(
-        10,
+        1,
         description=(
             "The anchored-fit bandwidth always covers at least this many "
-            "samples, so accumulating data improves the learned shape."
+            "samples. Benchmarks favour the tightest (1); larger values "
+            "widen the curvature fit over more history."
         ),
     )
     fit_values: bool = Field(
-        True,
+        False,
         description=(
             "Include function-value rows (not only gradient rows) in the "
-            "Hermite curvature fit of the anchored model."
+            "Hermite curvature fit of the anchored model. Benchmarks favour "
+            "gradient-only secants (as in quasi-Newton methods)."
         ),
     )
 

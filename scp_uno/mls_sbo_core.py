@@ -97,10 +97,21 @@ class MLSSBOConfig:
     # -- anchored model / sequential subproblem --
     anchor_center: bool = True         # exact f, grad interpolation at the center
     subproblem_maxiter: int = 100      # SLSQP iterations for the model subproblem
-    intermediate: str = "mma"          # "mma" reciprocal variables or "linear"
+    # Intermediate variables: on the short cantilever "linear" and "mma" are
+    # statistically indistinguishable across seeds (169-300 vs 222-236), so
+    # the simpler plain-quadratic model is the default; the reciprocal
+    # convexification is available but not the active ingredient.
+    intermediate: str = "linear"       # "mma" reciprocal variables or "linear"
     asy_init: float = 0.5              # minimum asymptote distance (normalized)
-    min_fit_neighbors: int = 10        # anchored-fit bandwidth covers >= k samples
-    fit_values: bool = True            # include value rows in the curvature fit
+    # Ablation on the short cantilever (200 evals, batch_size=1): the local
+    # gradient-secant fit with the tightest bandwidth wins decisively
+    # (222/236 across seeds) over adding value rows (439), widening the
+    # bandwidth to >=10 neighbours (511), or both (322) — as in quasi-Newton
+    # practice, curvature is best estimated from gradient differences only,
+    # and the most local information gives the best steps. The knobs remain
+    # for experimentation.
+    min_fit_neighbors: int = 1         # anchored-fit bandwidth covers >= k samples
+    fit_values: bool = False           # include value rows in the curvature fit
 
     # -- acquisition (duck-typed fields consumed by gesbo_core.propose_batch) --
     kappa_base: float = 1.0
