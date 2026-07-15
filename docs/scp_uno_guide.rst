@@ -99,23 +99,25 @@ The framework provides seven major algorithms:
    the trust region — the fit localizes automatically as the trust region
    shrinks and samples cluster. The acquisition (penalized exploitation + LCB
    ladder with repulsion, with a sample-density proxy standing in for the
-   kriging variance) is shared with GE_SBO. The model is **anchored** at the
-   trust-region center (it reproduces the incumbent's value and gradient
-   exactly — the fully-linear-model requirement of trust-region theory;
-   neighbours contribute pure curvature), and the exploitation step solves
-   the constrained model subproblem `min m_0 s.t. m_j <= 0` by SLSQP, with
-   trust-region restarts from the incumbent best until the evaluation budget
-   is spent. Short-cantilever results at 200 true evaluations (iso function
-   calls with MMA; one FEM + adjoint call per evaluation for every method):
-   compliance ~643 sequential (``batch_size=1``, the MMA-like regime) and
-   ~729 with ``batch_size=4``; the kriging GE_SBO gives ~790 (batch) / ~1277
-   (sequential) under the same protocol, and MMA reaches 75.7. The remaining
-   gap is approximation power, not budget accounting: an anchored linear MLS
-   step is preconditioned steepest descent with rank-starved curvature
-   (<=60 samples in 108 dimensions), whereas MMA's separable reciprocal
-   approximation is near-exact for compliance-type responses. A separable
-   (diagonal-Hessian) anchored basis — MMA-class curvature measured from
-   samples instead of heuristic asymptotes — is the designed-for next step.
+   kriging variance) is shared with GE_SBO. The exploitation step (the whole
+   step in the sequential ``batch_size=1`` regime) optimizes an
+   **anchored separable-quadratic model with weights frozen at the
+   trust-region center**: exact value/gradient interpolation of the
+   incumbent (the fully-linear-model requirement of trust-region theory)
+   plus a diagonal Hessian secant-fitted to the neighbours' gradients —
+   MMA-class second-order structure with curvature *measured from samples*
+   instead of heuristic asymptotes. (Per-query MLS refits must not be handed
+   to an SQP solver: their diffuse derivative is not the true derivative of
+   their value, an inconsistency that silently degrades the subproblem
+   solve.) The constrained subproblem `min m_0 s.t. m_j <= 0` is solved by
+   SLSQP inside the trust region, with restarts from the incumbent best
+   until the evaluation budget is spent. Short-cantilever results at 200
+   true evaluations (iso function calls with MMA; one FEM + adjoint call per
+   evaluation for every method): compliance ~350 sequential
+   (``batch_size=1``, the MMA-like regime) and ~286 with ``batch_size=4``
+   — versus ~790/~1277 for the kriging GE_SBO under the same protocol, ~203
+   for the reduced-space GEK2D, and 75.7 for MMA, whose separable reciprocal
+   approximation remains near-exact for compliance-type responses.
    Invoke with
    ``scenario.execute(algo_name="MLS_SBO", max_iter=200, batch_size=4)``;
    engine: ``scp_uno.mls_sbo_core`` (pure NumPy/SciPy), standalone via
