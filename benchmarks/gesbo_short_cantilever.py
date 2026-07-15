@@ -162,6 +162,13 @@ def main() -> None:
         save_density_plot_2d(result.density_field, result.eval_coords,
                              args.plot_dir / f"short_cantilever_{tag}.png",
                              title=f"short_cantilever {args.algo}")
+        # Trust-region trajectories are chaotic (FP-level nondeterminism in
+        # the FEM solves amplifies), so a good run may not be reproducible:
+        # always keep the optimal design vector and density field.
+        np.savez(args.plot_dir / f"short_cantilever_{tag}_design.npz",
+                 x_opt=result.design_variables,
+                 density=result.density_field,
+                 objective=result.objective_value)
 
     if args.with_mma_baseline:
         base, base_elapsed = run_mma(spec, args.max_evals)
