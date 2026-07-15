@@ -111,13 +111,22 @@ The framework provides seven major algorithms:
    their value, an inconsistency that silently degrades the subproblem
    solve.) The constrained subproblem `min m_0 s.t. m_j <= 0` is solved by
    SLSQP inside the trust region, with restarts from the incumbent best
-   until the evaluation budget is spent. Short-cantilever results at 200
-   true evaluations (iso function calls with MMA; one FEM + adjoint call per
-   evaluation for every method): compliance ~350 sequential
-   (``batch_size=1``, the MMA-like regime) and ~286 with ``batch_size=4``
-   — versus ~790/~1277 for the kriging GE_SBO under the same protocol, ~203
-   for the reduced-space GEK2D, and 75.7 for MMA, whose separable reciprocal
-   approximation remains near-exact for compliance-type responses.
+   until the evaluation budget is spent. By default the model is built in
+   **MMA-style intermediate variables** (``intermediate="mma"``): a
+   reciprocal transform on the descent side of each gradient per output and
+   coordinate, which captures the monotone stiffness-type nonlinearity a
+   symmetric quadratic cannot. Short-cantilever results at 200 true
+   evaluations (iso function calls with MMA; one FEM + adjoint call per
+   evaluation for every method): compliance ~222 sequential
+   (``batch_size=1``, the MMA-like regime; ~415 with ``batch_size=4``,
+   where 3 of 4 calls go to exploration) — versus ~790/~1277 for the
+   kriging GE_SBO under the same protocol, ~203 for the reduced-space
+   GEK2D, and 75.7 for MMA, whose separable reciprocal approximation with
+   adaptive asymptotes remains the reference for compliance-type responses.
+   (Successive fixes on the sequential run: 885 with the per-query MLS
+   subproblem, 643 after anchoring + solved subproblem + restarts, 350
+   after the value/gradient-consistency fix + diagonal Hessian, 222 with
+   MMA intermediate variables.)
    Invoke with
    ``scenario.execute(algo_name="MLS_SBO", max_iter=200, batch_size=4)``;
    engine: ``scp_uno.mls_sbo_core`` (pure NumPy/SciPy), standalone via
