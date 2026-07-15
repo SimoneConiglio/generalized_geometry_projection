@@ -111,25 +111,31 @@ The framework provides seven major algorithms:
    their value, an inconsistency that silently degrades the subproblem
    solve.) The constrained subproblem `min m_0 s.t. m_j <= 0` is solved by
    SLSQP inside the trust region, with restarts from the incumbent best
-   until the evaluation budget is spent. Short-cantilever results at 200
-   true evaluations (iso function calls with MMA; one FEM + adjoint call
-   per evaluation for every method), sequential ``batch_size=1``
-   (the MMA-like regime): compliance **169–300 across seeds**
-   (best 169) — versus ~790/~1277 for the kriging GE_SBO under the same
-   protocol, ~203 for the reduced-space GEK2D, and 75.7 for MMA.
-   Ablation-backed defaults: the curvature is fitted from **gradient
-   secants only, with the tightest bandwidth** — adding function-value
-   rows to the fit (439), widening the bandwidth to 10 neighbours (511),
-   or both (322) all degrade the 222/236 gradient-only baseline, mirroring
-   quasi-Newton practice where curvature comes from gradient differences
-   and values only gate acceptance. MMA-style reciprocal intermediate
-   variables (``intermediate="mma"``) are available but statistically
-   indistinguishable from the plain quadratic here — the anchored local
-   regression, not convexification, is the active ingredient.
-   (Successive sequential-run fixes: 885 with the per-query MLS
-   subproblem, 643 after anchoring + solved subproblem + restarts, 350
-   after the value/gradient-consistency fix + diagonal Hessian, ~169–300
-   with jittered restarts.)
+   until the evaluation budget is spent.
+
+   **Reproducibility.** With the default preset FEM backend (``amjax``,
+   JAX/XLA) results are NOT reproducible: XLA's CPU thread-pool reduction
+   order is fixed per process, giving ~1e-13 perturbations at identical
+   inputs, and the chaotic trust-region trajectory amplifies them into
+   *different local minima* within ~200 evaluations. ``fem_solver:
+   direct`` (scipy SuperLU) is bit-deterministic end-to-end (verified by
+   diffing per-solve residual fingerprints of full duplicate runs); use it
+   for any benchmarking of this optimizer.
+
+   **Short-cantilever study** (200 true evaluations — iso function calls
+   with MMA, one FEM + adjoint call each — sequential ``batch_size=1``,
+   deterministic direct solver, 3 seeds per config): gradient-only
+   quadratic 109/539/562; constraint-value learning
+   (``fit_values="constraints"``) 453/576/688; planar Hermite MLS
+   (``model="planar"``) 526/555/595. The three model architectures are
+   **statistically indistinguishable at this sample size** — run-to-run
+   basin scatter (109–688 within one config) dominates the architecture
+   choice, so earlier single-run ablation rankings are not supported once
+   solver noise is removed. References under the same protocol: kriging
+   GE_SBO ~790–1277, reduced-space GEK2D ~203, MMA 75.7. Practical use of
+   MLS_SBO on such landscapes is therefore **best-of-N restarts** (the
+   best observed run, 109, approaches MMA territory), which the
+   deterministic backend makes exactly reproducible.
    Invoke with
    ``scenario.execute(algo_name="MLS_SBO", max_iter=200, batch_size=4)``;
    engine: ``scp_uno.mls_sbo_core`` (pure NumPy/SciPy), standalone via
