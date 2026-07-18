@@ -122,12 +122,18 @@ class MLSSBOConfig:
     # gradient-only secants), or "all".
     fit_values: str = "constraints"
     # Model of the exploitation subproblem:
-    #   "tangent"   (default) softmax-weighted sum of tangent hyperplanes -
+    #   "tangent"   (default) weighted sum of tangent hyperplanes -
     #               closed form, exactly consistent analytic gradients, no
     #               centre-freezing needed;
     #   "quadratic" anchored separable quadratic (centre-frozen weights);
     #   "planar"    centre-frozen planar Hermite MLS (no curvature term).
     model: str = "tangent"
+    # Tangent-blend weights: "shepard" (Hermite-Shepard cardinal weights -
+    # true interpolation of values AND gradients at every sample, compact
+    # support (support_factor*h)) or "softmax" (Gaussian scores,
+    # interpolating only as h -> 0).
+    weighting: str = "shepard"
+    support_factor: float = 3.0
 
     # -- acquisition (duck-typed fields consumed by gesbo_core.propose_batch) --
     kappa_base: float = 1.0
@@ -471,29 +477,78 @@ class TangentPlaneSurrogate:
       learned shape by construction.
 
     All ``m`` outputs (objective + constraints) share the weights.
+
+    Two weight families are available (``weighting``):
+
+    * ``"shepard"`` (default) — **Hermite--Shepard cardinal weights**: scores
+      ``q_i = p log( (1/d_i - 1/d_max)_+ )`` with ``d_i = ||x - x_i||^2``
+      and support ``d_max = (support_factor * h)^2``. The singularity at
+      ``d_i -> 0`` makes the blend a TRUE Hermite interpolant at finite
+      length scale: ``alpha_i(x_k) = delta_ik``,
+      ``beta_ij(x) = lambda_i (x - x_i)_j`` vanishing at every node,
+      ``grad alpha_i = 0`` and ``grad beta_ij(x_k) = delta_ik e_j`` at all
+      nodes (flat-spot property, p >= 1), partition of unity, monotone
+      decay in the own distance, and compact support — the full set of
+      Hermite shape-function constraints.
+    * ``"softmax"`` — Gaussian scores ``q_i = -d_i / (2 h^2)``: everywhere
+      smooth and positive, interpolating only in the ``h -> 0`` limit.
     """
 
     def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
-                 h: float) -> None:
+                 h: float, weighting: str = "shepard", p: float = 2.0,
+                 support_factor: float = 3.0) -> None:
         self.X = np.atleast_2d(np.asarray(X, float))         # (n, d)
         Y = np.asarray(Y, float)
         self.Y = Y if Y.ndim == 2 else Y[:, None]            # (n, m)
         G = np.asarray(G, float)
         self.G = G if G.ndim == 3 else G[:, :, None]         # (n, d, m)
         self.h = float(h)
+        self.weighting = weighting
+        self.p = float(p)
+        self.dmax = (float(support_factor) * self.h) ** 2
+
+    # ---------------------------------------------------------------- scores
+    def _scores(self, S: np.ndarray):
+        """Scores ``q`` and their gradients ``dq`` for offsets ``S = x - x_i``.
+
+        Returns ``(q (..., n), dq (..., n, d))`` with ``lambda = softmax(q)``.
+        Rows outside the Shepard support get ``q = -inf`` (zero weight); if
+        ALL rows fall outside, the nearest sample is kept (minimal support
+        extension so the blend is defined everywhere in the box).
+        """
+        d2 = np.sum(S * S, axis=-1)                          # (..., n)
+        if self.weighting == "softmax":
+            q = -d2 / (2.0 * self.h * self.h)
+            dq = -S / (self.h * self.h)
+            return q, dq
+        with np.errstate(divide="ignore", invalid="ignore"):
+            d2c = np.maximum(d2, 1e-30)
+            R = 1.0 / d2c - 1.0 / self.dmax
+            inside = R > 0.0
+            if not np.all(np.any(inside, axis=-1)):          # empty support
+                nearest = np.argmin(d2, axis=-1)
+                idx = np.expand_dims(nearest, -1)
+                np.put_along_axis(inside, idx, True, axis=-1)
+                R = np.maximum(R, 1e-300)
+            Rc = np.where(inside, np.maximum(R, 1e-300), 1.0)
+            q = np.where(inside, self.p * np.log(Rc), -np.inf)
+            # dq = p/R * dR/dx = p/R * (-1/d^2) * 2 s (zero outside support)
+            coef = np.where(inside, -2.0 * self.p / (Rc * d2c * d2c), 0.0)
+        dq = coef[..., None] * S
+        return q, dq
 
     def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         """Exact values ``(m,)`` and analytic gradients ``(d, m)`` at ``x``."""
         x = np.asarray(x, float)
         S = x[None, :] - self.X                              # (n, d) = x - x_i
-        a = -np.sum(S * S, axis=1) / (2.0 * self.h * self.h)
-        a -= np.max(a)
-        w = np.exp(a)
+        q, dq = self._scores(S)
+        q = q - np.max(q)
+        w = np.exp(q)
         lam = w / np.sum(w)                                  # (n,)
         T = self.Y + np.einsum("nd,ndm->nm", S, self.G)      # (n, m) planes
         val = lam @ T                                        # (m,)
-        s_bar = lam @ S                                      # (d,)
-        dlam = lam[:, None] * (s_bar[None, :] - S) / (self.h * self.h)
+        dq_bar = lam @ dq                                    # (d,)
+        dlam = lam[:, None] * (dq - dq_bar[None, :])         # (n, d)
         grad = np.einsum("n,ndm->dm", lam, self.G) + dlam.T @ T
         return val, grad
 
@@ -502,9 +557,9 @@ class TangentPlaneSurrogate:
         cheap batch evaluation used by the global subproblem scan."""
         Xq = np.atleast_2d(np.asarray(Xq, float))
         S = Xq[:, None, :] - self.X[None, :, :]              # (q, n, d)
-        a = -np.sum(S * S, axis=2) / (2.0 * self.h * self.h)
-        a -= a.max(axis=1, keepdims=True)
-        w = np.exp(a)
+        q, _ = self._scores(S)
+        q = q - q.max(axis=1, keepdims=True)
+        w = np.exp(q)
         lam = w / w.sum(axis=1, keepdims=True)               # (q, n)
         T = self.Y[None, :, :] + np.einsum("qnd,ndm->qnm", S, self.G)
         return np.einsum("qn,qnm->qm", lam, T)               # (q, m)
@@ -626,7 +681,9 @@ class MLSSBOptimizer:
 
         anchored = None
         if cfg.anchor_center and cfg.model == "tangent":
-            anchored = TangentPlaneSurrogate(Xa[keep], Y, G, h)
+            anchored = TangentPlaneSurrogate(
+                Xa[keep], Y, G, h, weighting=cfg.weighting,
+                support_factor=cfg.support_factor)
         elif cfg.anchor_center and cfg.model == "planar":
             ci = center_i if center_i is not None else self._best_index()
             anchored = PlanarMLSModel(mls, self.X[ci])

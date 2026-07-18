@@ -104,6 +104,8 @@ class MLSSurrogateSBO(BaseOptimizationLibrary[MLSSBOSettings]):
             anchor_center=s.anchor_center,
             subproblem_maxiter=s.subproblem_maxiter,
             n_global=s.n_global,
+            weighting=s.weighting,
+            support_factor=s.support_factor,
             intermediate=s.intermediate,
             asy_init=s.asy_init,
             min_fit_neighbors=s.min_fit_neighbors,

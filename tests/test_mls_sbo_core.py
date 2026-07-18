@@ -364,15 +364,16 @@ def test_sequential_mode_spends_budget_and_converges():
     assert any(r["subproblem"] == "slsqp" for r in records)
 
 
-def test_tangent_surrogate_gradient_is_exact():
-    """The analytic gradient of the softmax tangent-plane blend must equal
-    the finite-difference derivative of its value — the surrogate is handed
+@pytest.mark.parametrize("weighting", ["softmax", "shepard"])
+def test_tangent_surrogate_gradient_is_exact(weighting):
+    """The analytic gradient of the tangent-plane blend must equal the
+    finite-difference derivative of its value — the surrogate is handed
     to SLSQP with moving weights, so this consistency is load-bearing."""
     rng = np.random.default_rng(20)
     X = rng.random((9, 4))
     Y = rng.standard_normal((9, 2)) * 3.0
     G = rng.standard_normal((9, 4, 2))
-    surr = TangentPlaneSurrogate(X, Y, G, h=0.3)
+    surr = TangentPlaneSurrogate(X, Y, G, h=0.3, weighting=weighting)
     x0 = rng.random(4)
     _, grad = surr.value_and_slope(x0)
     eps = 1e-6
@@ -382,6 +383,35 @@ def test_tangent_surrogate_gradient_is_exact():
         xm[k] -= eps
         fd = (surr.value_and_slope(xp)[0] - surr.value_and_slope(xm)[0]) / (2 * eps)
         assert np.allclose(grad[k], fd, rtol=1e-5, atol=1e-8)
+
+
+def test_shepard_weights_interpolate_values_and_gradients_at_finite_h():
+    """Hermite–Shepard cardinal weights: the blend interpolates every
+    sample's value AND gradient exactly at FINITE length scale (the sheet's
+    full constraint set: alpha_i(x_k)=delta_ik, beta_ij(x_k)=0,
+    grad alpha=0 and grad beta_ij(x_k)=delta_ik e_j at all nodes)."""
+    rng = np.random.default_rng(25)
+    X = rng.random((7, 3))
+    Y = rng.standard_normal((7, 2)) * 2.0
+    G = rng.standard_normal((7, 3, 2))
+    surr = TangentPlaneSurrogate(X, Y, G, h=0.4, weighting="shepard")
+    for i in range(7):
+        val, grad = surr.value_and_slope(X[i])
+        assert np.allclose(val, Y[i], atol=1e-9)
+        assert np.allclose(grad, G[i], atol=1e-7)
+
+
+def test_shepard_weights_have_compact_support_and_far_field_guard():
+    """alpha_i = 0 beyond the support radius; where NO sample is in range,
+    the nearest sample's plane takes over (minimal support extension)."""
+    X = np.array([[0.1, 0.1], [0.2, 0.1]])
+    Y = np.array([[1.0], [5.0]])
+    G = np.zeros((2, 2, 1))
+    surr = TangentPlaneSurrogate(X, Y, G, h=0.05, weighting="shepard",
+                                 support_factor=3.0)
+    # far query: outside both supports -> nearest plane (sample 2)
+    val, _ = surr.value_and_slope(np.array([0.9, 0.9]))
+    assert np.isclose(val[0], 5.0)
 
 
 @pytest.mark.parametrize("h", [0.05, 0.5, 3.0])

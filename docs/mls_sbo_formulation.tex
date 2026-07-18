@@ -215,11 +215,49 @@ centre-freezing and no diffuse-derivative approximation:
 \quad s_i = x - x_i,\;\; \bar s = \sum_l \lambda_l\, s_l .
 \end{equation}
 Properties (test-enforced): exact reproduction of affine functions at any
-$h$ (all planes coincide); interpolation of each sample's value \emph{and}
-gradient in the $h \to 0$ limit (softmax $\to$ nearest-plane indicator);
-every new sample adds its local plane, so accumulating data refines the
-learned shape by construction. All outputs (objective and constraints)
-share the weights, so constraints learn from values and gradients alike.
+$h$ (all planes coincide); every new sample adds its local plane, so
+accumulating data refines the learned shape by construction. All outputs
+(objective and constraints) share the weights, so constraints learn from
+values and gradients alike.
+
+\subparagraph{Weight families.} Writing the blend in shape-function form,
+$\hat f(x) = \sum_i \alpha_i(x) f_i + \sum_{i,j} \beta_{ij}(x)\, (\nabla f_i)_j$
+with $\alpha_i = \lambda_i$ and $\beta_{ij}(x) = \lambda_i(x)\,(x-x_i)_j$,
+two score functions are implemented (\code{weighting}):
+\begin{itemize}
+\item \code{"softmax"}: $q_i = -d_i/2h^2$ with $d_i = \lVert x-x_i\rVert^2$
+--- smooth everywhere; interpolating only in the $h \to 0$ limit.
+\item \code{"shepard"} (default): \textbf{Hermite--Shepard cardinal
+weights}
+\begin{equation}
+q_i \;=\; p\,\log\!\Bigl(\tfrac{1}{d_i} - \tfrac{1}{d_{\max}}\Bigr)_{\!+},
+\qquad
+\lambda_i = \frac{e^{q_i}}{\sum_l e^{q_l}}
+= \frac{\bigl(\tfrac{1}{d_i}-\tfrac{1}{d_{\max}}\bigr)_+^{\,p}}
+{\sum_l \bigl(\tfrac{1}{d_l}-\tfrac{1}{d_{\max}}\bigr)_+^{\,p}},
+\qquad d_{\max} = (\kappa_s h)^2,
+\label{eq:shepard}
+\end{equation}
+the compactly supported singular weights of Renka's modified Shepard
+method. The pole at $d_i \to 0$ makes the blend a \emph{true Hermite
+interpolant at finite length scale}; with $p \ge 1$ (default $p=2$) the
+shape functions satisfy the complete cardinal constraint set:
+\begin{align}
+&\alpha_i(x_k) = \delta_{ik}, \qquad
+\beta_{ij}(x_k) = 0 \;\;\forall\, i,k,j, \qquad
+\textstyle\sum_i \alpha_i(x) = 1, \notag\\
+&\nabla\alpha_i(x_k) = 0 \;\;\forall\, i,k
+\quad\text{(flat-spot property)}, \qquad
+\nabla\beta_{ij}(x_k) = \delta_{ik}\, e_j, \notag\\
+&\partial \alpha_i / \partial d_i \le 0, \qquad
+\alpha_i = \beta_{ij} = 0 \;\text{ for } d_i \ge d_{\max}
+\quad\text{(monotone decay, compact support)}, \notag
+\end{align}
+hence $\hat f(x_k) = f_k$ and $\nabla \hat f(x_k) = \nabla f_k$ exactly at
+every sample. Where no sample lies within $d_{\max}$ the nearest sample's
+plane takes over (minimal support extension keeping the blend defined on
+the whole trust region).
+\end{itemize}
 
 \paragraph{Planar variant} (\code{model="planar"}, \code{PlanarMLSModel}).
 The per-query MLS of \eqref{eq:mlsnormal} is solved \emph{once} at $\xxi_k$

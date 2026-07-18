@@ -243,12 +243,24 @@ class MLSSBOSettings(BaseOptimizerSettings):
     model: str = Field(
         "tangent",
         description=(
-            "Exploitation-subproblem model: 'tangent' (default - "
-            "softmax-weighted sum of tangent hyperplanes, closed form with "
-            "exactly consistent analytic gradients), 'quadratic' (anchored "
+            "Exploitation-subproblem model: 'tangent' (default - weighted "
+            "sum of tangent hyperplanes, closed form with exactly "
+            "consistent analytic gradients), 'quadratic' (anchored "
             "separable quadratic, center-frozen weights) or 'planar' "
             "(center-frozen planar Hermite MLS, no curvature term)."
         ),
+    )
+    weighting: str = Field(
+        "shepard",
+        description=(
+            "Tangent-blend weights: 'shepard' (Hermite-Shepard cardinal "
+            "weights - true interpolation of values and gradients at every "
+            "sample, compact support) or 'softmax' (Gaussian scores, "
+            "interpolating only as h -> 0)."
+        ),
+    )
+    support_factor: float = Field(
+        3.0, description="Shepard support radius as a multiple of the length scale h."
     )
 
     # -- trust region --
