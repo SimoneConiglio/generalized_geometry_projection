@@ -156,7 +156,21 @@ The framework provides seven major algorithms:
    early overshoot. **Continuation + step cap combined eliminates the
    collapse in every seed: 127/155/206 (median 539 → 155)** — the best
    and most consistent MLS_SBO configuration measured, within ~2x of
-   MMA's 75.7 at iso-budget. The model
+   MMA's 75.7 at iso-budget.
+
+   **Penalty continuation does NOT help** (measured on the geometric mass
+   field ``rho_V``, the honest binarization metric — ``rho_E`` carries
+   ``gammac`` and overstates grayness): ramping ``gammac`` 1→2→3 raises
+   compliance to 195–225 and the gray fraction to ~0.62 (the soft-gammac
+   phase actively *creates* spread-out gray-mass layouts — under linear
+   stiffness a variable-thickness sheet is optimal — which the later
+   phases cannot consolidate), and stacking ``p_penalty`` 1→3 on top is
+   worse still (effective ``Mc^9`` collapses mid-gray stiffness:
+   203–357, zero solid elements). Keep the material penalty at full
+   strength (``gammac=3``) in every phase and continue only the geometry
+   sharpness (``ka``/``pp``). Residual grayness tracks incomplete
+   convergence, not penalty miscalibration: the near-binary best run
+   (gray 0.16) uses the same baseline penalty as the gray ones. The model
    architectures are
    **statistically indistinguishable at this sample size** — run-to-run
    basin scatter (109–688 within one config) dominates the architecture
