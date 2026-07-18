@@ -28,12 +28,15 @@ from ggp.optimization.pipeline import GGPPipeline
 
 PRESET = Path(__file__).resolve().parents[1] / "ggp" / "cli" / "presets" / "short_cantilever.yaml"
 
-# smooth -> sharp: soft aggregation/saturation first (wide, merged basins),
-# baseline (ka=10, pp=100) last. Budgets sum to --max-evals.
+# smooth -> sharp: soft aggregation/saturation AND soft penalties first
+# (wide merged basins, gray material free), full penalization last - gray
+# elements at convergence indicate the penalty was not ramped, since under
+# GP's linear stiffness (p=1) field-level gray is structurally optimal.
+# Budgets sum to --max-evals.
 DEFAULT_SCHEDULE = [
-    ({"ka": 3.0, "pp": 20.0}, 0.35),
-    ({"ka": 6.0, "pp": 50.0}, 0.30),
-    ({}, 0.35),
+    ({"ka": 3.0, "pp": 20.0, "gammac": 1.0, "p_penalty": 1.0}, 0.35),
+    ({"ka": 6.0, "pp": 50.0, "gammac": 2.0, "p_penalty": 1.5}, 0.30),
+    ({"gammac": 3.0, "p_penalty": 3.0}, 0.35),
 ]
 
 
@@ -83,8 +86,21 @@ def main() -> None:
         print(f"[phase {i} {tag}] iters<={iters} compliance={compliance:.3f} "
               f"(comparable only for the final baseline phase)")
 
-    compliance = float(np.expm1(result.objective_value))
+    # Fair reporting: the final phase may run sharpened physics (p_penalty=3),
+    # so re-evaluate the final design once under the BASELINE model - at a
+    # black/white design the two coincide, and the gray fraction shows how
+    # well the penalty ramp binarized the field.
+    s_eval = replace(spec, solver=replace(
+        spec.solver, algorithm=algo, max_iter=1, fem_solver="direct",
+        options=(spec.solver.options if options is None else dict(options)),
+    ))
+    base_eval = GGPPipeline(s_eval, x0=x).run()
+    compliance = float(np.expm1(base_eval.objective_value))
+    rho = np.asarray(result.density_field, float)
+    gray = float(np.mean((rho > 0.1) & (rho < 0.9)))
+    solid = float(np.mean(rho >= 0.9))
     print(f"[CONTINUATION {args.config}] final compliance={compliance:.3f} "
+          f"gray_frac={gray:.3f} solid_frac={solid:.3f} "
           f"time={time.time() - t0:.1f}s")
     if args.plot_dir and result.density_field is not None:
         args.plot_dir.mkdir(parents=True, exist_ok=True)
