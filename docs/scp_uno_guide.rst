@@ -150,7 +150,13 @@ The framework provides seven major algorithms:
    revived before the sharp phase locks the topology. Deterministic
    results (3 seeds): quadratic 157/266/405 (median 539 → 266), Wendland
    tangent 242/472/811 (median 641 → 472); MMA is collapse-proof already
-   and does not benefit (78.2 vs 75.7). The model
+   and does not benefit (78.2 vs 75.7). An MMA-like initial step cap
+   alone (``tr_init=0.05``) helps only mildly (344/453/530) — the
+   collapse is driven by the sharp landscape's descent direction, not by
+   early overshoot. **Continuation + step cap combined eliminates the
+   collapse in every seed: 127/155/206 (median 539 → 155)** — the best
+   and most consistent MLS_SBO configuration measured, within ~2x of
+   MMA's 75.7 at iso-budget. The model
    architectures are
    **statistically indistinguishable at this sample size** — run-to-run
    basin scatter (109–688 within one config) dominates the architecture
