@@ -202,6 +202,14 @@ class MLSSBOSettings(BaseOptimizerSettings):
     subproblem_maxiter: int = Field(
         100, description="SLSQP iterations for the anchored model subproblem."
     )
+    n_global: int = Field(
+        256,
+        description=(
+            "Global phase of the model subproblem: LHS candidates scanned "
+            "over the trust-region box before the SLSQP polish (0 disables). "
+            "Essential for multimodal surrogates such as model='tangent'."
+        ),
+    )
     intermediate: str = Field(
         "linear",
         description=(

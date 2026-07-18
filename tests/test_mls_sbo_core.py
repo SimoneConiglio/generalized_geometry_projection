@@ -414,6 +414,32 @@ def test_tangent_surrogate_interpolates_as_h_shrinks():
         assert np.allclose(grad[:, 0], G[i, :, 0], atol=1e-6)
 
 
+def test_global_subproblem_phase_finds_the_better_valley():
+    """The tangent blend is multimodal; the LHS global phase must find a
+    subproblem candidate at least as good as the SQP-only solve."""
+    rng = np.random.default_rng(24)
+    d = 3
+    # two 'basins': planes tilting toward two different corners
+    X = np.array([[0.2, 0.2, 0.2], [0.8, 0.8, 0.8]])
+    Y = np.array([[0.0], [-1.0]])
+    G = np.stack([np.full((d, 1), 2.0), np.full((d, 1), -2.0)])
+
+    def evaluate(x):
+        return 1.0, np.zeros(d), np.zeros(0), np.zeros((0, d))
+
+    def run(n_global):
+        opt = MLSSBOptimizer(evaluate, np.zeros(d), np.ones(d),
+                             MLSSBOConfig(n_global=n_global, seed=24))
+        opt._eval(np.full(d, 0.2))
+        surr = TangentPlaneSurrogate(X, Y, G, h=0.15)
+        cand, _ = opt._solve_subproblem(
+            surr, np.full(d, 0.2), np.full(d, 0.2),
+            np.zeros(d), np.ones(d))
+        return float(surr.value_and_slope(cand)[0][0])
+
+    assert run(256) <= run(0) + 1e-9
+
+
 def test_tangent_model_drives_the_sequential_optimizer():
     d = 6
     f0 = sphere_problem(d)(np.full(d, 0.8))[0]

@@ -103,6 +103,11 @@ class MLSSBOConfig:
     # convexification is available but not the active ingredient.
     intermediate: str = "linear"       # "mma" reciprocal variables or "linear"
     asy_init: float = 0.5              # minimum asymptote distance (normalized)
+    # Global phase of the model subproblem: the surrogate is cheap, so scan
+    # this many LHS candidates over the trust-region box and polish the best
+    # ones with SLSQP (0 disables). Essential for multimodal surrogates such
+    # as the tangent-plane blend, whose SQP-only solve finds one local valley.
+    n_global: int = 256
     # Ablation on the short cantilever (200 evals, batch_size=1): the local
     # gradient-secant fit with the tightest bandwidth wins decisively
     # (222/236 across seeds) over adding value rows (439), widening the
@@ -492,6 +497,18 @@ class TangentPlaneSurrogate:
         grad = np.einsum("n,ndm->dm", lam, self.G) + dlam.T @ T
         return val, grad
 
+    def values(self, Xq: np.ndarray) -> np.ndarray:
+        """Vectorized values ``(q, m)`` at query points ``Xq (q, d)`` — the
+        cheap batch evaluation used by the global subproblem scan."""
+        Xq = np.atleast_2d(np.asarray(Xq, float))
+        S = Xq[:, None, :] - self.X[None, :, :]              # (q, n, d)
+        a = -np.sum(S * S, axis=2) / (2.0 * self.h * self.h)
+        a -= a.max(axis=1, keepdims=True)
+        w = np.exp(a)
+        lam = w / w.sum(axis=1, keepdims=True)               # (q, n)
+        T = self.Y[None, :, :] + np.einsum("qnd,ndm->qnm", S, self.G)
+        return np.einsum("qn,qnm->qm", lam, T)               # (q, m)
+
 
 class PlanarMLSModel:
     """Center-frozen planar Hermite MLS model (no curvature term).
@@ -680,6 +697,24 @@ class MLSSBOptimizer:
             v, _ = eval_model(x)
             viol = float(np.sum(np.maximum(0.0, v[1:]))) if m else 0.0
             return float(v[0]) + self.cfg.penalty * viol
+
+        # Global phase: dense candidate scan over the trust-region box (the
+        # surrogate is closed-form cheap), best candidates become SLSQP
+        # starts. This is what finds the right valley of a multimodal model.
+        n_glob = int(getattr(self.cfg, "n_global", 0))
+        if n_glob > 0:
+            sampler = qmc.LatinHypercube(
+                d=d, seed=int(self._rng.integers(2 ** 31)))
+            cands = lo + (hi - lo) * sampler.random(n_glob)
+            if hasattr(anchored, "values"):
+                V = anchored.values(cands)                       # (q, m+1)
+            else:
+                V = np.array([anchored.value_and_slope(c)[0] for c in cands])
+            mer = V[:, 0]
+            if m:
+                mer = mer + self.cfg.penalty * np.sum(
+                    np.maximum(0.0, V[:, 1:]), axis=1)
+            starts += [cands[i] for i in np.argsort(mer)[:3]]
 
         cand, tag = None, "slsqp"
         if m:

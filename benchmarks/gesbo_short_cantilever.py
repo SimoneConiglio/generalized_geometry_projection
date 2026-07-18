@@ -95,6 +95,11 @@ def main() -> None:
     parser.add_argument("--model", type=str, default=None,
                         choices=["tangent", "quadratic", "planar"],
                         help="MLS_SBO exploitation-subproblem model.")
+    parser.add_argument("--ls-factor", type=float, default=None,
+                        help="MLS_SBO length-scale factor h = ls_factor*d_min "
+                             "(<1 interpolating regime, >>1 averaging).")
+    parser.add_argument("--n-global", type=int, default=None,
+                        help="MLS_SBO global subproblem candidates (0=off).")
     parser.add_argument("--fem-solver", type=str, default=None,
                         choices=["direct", "iterative", "amjax"],
                         help=("Override the preset's FEM linear solver. "
@@ -148,6 +153,8 @@ def main() -> None:
                 "min_fit_neighbors": args.min_fit_neighbors,
                 "fit_values": args.fit_values,
                 "model": args.model,
+                "ls_factor": args.ls_factor,
+                "n_global": args.n_global,
             }.items() if v is not None
         }
     elif args.algo == "TRANSFORMER_OPT":
