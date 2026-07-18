@@ -131,11 +131,13 @@ The framework provides seven major algorithms:
    (``model="tangent"``, the default) 536/612/892. With the global
    subproblem phase (``n_global=256``) and a length-scale regime sweep
    (``ls_factor`` 0.5 / 2 / 8, i.e. interpolating to averaging weights),
-   the tangent model gives 545–819 / 542–901 / 608–660, and the
-   Hermite–Shepard cardinal weights (``weighting="shepard"``, exact
-   value+gradient interpolation at finite length scale) give 535/636/694
-   — neither the global solve, the weight regime, nor the cardinal
-   weights separate from the base runs. The model architectures are
+   the tangent model gives 545–819 / 542–901 / 608–660; the
+   Hermite–Shepard cardinal weights (``weighting="shepard"``) give
+   535/636/694, and the separation-aware Wendland cardinal weights with
+   window de-jamming (``weighting="wendland"``, the default) give
+   558/641/659 — neither the global solve, the weight regime, nor either
+   cardinal-weight family separates from the base runs. The model
+   architectures are
    **statistically indistinguishable at this sample size** — run-to-run
    basin scatter (109–688 within one config) dominates the architecture
    choice, so earlier single-run ablation rankings are not supported once
