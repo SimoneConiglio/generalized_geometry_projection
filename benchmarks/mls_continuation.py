@@ -34,9 +34,14 @@ PRESET = Path(__file__).resolve().parents[1] / "ggp" / "cli" / "presets" / "shor
 # GP's linear stiffness (p=1) field-level gray is structurally optimal.
 # Budgets sum to --max-evals.
 DEFAULT_SCHEDULE = [
-    ({"ka": 3.0, "pp": 20.0, "gammac": 1.0, "p_penalty": 1.0}, 0.35),
-    ({"ka": 6.0, "pp": 50.0, "gammac": 2.0, "p_penalty": 1.5}, 0.30),
-    ({"gammac": 3.0, "p_penalty": 3.0}, 0.35),
+    # gammac-only penalty ramp: the final phase is EXACTLY the baseline
+    # formulation (GP: p_penalty=1, gammac=3). Stacking p_penalty=3 on top
+    # of gammac=3 was measured to backfire (effective Mc^9 interpolation
+    # collapses mid-gray stiffness and the final phase fights the crash
+    # instead of binarizing).
+    ({"ka": 3.0, "pp": 20.0, "gammac": 1.0}, 0.35),
+    ({"ka": 6.0, "pp": 50.0, "gammac": 2.0}, 0.30),
+    ({}, 0.35),
 ]
 
 
