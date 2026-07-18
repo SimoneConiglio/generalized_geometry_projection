@@ -96,7 +96,7 @@ def main() -> None:
                         choices=["tangent", "quadratic", "planar"],
                         help="MLS_SBO exploitation-subproblem model.")
     parser.add_argument("--weighting", type=str, default=None,
-                        choices=["shepard", "softmax"],
+                        choices=["wendland", "shepard", "softmax"],
                         help="MLS_SBO tangent-blend weight family.")
     parser.add_argument("--ls-factor", type=float, default=None,
                         help="MLS_SBO length-scale factor h = ls_factor*d_min "

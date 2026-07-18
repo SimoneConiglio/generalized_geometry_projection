@@ -257,6 +257,38 @@ hence $\hat f(x_k) = f_k$ and $\nabla \hat f(x_k) = \nabla f_k$ exactly at
 every sample. Where no sample lies within $d_{\max}$ the nearest sample's
 plane takes over (minimal support extension keeping the blend defined on
 the whole trust region).
+
+\emph{Caveat}: the Shepard construction is only usable when the scale is
+small relative to the spacing and the nodes are not jammed --- with a
+support large compared to the spacing the singular bumps overlap and the
+cardinal behaviour survives only in boundary layers that shrink with the
+spacing, and between nodes at distance $\varepsilon$ \emph{any} cardinal
+basis must swing between $\delta$-values, so
+$\lVert\nabla\alpha\rVert = O(1/\varepsilon)$.
+
+\item \code{"wendland"} (default) — \textbf{separation-aware smooth
+cardinal bumps}, which make both preconditions structural. Each node gets
+its own radius bounded by its nearest-neighbour distance,
+\begin{equation}
+b_i(x) = \Bigl(1 - \tfrac{r_i}{\rho_i}\Bigr)_+^{4}
+\Bigl(4\tfrac{r_i}{\rho_i} + 1\Bigr), \qquad
+r_i = \lVert x - x_i\rVert, \qquad
+\rho_i = 0.9\, \min\Bigl(\min_{j \ne i} \lVert x_i - x_j\rVert,\;
+\kappa_s h\Bigr),
+\label{eq:wendland}
+\end{equation}
+and $\lambda_i = b_i / \sum_l b_l$ (nearest-plane fallback where no bump
+covers). Because no support reaches another node and the Wendland $C^2$
+bump is flat at its centre ($b'(0)=0$), the complete cardinal constraint
+set holds \emph{exactly with bounded, non-singular weights}: near $x_k$
+every $b_{i\ne k}$ is identically zero, so $\alpha_i(x_k) = \delta_{ik}$,
+$\nabla\alpha_i(x_k) = 0$, $\nabla\beta_{ij}(x_k) = \delta_{ik} e_j$ with
+no boundary-layer degeneracy. Jammed nodes are handled upstream: the fit
+window is \emph{thinned to a minimum pairwise separation}
+(\code{min\_sep\_frac}$\cdot h$, keeping the trust-region centre and the
+incumbent best, then nearest-first), which collapses clusters to their
+leading representative and bounds the weight gradients by
+$O(1/(\code{min\_sep\_frac}\, h))$.
 \end{itemize}
 
 \paragraph{Planar variant} (\code{model="planar"}, \code{PlanarMLSModel}).

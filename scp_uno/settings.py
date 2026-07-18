@@ -251,16 +251,26 @@ class MLSSBOSettings(BaseOptimizerSettings):
         ),
     )
     weighting: str = Field(
-        "shepard",
+        "wendland",
         description=(
-            "Tangent-blend weights: 'shepard' (Hermite-Shepard cardinal "
-            "weights - true interpolation of values and gradients at every "
-            "sample, compact support) or 'softmax' (Gaussian scores, "
-            "interpolating only as h -> 0)."
+            "Tangent-blend weights: 'wendland' (default - separation-aware "
+            "smooth cardinal bumps whose support stays clear of every other "
+            "node, so Hermite cardinality holds exactly with bounded "
+            "weights), 'shepard' (singular compact cardinal weights, valid "
+            "only when the scale is small relative to the spacing) or "
+            "'softmax' (Gaussian scores, interpolating only as h -> 0)."
         ),
     )
     support_factor: float = Field(
-        3.0, description="Shepard support radius as a multiple of the length scale h."
+        3.0, description="Support radius cap as a multiple of the length scale h."
+    )
+    min_sep_frac: float = Field(
+        0.5,
+        description=(
+            "De-jamming: minimum pairwise separation of the tangent-blend "
+            "window, as a fraction of h (jammed clusters collapse to their "
+            "leading representative)."
+        ),
     )
 
     # -- trust region --

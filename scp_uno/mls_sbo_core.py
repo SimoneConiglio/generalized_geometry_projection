@@ -128,12 +128,22 @@ class MLSSBOConfig:
     #   "quadratic" anchored separable quadratic (centre-frozen weights);
     #   "planar"    centre-frozen planar Hermite MLS (no curvature term).
     model: str = "tangent"
-    # Tangent-blend weights: "shepard" (Hermite-Shepard cardinal weights -
-    # true interpolation of values AND gradients at every sample, compact
-    # support (support_factor*h)) or "softmax" (Gaussian scores,
-    # interpolating only as h -> 0).
-    weighting: str = "shepard"
+    # Tangent-blend weights:
+    #   "wendland" (default) separation-aware smooth cardinal bumps - each
+    #              node's support stays clear of every other node, so the
+    #              Hermite cardinality conditions hold exactly with bounded
+    #              non-singular weights;
+    #   "shepard"  singular compact cardinal weights (valid only when the
+    #              scale is small relative to the spacing);
+    #   "softmax"  Gaussian scores, interpolating only as h -> 0.
+    weighting: str = "wendland"
     support_factor: float = 3.0
+    # De-jamming: thin the fit window to this minimum pairwise separation
+    # (fraction of h) before building the tangent blend - between jammed
+    # nodes ANY cardinal basis must swing between delta-values over their
+    # spacing, so gradients blow up like 1/spacing unless clusters are
+    # collapsed to their best representative.
+    min_sep_frac: float = 0.5
 
     # -- acquisition (duck-typed fields consumed by gesbo_core.propose_batch) --
     kappa_base: float = 1.0
@@ -495,7 +505,7 @@ class TangentPlaneSurrogate:
     """
 
     def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
-                 h: float, weighting: str = "shepard", p: float = 2.0,
+                 h: float, weighting: str = "wendland", p: float = 2.0,
                  support_factor: float = 3.0) -> None:
         self.X = np.atleast_2d(np.asarray(X, float))         # (n, d)
         Y = np.asarray(Y, float)
@@ -506,6 +516,20 @@ class TangentPlaneSurrogate:
         self.weighting = weighting
         self.p = float(p)
         self.dmax = (float(support_factor) * self.h) ** 2
+        if weighting == "wendland":
+            # Separation-aware per-point radii: each bump's support must not
+            # reach any other node, so cardinality holds exactly with SMOOTH
+            # bounded weights - no singularity, no boundary-layer flat spots.
+            n = len(self.X)
+            if n > 1:
+                D = np.linalg.norm(
+                    self.X[:, None, :] - self.X[None, :, :], axis=2)
+                D[np.diag_indices(n)] = np.inf
+                r_nn = D.min(axis=1)
+            else:
+                r_nn = np.array([1.0])
+            self.rho = 0.9 * np.minimum(
+                r_nn, float(support_factor) * self.h)        # (n,)
 
     # ---------------------------------------------------------------- scores
     def _scores(self, S: np.ndarray):
@@ -520,6 +544,29 @@ class TangentPlaneSurrogate:
         if self.weighting == "softmax":
             q = -d2 / (2.0 * self.h * self.h)
             dq = -S / (self.h * self.h)
+            return q, dq
+        if self.weighting == "wendland":
+            # Wendland C2 bump b(t) = (1-t)^4 (4t+1), t = r/rho_i, flat at
+            # the centre (b'(0) = 0) and compactly supported at t = 1.
+            r = np.sqrt(d2)
+            t = r / self.rho                                 # (..., n)
+            inside = t < 1.0
+            if not np.all(np.any(inside, axis=-1)):          # empty coverage
+                nearest = np.argmin(d2, axis=-1)
+                idx = np.expand_dims(nearest, -1)
+                np.put_along_axis(inside, idx, True, axis=-1)
+            tc = np.where(inside, np.minimum(t, 1.0 - 1e-12), 0.0)
+            b = (1.0 - tc) ** 4 * (4.0 * tc + 1.0)
+            with np.errstate(divide="ignore", invalid="ignore"):
+                q = np.where(inside, np.log(np.maximum(b, 1e-300)), -np.inf)
+                # db/dx = -20 (1-t)^3 / rho^2 * s ; dq = db/(b dx)
+                coef = np.where(
+                    inside,
+                    -20.0 / ((1.0 - tc) * (4.0 * tc + 1.0)
+                             * self.rho * self.rho),
+                    0.0,
+                )
+            dq = coef[..., None] * S
             return q, dq
         with np.errstate(divide="ignore", invalid="ignore"):
             d2c = np.maximum(d2, 1e-30)
@@ -681,8 +728,13 @@ class MLSSBOptimizer:
 
         anchored = None
         if cfg.anchor_center and cfg.model == "tangent":
+            # De-jam: enforce a minimum pairwise separation in the window
+            # (keep the center and the incumbent best, then nearest-first).
+            sel = self._thin(keep, center, h * cfg.min_sep_frac,
+                             center_i=center_i)
+            pos = np.searchsorted(keep, sel)
             anchored = TangentPlaneSurrogate(
-                Xa[keep], Y, G, h, weighting=cfg.weighting,
+                Xa[sel], Y[pos], G[pos], h, weighting=cfg.weighting,
                 support_factor=cfg.support_factor)
         elif cfg.anchor_center and cfg.model == "planar":
             ci = center_i if center_i is not None else self._best_index()
@@ -712,6 +764,34 @@ class MLSSBOptimizer:
                 asy=max(cfg.asy_init, 1.3 * delta),
                 Y=(Y if np.any(value_mask) else None), value_mask=value_mask)
         return mls, cons_shift, anchored
+
+    def _thin(self, keep: np.ndarray, center: np.ndarray, sep: float,
+              center_i: Optional[int] = None) -> np.ndarray:
+        """Greedy minimum-separation thinning of the window ``keep``.
+
+        Priority order: the trust-region center sample, the incumbent best,
+        then remaining points nearest the center first; any point closer
+        than ``sep`` to an already-kept one is dropped (jammed clusters
+        collapse to their leading representative). Returns sorted indices
+        into the global archive.
+        """
+        Xa = np.asarray(self.X)
+        prio: List[int] = []
+        if center_i is not None and center_i in keep:
+            prio.append(int(center_i))
+        ib = self._best_index()
+        if ib in keep and ib not in prio:
+            prio.append(int(ib))
+        rest = [int(i) for i in
+                keep[np.argsort(np.linalg.norm(
+                    Xa[keep] - center[None, :], axis=1))]
+                if int(i) not in prio]
+        sel: List[int] = []
+        for i in prio + rest:
+            xi = Xa[i]
+            if all(np.linalg.norm(xi - Xa[j]) >= sep for j in sel):
+                sel.append(i)
+        return np.array(sorted(sel))
 
     def _min_dist_in_tr(self, center: np.ndarray, delta: float) -> float:
         """Minimal distance from the center to another sample inside the

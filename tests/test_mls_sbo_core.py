@@ -364,7 +364,47 @@ def test_sequential_mode_spends_budget_and_converges():
     assert any(r["subproblem"] == "slsqp" for r in records)
 
 
-@pytest.mark.parametrize("weighting", ["softmax", "shepard"])
+def test_wendland_weights_are_cardinal_with_bounded_gradients():
+    """Separation-aware Wendland bumps: exact value+gradient interpolation
+    at every node with SMOOTH bounded weights (no singularity) — including
+    heterogeneous spacing, where global-scale Shepard degenerates."""
+    rng = np.random.default_rng(26)
+    X = np.vstack([rng.random((6, 3)),
+                   [[0.05, 0.05, 0.05]], [[0.9, 0.9, 0.9]]])  # uneven spread
+    Y = rng.standard_normal((8, 2)) * 2.0
+    G = rng.standard_normal((8, 3, 2))
+    surr = TangentPlaneSurrogate(X, Y, G, h=0.4, weighting="wendland")
+    for i in range(8):
+        val, grad = surr.value_and_slope(X[i])
+        assert np.allclose(val, Y[i], atol=1e-10)
+        assert np.allclose(grad, G[i], atol=1e-8)
+    # bounded weight gradients at a generic point (no pole anywhere)
+    xq = np.array([0.4, 0.5, 0.6])
+    _, grad = surr.value_and_slope(xq)
+    assert np.all(np.isfinite(grad))
+
+
+def test_thinning_enforces_separation_and_keeps_priorities():
+    d = 3
+
+    def flat(x):
+        return 1.0, np.zeros(d), np.zeros(0), np.zeros((0, d))
+
+    opt = MLSSBOptimizer(flat, np.zeros(d), np.ones(d), MLSSBOConfig(seed=0))
+    pts = [np.full(d, 0.5), np.full(d, 0.5) + 1e-4,          # jammed pair
+           np.full(d, 0.6), np.full(d, 0.8)]
+    for p in pts:
+        opt._eval(p)
+    keep = np.arange(4)
+    sel = opt._thin(keep, np.full(d, 0.5), sep=0.05, center_i=0)
+    assert 0 in sel and 1 not in sel                          # cluster collapsed
+    assert 2 in sel and 3 in sel
+    for a in range(len(sel)):
+        for b in range(a + 1, len(sel)):
+            assert np.linalg.norm(opt.X[sel[a]] - opt.X[sel[b]]) >= 0.05
+
+
+@pytest.mark.parametrize("weighting", ["softmax", "shepard", "wendland"])
 def test_tangent_surrogate_gradient_is_exact(weighting):
     """The analytic gradient of the tangent-plane blend must equal the
     finite-difference derivative of its value — the surrogate is handed
