@@ -127,7 +127,8 @@ The framework provides seven major algorithms:
    deterministic direct solver, 3 seeds per config): gradient-only
    quadratic 109/539/562; constraint-value learning
    (``fit_values="constraints"``) 453/576/688; planar Hermite MLS
-   (``model="planar"``) 526/555/595. The three model architectures are
+   (``model="planar"``) 526/555/595; tangent-hyperplane softmax blend
+   (``model="tangent"``, the default) 536/612/892. The model architectures are
    **statistically indistinguishable at this sample size** — run-to-run
    basin scatter (109–688 within one config) dominates the architecture
    choice, so earlier single-run ablation rankings are not supported once
