@@ -93,7 +93,7 @@ def main() -> None:
                         choices=["none", "constraints", "all"],
                         help="MLS_SBO: outputs whose fit includes value rows.")
     parser.add_argument("--model", type=str, default=None,
-                        choices=["quadratic", "planar"],
+                        choices=["tangent", "quadratic", "planar"],
                         help="MLS_SBO exploitation-subproblem model.")
     parser.add_argument("--fem-solver", type=str, default=None,
                         choices=["direct", "iterative", "amjax"],

@@ -116,11 +116,13 @@ class MLSSBOConfig:
     # track sampled values, while the objective keeps quasi-Newton
     # gradient-only secants), or "all".
     fit_values: str = "constraints"
-    # Model of the exploitation subproblem: "quadratic" (anchored separable
-    # quadratic) or "planar" (center-frozen planar Hermite MLS - the local
-    # linear regression through neighbour values AND gradients, no
-    # curvature term).
-    model: str = "quadratic"
+    # Model of the exploitation subproblem:
+    #   "tangent"   (default) softmax-weighted sum of tangent hyperplanes -
+    #               closed form, exactly consistent analytic gradients, no
+    #               centre-freezing needed;
+    #   "quadratic" anchored separable quadratic (centre-frozen weights);
+    #   "planar"    centre-frozen planar Hermite MLS (no curvature term).
+    model: str = "tangent"
 
     # -- acquisition (duck-typed fields consumed by gesbo_core.propose_batch) --
     kappa_base: float = 1.0
@@ -437,6 +439,60 @@ class AnchoredSeparableQuadratic:
         return val, grad
 
 
+class TangentPlaneSurrogate:
+    """Softmax-weighted sum of tangent hyperplanes.
+
+    .. math::
+
+        \\hat f_o(x) = \\sum_i \\lambda_i(x)\\, T_{i,o}(x), \\qquad
+        T_{i,o}(x) = f_{i,o} + g_{i,o}^T (x - x_i), \\qquad
+        \\lambda_i(x) = \\operatorname{softmax}_i\\!\\big(-\\|x-x_i\\|^2 / 2h^2\\big)
+
+    Each sample contributes its first-order Taylor plane; the softmax of a
+    distance-decreasing score blends them, with the length scale ``h``
+    evolving with the sampling (the driver's min-distance rule). Key
+    properties:
+
+    * **closed form** — the analytic gradient
+      ``d\\hat f/dx = sum_i lam_i g_i + sum_i (dlam_i/dx) T_i(x)`` with
+      ``dlam_i/dx = lam_i (s_bar - s_i)/h^2``, ``s_i = x - x_i``,
+      ``s_bar = sum_l lam_l s_l``, is *exactly* the derivative of the value:
+      the surrogate can be handed to an SQP solver as-is, moving weights and
+      all — no centre-freezing, no diffuse-derivative approximation;
+    * reproduces affine functions exactly at any ``h`` (all planes coincide);
+    * interpolates each sample's value *and* gradient in the ``h -> 0``
+      limit (softmax -> nearest-plane indicator);
+    * every new sample adds its local plane — accumulating data refines the
+      learned shape by construction.
+
+    All ``m`` outputs (objective + constraints) share the weights.
+    """
+
+    def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
+                 h: float) -> None:
+        self.X = np.atleast_2d(np.asarray(X, float))         # (n, d)
+        Y = np.asarray(Y, float)
+        self.Y = Y if Y.ndim == 2 else Y[:, None]            # (n, m)
+        G = np.asarray(G, float)
+        self.G = G if G.ndim == 3 else G[:, :, None]         # (n, d, m)
+        self.h = float(h)
+
+    def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Exact values ``(m,)`` and analytic gradients ``(d, m)`` at ``x``."""
+        x = np.asarray(x, float)
+        S = x[None, :] - self.X                              # (n, d) = x - x_i
+        a = -np.sum(S * S, axis=1) / (2.0 * self.h * self.h)
+        a -= np.max(a)
+        w = np.exp(a)
+        lam = w / np.sum(w)                                  # (n,)
+        T = self.Y + np.einsum("nd,ndm->nm", S, self.G)      # (n, m) planes
+        val = lam @ T                                        # (m,)
+        s_bar = lam @ S                                      # (d,)
+        dlam = lam[:, None] * (s_bar[None, :] - S) / (self.h * self.h)
+        grad = np.einsum("n,ndm->dm", lam, self.G) + dlam.T @ T
+        return val, grad
+
+
 class PlanarMLSModel:
     """Center-frozen planar Hermite MLS model (no curvature term).
 
@@ -552,7 +608,9 @@ class MLSSBOptimizer:
         cons_shift = (mls._ym[1:] / mls._ys[1:]) if m else np.empty(0)
 
         anchored = None
-        if cfg.anchor_center and cfg.model == "planar":
+        if cfg.anchor_center and cfg.model == "tangent":
+            anchored = TangentPlaneSurrogate(Xa[keep], Y, G, h)
+        elif cfg.anchor_center and cfg.model == "planar":
             ci = center_i if center_i is not None else self._best_index()
             anchored = PlanarMLSModel(mls, self.X[ci])
         elif cfg.anchor_center:

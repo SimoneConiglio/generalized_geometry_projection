@@ -193,6 +193,34 @@ On a separable quadratic the fit is exact (test-enforced). The bandwidth
 floor \code{min\_fit\_neighbors} (default 1 = tightest) can force $h$ up to
 the $k$-th-nearest-sample distance.
 
+\paragraph{Tangent-hyperplane surrogate (default)}
+(\code{model="tangent"}, \code{TangentPlaneSurrogate}). The default step
+model is the softmax-weighted sum of the samples' tangent hyperplanes,
+\begin{equation}
+\hat f_o(x) \;=\; \sum_{i} \lambda_i(x)\, T_{i,o}(x), \qquad
+T_{i,o}(x) = f_{i,o} + g_{i,o}^{\top}(x - x_i), \qquad
+\lambda_i(x) = \frac{e^{q_i(x)}}{\sum_l e^{q_l(x)}}, \quad
+q_i = -\frac{\lVert x - x_i\rVert^2}{2h^2},
+\label{eq:tangent}
+\end{equation}
+with $h$ from \eqref{eq:lengthscale}. Its gradient is available in closed
+form and is \emph{exactly} the derivative of the value --- moving weights
+included --- so the surrogate is handed to the SQP subproblem as-is, with no
+centre-freezing and no diffuse-derivative approximation:
+\begin{equation}
+\nabla \hat f_o \;=\; \sum_i \lambda_i\, g_{i,o}
+\;+\; \sum_i T_{i,o}(x)\, \nabla\lambda_i,
+\qquad
+\nabla\lambda_i \;=\; \frac{\lambda_i\,\bigl(\bar s - s_i\bigr)}{h^2},
+\quad s_i = x - x_i,\;\; \bar s = \sum_l \lambda_l\, s_l .
+\end{equation}
+Properties (test-enforced): exact reproduction of affine functions at any
+$h$ (all planes coincide); interpolation of each sample's value \emph{and}
+gradient in the $h \to 0$ limit (softmax $\to$ nearest-plane indicator);
+every new sample adds its local plane, so accumulating data refines the
+learned shape by construction. All outputs (objective and constraints)
+share the weights, so constraints learn from values and gradients alike.
+
 \paragraph{Planar variant} (\code{model="planar"}, \code{PlanarMLSModel}).
 The per-query MLS of \eqref{eq:mlsnormal} is solved \emph{once} at $\xxi_k$
 with frozen weights, giving the affine model
@@ -291,7 +319,7 @@ intermediate variables & \code{intermediate} & \code{"linear"} \\
 $a_0$ & \code{asy\_init} & $0.5$ \\
 value rows & \code{fit\_values} & \code{"constraints"} \\
 bandwidth floor & \code{min\_fit\_neighbors} & $1$ \\
-model & \code{model} & \code{"quadratic"} \\
+model & \code{model} & \code{"tangent"} \\
 $\delta_0,\, \delta_{\min},\, \delta_{\max}$ & \code{tr\_init}, \code{tr\_min}, \code{tr\_max} & $0.25$, $10^{-5}$, $0.75$ \\
 shrink / expand & \code{tr\_shrink}, \code{tr\_expand} & $0.5$, $2.0$ \\
 $\eta_a$, shrink zone, expand zone & \code{eta\_accept}, \code{eta\_shrink}, \code{eta\_expand} & $10^{-4}$, $0.25$, $0.5$ \\

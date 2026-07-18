@@ -233,11 +233,13 @@ class MLSSBOSettings(BaseOptimizerSettings):
         ),
     )
     model: str = Field(
-        "quadratic",
+        "tangent",
         description=(
-            "Exploitation-subproblem model: 'quadratic' (anchored separable "
-            "quadratic) or 'planar' (center-frozen planar Hermite MLS "
-            "through neighbour values and gradients, no curvature term)."
+            "Exploitation-subproblem model: 'tangent' (default - "
+            "softmax-weighted sum of tangent hyperplanes, closed form with "
+            "exactly consistent analytic gradients), 'quadratic' (anchored "
+            "separable quadratic, center-frozen weights) or 'planar' "
+            "(center-frozen planar Hermite MLS, no curvature term)."
         ),
     )
 

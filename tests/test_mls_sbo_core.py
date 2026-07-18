@@ -16,6 +16,7 @@ from scp_uno.mls_sbo_core import (
     MLSSBOptimizer,
     MovingLeastSquares,
     PlanarMLSModel,
+    TangentPlaneSurrogate,
     mls_sbo_minimize,
 )
 
@@ -361,6 +362,67 @@ def test_sequential_mode_spends_budget_and_converges():
     assert result.f_opt < 1e-4 * f0 or result.n_evals >= 96
     assert result.f_opt < 1e-3 * f0
     assert any(r["subproblem"] == "slsqp" for r in records)
+
+
+def test_tangent_surrogate_gradient_is_exact():
+    """The analytic gradient of the softmax tangent-plane blend must equal
+    the finite-difference derivative of its value — the surrogate is handed
+    to SLSQP with moving weights, so this consistency is load-bearing."""
+    rng = np.random.default_rng(20)
+    X = rng.random((9, 4))
+    Y = rng.standard_normal((9, 2)) * 3.0
+    G = rng.standard_normal((9, 4, 2))
+    surr = TangentPlaneSurrogate(X, Y, G, h=0.3)
+    x0 = rng.random(4)
+    _, grad = surr.value_and_slope(x0)
+    eps = 1e-6
+    for k in range(4):
+        xp, xm = x0.copy(), x0.copy()
+        xp[k] += eps
+        xm[k] -= eps
+        fd = (surr.value_and_slope(xp)[0] - surr.value_and_slope(xm)[0]) / (2 * eps)
+        assert np.allclose(grad[k], fd, rtol=1e-5, atol=1e-8)
+
+
+@pytest.mark.parametrize("h", [0.05, 0.5, 3.0])
+def test_tangent_surrogate_exact_on_affine(h):
+    """All tangent planes of an affine function coincide, so the blend is
+    exact for any length scale (value and gradient)."""
+    rng = np.random.default_rng(21)
+    a, b = 1.3, np.array([0.5, -2.0, 1.0])
+    X = rng.random((8, 3))
+    Y = (a + X @ b)[:, None]
+    G = np.tile(b[:, None], (8, 1, 1)).astype(float)
+    surr = TangentPlaneSurrogate(X, Y, G, h=h)
+    xq = rng.random(3)
+    val, grad = surr.value_and_slope(xq)
+    assert np.isclose(val[0], a + xq @ b, atol=1e-9)
+    assert np.allclose(grad[:, 0], b, atol=1e-9)
+
+
+def test_tangent_surrogate_interpolates_as_h_shrinks():
+    """h -> 0: the softmax becomes a nearest-plane indicator, so the blend
+    interpolates each sample's value AND gradient."""
+    rng = np.random.default_rng(22)
+    X = rng.random((7, 2))
+    Y = rng.standard_normal((7, 1)) * 2.0
+    G = rng.standard_normal((7, 2, 1))
+    surr = TangentPlaneSurrogate(X, Y, G, h=5e-3)
+    for i in range(7):
+        val, grad = surr.value_and_slope(X[i])
+        assert np.isclose(val[0], Y[i, 0], atol=1e-8)
+        assert np.allclose(grad[:, 0], G[i, :, 0], atol=1e-6)
+
+
+def test_tangent_model_drives_the_sequential_optimizer():
+    d = 6
+    f0 = sphere_problem(d)(np.full(d, 0.8))[0]
+    result = mls_sbo_minimize(
+        sphere_problem(d), np.full(d, 0.8), np.zeros(d), np.ones(d),
+        MLSSBOConfig(max_evals=100, batch_size=1, max_outer_iter=200,
+                     model="tangent", seed=23),
+    )
+    assert result.f_opt < 0.05 * f0
 
 
 def test_planar_model_blends_values_and_gradients():
