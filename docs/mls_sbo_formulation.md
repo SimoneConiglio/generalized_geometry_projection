@@ -1,5 +1,10 @@
 # MLS-SBO: Mathematical Formulation
 
+> **Note**: a properly typeset version of this document is available as
+> [`mls_sbo_formulation.pdf`](mls_sbo_formulation.pdf) (LaTeX source:
+> `mls_sbo_formulation.tex`, build with `pdflatex`). Prefer the PDF — not
+> all Markdown viewers render the display math below.
+
 This document states precisely the mathematics implemented in
 `scp_uno/mls_sbo_core.py` (algorithm `MLS_SBO`). Code symbols are given in
 parentheses.

@@ -1,0 +1,306 @@
+% Copyright (c) 2026 Simone Coniglio — MIT license.
+% Mathematical formulation of the MLS-SBO algorithm (scp_uno/mls_sbo_core.py).
+% Build: pdflatex mls_sbo_formulation.tex
+\documentclass[11pt,a4paper]{article}
+\usepackage[margin=2.6cm]{geometry}
+\usepackage{amsmath,amssymb,bm}
+\usepackage{booktabs}
+\usepackage[T1]{fontenc}
+\usepackage{parskip}
+\newcommand{\code}[1]{\texttt{#1}}
+\newcommand{\xxi}{\xi}
+\DeclareMathOperator*{\argmin}{arg\,min}
+\DeclareMathOperator{\clip}{clip}
+\DeclareMathOperator{\diag}{diag}
+
+\title{MLS-SBO: Mathematical Formulation\\[2pt]
+\large Gradient-enhanced Moving-Least-Squares surrogate-based optimization\\
+as implemented in \code{scp\_uno/mls\_sbo\_core.py}}
+\author{}
+\date{}
+
+\begin{document}
+\maketitle
+\vspace{-3em}
+
+\section{Problem and sample archive}
+\begin{equation}
+\min_{x} \; f(x) \quad \text{s.t.} \quad c_j(x) \le 0,\;\; j=1,\dots,m,
+\qquad \ell \le x \le u .
+\end{equation}
+Internally all quantities live in the normalized box $\xxi \in [0,1]^d$ with
+$\xxi = (x-\ell)/(u-\ell)$; gradients are scaled accordingly
+(\code{MLSSBOptimizer.\_eval}). Every true evaluation performs one FEM solve
+plus adjoints and stores the full tuple in the archive
+\begin{equation}
+\mathcal{S} \;=\; \bigl\{(\xxi_i,\; f_i,\; g_i,\; c_i,\; J_i)\bigr\}_{i=1}^{N},
+\qquad g_i = \nabla f(\xxi_i) \in \mathbb{R}^d,\;\;
+J_i = \nabla c(\xxi_i) \in \mathbb{R}^{m\times d}.
+\end{equation}
+
+\section{Weights and length scale}
+All fits use Gaussian weights centred at an evaluation point $z$
+(\code{MovingLeastSquares.\_weights}):
+\begin{equation}
+w_i(z) \;=\; \exp\!\left(-\,\frac{\lVert z-\xxi_i\rVert^2 - r_{\min}^2(z)}{2h^2}\right),
+\qquad r_{\min}^2(z) \;=\; \min_l\, \lVert z-\xxi_l\rVert^2 .
+\label{eq:weights}
+\end{equation}
+Subtracting $r_{\min}^2$ (so the largest weight is always $1$) is exact --- a
+weighted least-squares solution is invariant to a common scaling of the
+weights --- and prevents underflow at small $h$; this is what makes the
+interpolation limit $h\to 0$ and linear exactness hold at \emph{any} length
+scale.
+
+\paragraph{Length-scale evolution.} At iteration $k$, with trust-region
+radius $\delta_k$ and centre $\xxi_k$ (\code{\_min\_dist\_in\_tr}),
+\begin{equation}
+h_k \;=\; \clip\bigl(\gamma_{\mathrm{ls}}\, d_{\min},\; h_{\min},\; h_{\max}\bigr),
+\qquad
+d_{\min} \;=\; \min_{\substack{i:\ \lVert\xxi_i-\xxi_k\rVert_\infty \le \delta_k\\ \xxi_i \ne \xxi_k}}
+\lVert \xxi_i - \xxi_k \rVert ,
+\label{eq:lengthscale}
+\end{equation}
+i.e.\ $h$ tracks the minimal distance from the trust-region centre to a
+sampled point inside the trust region ($\gamma_{\mathrm{ls}}=\code{ls\_factor}$,
+default $2$). As the trust region shrinks and samples cluster, the fit
+localizes at the pace of the sampling. Only the window of the
+$\code{max\_points}=60$ samples nearest the centre enters any fit
+(\code{\_fit\_surrogate}), the incumbent best always retained.
+
+\section{Per-query gradient-enhanced linear MLS (the surrogate)}
+Used by the batch acquisition (\S\ref{sec:batch}) and as the source of the
+planar model. Outputs are standardized per output $o$:
+$\tilde y = (y-\mu_o)/\sigma_o$. At a query point $z$ the local linear model
+$q(s) = \alpha + \beta^{\top}s$, $s = \xxi - z$, is fitted by weighted least
+squares to \textbf{both observation types} (Hermite MLS):
+\begin{align}
+\text{value rows:}&\quad \alpha + \beta^{\top}s_i \approx \tilde f_i,
+&&\text{weight } w_i(z), \notag\\
+\text{gradient rows:}&\quad \beta_l \approx \tilde g_{i,l},\;\; l=1,\dots,d,
+&&\text{weight } w_i(z). \notag
+\end{align}
+Stationarity gives one shared $(d{+}1)\times(d{+}1)$ normal system for all
+$m{+}1$ outputs (\code{\_solve\_local}; $\varepsilon$ = Tikhonov jitter):
+\begin{equation}
+\begin{pmatrix}
+\sum_i w_i & \sum_i w_i\, s_i^{\top} \\[3pt]
+\sum_i w_i\, s_i & \sum_i w_i\,\bigl(s_i s_i^{\top} + I\bigr)
+\end{pmatrix}
+\begin{pmatrix}\alpha\\[3pt] \beta\end{pmatrix}
+=
+\begin{pmatrix}
+\sum_i w_i\, \tilde f_i \\[3pt]
+\sum_i w_i\,\bigl(s_i \tilde f_i + \tilde g_i\bigr)
+\end{pmatrix},
+\label{eq:mlsnormal}
+\end{equation}
+where the $+I$ block is the contribution of the gradient equations.
+The prediction mean is $\alpha$; the \emph{diffuse derivative} is $\beta$
+(the true derivative adds weight-motion terms, see \S\ref{sec:consistency}).
+Properties (test-enforced): exact reproduction of affine functions at any
+$h$; interpolation of the nearest sample's value and gradient as $h \to 0$.
+
+\paragraph{Uncertainty proxy.} MLS has no native variance; the acquisition
+uses the sample-density complement with \emph{unshifted} weights
+$\bar w_i(z) = e^{-\lVert z-\xxi_i\rVert^2/2h^2}$:
+\begin{equation}
+\sigma(z) \;=\; \sqrt{\max\Bigl(0,\; 1 - \textstyle\sum_i \bar w_i(z)\Bigr)} \in [0,1],
+\qquad
+\nabla\sigma \;=\; -\,\frac{\nabla\bigl(\sum_i \bar w_i\bigr)}{2\,\sigma}.
+\end{equation}
+
+\section{Exploitation model: centre-frozen anchored separable quadratic}
+\label{sec:anchored}
+The step model freezes the weights at the trust-region centre $\xxi_k$ ---
+the ``moving'' of MLS happens \emph{across} iterations, as the centre moves
+--- so the model is an exact polynomial whose values and gradients are
+mutually consistent for the SQP subproblem solver
+(\code{AnchoredSeparableQuadratic}).
+
+\paragraph{Intermediate variables} (per output $o$ and coordinate $j$;
+\code{intermediate}). With \code{"linear"}, $y_j = \xxi_j$. With
+\code{"mma"}, a reciprocal transform is placed on the \emph{descent} side of
+the anchor gradient $g^{(o)}_{k,j}$, with asymptote distance
+$a = \max(a_0,\, 1.3\,\delta_k)$:
+\begin{equation}
+y_j \;=\;
+\begin{cases}
+\dfrac{1}{\xxi_j - L_j}, & g^{(o)}_{k,j} < 0,\quad L_j = \xxi_{k,j} - a
+\quad\text{(lower asymptote)},\\[8pt]
+\dfrac{1}{U_j - \xxi_j}, & g^{(o)}_{k,j} > 0,\quad U_j = \xxi_{k,j} + a
+\quad\text{(upper asymptote)},\\[8pt]
+\xxi_j, & g^{(o)}_{k,j} = 0 .
+\end{cases}
+\end{equation}
+Let $t_j(\xxi) = y_j(\xxi) - y_j(\xxi_k)$ and
+$c_j = g_{k,j} \bigl/ \tfrac{dy_j}{d\xxi_j}(\xxi_k)$. The model of output
+$o$ is
+\begin{equation}
+\boxed{\;
+m_o(\xxi) \;=\; f_{k,o} \;+\; \sum_{j=1}^{d} c_{j,o}\, t_j(\xxi)
+\;+\; \frac12 \sum_{j=1}^{d} q_{j,o}\, t_j(\xxi)^2
+\;}
+\qquad
+\frac{\partial m_o}{\partial \xxi_j}
+= \bigl(c_{j,o} + q_{j,o}\, t_j\bigr)\,\frac{dy_j}{d\xxi_j}(\xxi).
+\label{eq:model}
+\end{equation}
+Since $t(\xxi_k)=0$, the anchor is exact by construction:
+$m_o(\xxi_k) = f_{k,o}$ and $\nabla m_o(\xxi_k) = g^{(o)}_k$ --- the
+fully-linear-model requirement of trust-region theory, obtained for free
+because adjoint gradients are available.
+
+\paragraph{Diagonal curvature fit.} With $w_i = w_i(\xxi_k)$ frozen and the
+gradient residuals expressed in $y$-space,
+\begin{equation}
+h_{i,j} \;=\; \left.\frac{\partial f}{\partial y_j}\right|_{\xxi_i} - \,c_j
+\;=\; \frac{g_{i,j}}{\tfrac{dy_j}{d\xxi_j}(\xxi_i)} - c_j ,
+\end{equation}
+two observation types enter the weighted least squares for $q$:
+\begin{align}
+\text{gradient rows ($d$ per sample, decoupled):}&\quad
+t_{ij}\, q_j \approx h_{i,j}, &&\text{weight } w_i, \notag\\
+\text{value rows (1 per sample, coupled):}&\quad
+\tfrac12 \textstyle\sum_j q_j\, t_{ij}^2 \approx r_i, &&\text{weight }
+w^v_i = \dfrac{4\,d\, w_i}{\lVert t_i \rVert^2}, \notag
+\end{align}
+where $r_i = y^{\mathrm{obs}}_i - f_k - \sum_j c_j t_{ij}$ is the value
+residual. The value-row weight removes the units imbalance (gradient
+equations are $O(t)$, value equations $O(t^2)$: raw least squares lets
+gradients drown values at local distances) and gives one value equation the
+mass of the sample's $d$ gradient equations. Value rows are enabled per
+output by \code{fit\_values} $\in$ \{\code{none}, \code{constraints}
+(default: feasibility is a statement about \emph{values}), \code{all}\}.
+Gradient-only outputs use the decoupled quotient
+\begin{equation}
+q_j \;=\; \frac{\sum_i w_i\, t_{ij}\, h_{i,j}}
+{\sum_i w_i\, t_{ij}^2 \;+\; \varepsilon}\,;
+\label{eq:secant}
+\end{equation}
+value-carrying outputs solve the coupled $d\times d$ normal system (once per
+iteration, per output), with $v_i = t_i \odot t_i$:
+\begin{equation}
+\Bigl[\diag\Bigl(\textstyle\sum_i w_i\, t_{ij}^2\Bigr)
++ \tfrac14 \textstyle\sum_i w^v_i\, v_i^{\vphantom{\top}} v_i^{\top}
++ \varepsilon I\Bigr]\, q
+\;=\;
+\textstyle\sum_i w_i\, (t_i \odot h_i)
++ \tfrac12 \textstyle\sum_i w^v_i\, r_i\, v_i .
+\label{eq:coupled}
+\end{equation}
+On a separable quadratic the fit is exact (test-enforced). The bandwidth
+floor \code{min\_fit\_neighbors} (default 1 = tightest) can force $h$ up to
+the $k$-th-nearest-sample distance.
+
+\paragraph{Planar variant} (\code{model="planar"}, \code{PlanarMLSModel}).
+The per-query MLS of \eqref{eq:mlsnormal} is solved \emph{once} at $\xxi_k$
+with frozen weights, giving the affine model
+$m(\xxi) = \hat\alpha + \hat\beta^{\top}(\xxi - \xxi_k)$ in raw units. Its
+value and slope blend neighbour values \emph{and} gradients; it does not
+hard-interpolate the incumbent (fully-linear accuracy, which trust-region
+theory accepts) and carries no curvature term.
+
+\section{Why the model is centre-frozen (consistency)}
+\label{sec:consistency}
+For a \emph{moving} fit the true derivative of the prediction is
+\begin{equation}
+\frac{d\,\alpha(z)}{dz}
+\;=\; \underbrace{\beta(z)}_{\text{diffuse}}
+\;+\; \underbrace{\frac{\partial \alpha}{\partial w}\,
+\frac{\partial w}{\partial z}}_{\text{weight motion}},
+\end{equation}
+so the diffuse part alone is \emph{not} the derivative of the value actually
+returned. Handing an SQP solver the pair (moving value, diffuse gradient)
+gives it an inconsistent problem and corrupts its line searches --- a defect
+measured on the GGP benchmark. Freezing $w$ at $\xxi_k$ per iteration makes
+the model a polynomial, for which value and gradient are exactly consistent;
+the diffuse derivative remains only inside the heuristic batch acquisition
+(\S\ref{sec:batch}).
+
+\section{Subproblem, trust region, restarts}
+\paragraph{Step subproblem} (\code{\_solve\_subproblem}); this is the whole
+step in the sequential regime $\code{batch\_size}=1$:
+\begin{equation}
+\xxi^{+} \;=\; \argmin_{\xxi}\; m_0(\xxi)
+\quad \text{s.t.} \quad m_j(\xxi) \le 0,\qquad
+\xxi \in \bigl[\max(0,\, \xxi_k - \delta),\; \min(1,\, \xxi_k + \delta)\bigr],
+\end{equation}
+solved by SLSQP with the models' analytic gradients, multistarted from
+$\{\xxi_k,\ \xxi_{\mathrm{best}}\}$ plus two random trust-region points;
+fallbacks in order: phase-1 feasibility restoration
+$\min_\xxi \sum_j \max(0, m_j(\xxi))^2$, then L-BFGS-B on the penalized model
+merit. If $\xxi^{+} = \xxi_k$ (model KKT point), a \emph{null step} shrinks
+$\delta$ without spending a true evaluation.
+
+\paragraph{Acceptance and radius.} With the $\ell_1$ merit
+$\varphi(\xxi) = f(\xxi) + \mu \sum_j \max\bigl(0, c_j(\xxi)\bigr)$ and its
+model counterpart $m^{\varphi}$, the ratio test is
+\begin{equation}
+\rho_k \;=\; \frac{\varphi(\xxi_k) - \varphi(\xxi^{+})}
+{m^{\varphi}(\xxi_k) - m^{\varphi}(\xxi^{+})}.
+\end{equation}
+The centre moves when the actual reduction is positive and
+$\rho_k \ge \eta_a$; the radius follows the classical three-zone rule:
+shrink $\times\,0.5$ if the step failed or $\rho_k < 0.25$; hold in the
+middle band; expand $\times\,2$ (capped) if $\rho_k \ge 0.5$ and the step
+reached at least $0.8\,\delta$.
+
+\paragraph{Restarts.} On trust-region collapse ($\delta < \delta_{\min}$) or
+stall, restart from the incumbent best with radius cycling
+$\delta \leftarrow \delta_0 / 2^{(r-1) \bmod 3}$ and one randomized
+evaluation inside the new region (so the refit differs from the run that
+stalled), up to \code{n\_resets} times: the full evaluation budget is always
+spent, as a sequential optimizer such as MMA would.
+
+\section{Batch mode (optional, $q = \code{batch\_size} > 1$)}
+\label{sec:batch}
+Point 1 is the subproblem solution above; points $2,\dots,q$ minimize the
+penalized lower-confidence-bound acquisition shared with GE-SBO
+(\code{gesbo\_core.propose\_batch}, duck-typed on the surrogate of
+\eqref{eq:mlsnormal}):
+\begin{equation}
+A_j(\xxi) \;=\; \hat m_0(\xxi) \;-\; \kappa_j\, \sigma(\xxi)
+\;+\; \varrho \sum_{c} \max\bigl(0,\, \hat m_c(\xxi) + \mathrm{shift}_c\bigr)^2
+\;+\; w_r \sum_{b<j} e^{-\lVert \xxi - \xxi_b \rVert^2 / 2 h_r^2},
+\end{equation}
+with $\kappa_j = \kappa_0\, \gamma_\kappa^{\,j-1}$ an exploration ladder,
+$\hat m$ the standardized per-query MLS means, $\sigma$ the density proxy,
+and the last term a diversity repulsion from already-selected batch members.
+
+\section{Reproducibility}
+The optimizer is deterministic (seeded RNG, deterministic linear algebra).
+Bit-reproducibility of a full run additionally requires a deterministic FEM
+backend: the \code{amjax} (JAX/XLA) solver carries a per-process
+$O(10^{-13})$ perturbation from thread-pool reduction ordering, which the
+chaotic trust-region trajectory amplifies into \emph{different local minima};
+\code{fem\_solver: direct} (scipy SuperLU) is verified bit-deterministic
+end-to-end.
+
+\section{Defaults}
+\begin{center}
+\begin{tabular}{lll}
+\toprule
+Symbol & Config field & Default \\
+\midrule
+$\gamma_{\mathrm{ls}}$ & \code{ls\_factor} & $2.0$ \\
+$h_{\min},\, h_{\max}$ & \code{ls\_min}, \code{ls\_max} & $10^{-3}$, $2.0$ \\
+window $N$ & \code{max\_points} & $60$ \\
+$\varepsilon$ & \code{regularization} & $10^{-8}$ \\
+intermediate variables & \code{intermediate} & \code{"linear"} \\
+$a_0$ & \code{asy\_init} & $0.5$ \\
+value rows & \code{fit\_values} & \code{"constraints"} \\
+bandwidth floor & \code{min\_fit\_neighbors} & $1$ \\
+model & \code{model} & \code{"quadratic"} \\
+$\delta_0,\, \delta_{\min},\, \delta_{\max}$ & \code{tr\_init}, \code{tr\_min}, \code{tr\_max} & $0.25$, $10^{-5}$, $0.75$ \\
+shrink / expand & \code{tr\_shrink}, \code{tr\_expand} & $0.5$, $2.0$ \\
+$\eta_a$, shrink zone, expand zone & \code{eta\_accept}, \code{eta\_shrink}, \code{eta\_expand} & $10^{-4}$, $0.25$, $0.5$ \\
+$\mu$ & \code{penalty} & $100$ \\
+restarts & \code{n\_resets} & $8$ \\
+$q$ & \code{batch\_size} & $4$; \ $1$ = sequential regime \\
+$\kappa_0,\, \gamma_\kappa,\, w_r$ & \code{kappa\_base}, \code{kappa\_growth}, \code{repulsion\_weight} & $1$, $2$, $1$ \\
+\bottomrule
+\end{tabular}
+\end{center}
+
+\end{document}
