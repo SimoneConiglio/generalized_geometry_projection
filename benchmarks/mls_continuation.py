@@ -37,10 +37,12 @@ DEFAULT_SCHEDULE = [
 ]
 
 
-def solver_options(config: str, seed: int) -> tuple[str, dict]:
+def solver_options(config: str, seed: int, tr_init=None) -> tuple[str, dict]:
     if config == "mma":
         return "MMA", None                # keep the preset's MMA options
     common = {"seed": seed, "batch_size": 1, "max_outer_iter": 400}
+    if tr_init is not None:
+        common["tr_init"] = tr_init
     if config == "quadratic":
         return "MLS_SBO", {**common, "model": "quadratic", "fit_values": "none",
                            "min_fit_neighbors": 1, "intermediate": "linear",
@@ -57,11 +59,12 @@ def main() -> None:
     parser.add_argument("--max-evals", type=int, default=200,
                         help="TOTAL budget across all phases.")
     parser.add_argument("--seed", type=int, default=0)
+    parser.add_argument("--tr-init", type=float, default=None)
     parser.add_argument("--plot-dir", type=Path, default=None)
     args = parser.parse_args()
 
     spec = load_problem(PRESET)
-    algo, options = solver_options(args.config, args.seed)
+    algo, options = solver_options(args.config, args.seed, args.tr_init)
     t0 = time.time()
     x = None
     result = None
