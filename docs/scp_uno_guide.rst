@@ -136,7 +136,21 @@ The framework provides seven major algorithms:
    535/636/694, and the separation-aware Wendland cardinal weights with
    window de-jamming (``weighting="wendland"``, the default) give
    558/641/659 — neither the global solve, the weight regime, nor either
-   cardinal-weight family separates from the base runs. The model
+   cardinal-weight family separates from the base runs.
+
+   **Density-field diagnosis and continuation.** The low-performing runs
+   (~500–900) are not inferior truss layouts but *collapsed* designs: the
+   components thin out into a near-void gray haze (always feasible under
+   the upper-bound volume constraint), after which their position/angle
+   gradients vanish and the run stalls on a flat plateau. Parameter
+   continuation (``benchmarks/mls_continuation.py``: warm-started
+   ``ka``/``pp`` homotopy, soft→baseline, total budget split 35/30/35 so
+   results stay iso-function-calls) counters exactly this — the soft
+   saturation keeps faint components' sensitivities alive so they can be
+   revived before the sharp phase locks the topology. Deterministic
+   results (3 seeds): quadratic 157/266/405 (median 539 → 266), Wendland
+   tangent 242/472/811 (median 641 → 472); MMA is collapse-proof already
+   and does not benefit (78.2 vs 75.7). The model
    architectures are
    **statistically indistinguishable at this sample size** — run-to-run
    basin scatter (109–688 within one config) dominates the architecture
