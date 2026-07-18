@@ -34,13 +34,16 @@ PRESET = Path(__file__).resolve().parents[1] / "ggp" / "cli" / "presets" / "shor
 # GP's linear stiffness (p=1) field-level gray is structurally optimal.
 # Budgets sum to --max-evals.
 DEFAULT_SCHEDULE = [
-    # gammac-only penalty ramp: the final phase is EXACTLY the baseline
-    # formulation (GP: p_penalty=1, gammac=3). Stacking p_penalty=3 on top
-    # of gammac=3 was measured to backfire (effective Mc^9 interpolation
-    # collapses mid-gray stiffness and the final phase fights the crash
-    # instead of binarizing).
-    ({"ka": 3.0, "pp": 20.0, "gammac": 1.0}, 0.35),
-    ({"ka": 6.0, "pp": 50.0, "gammac": 2.0}, 0.30),
+    # Measured winner: continue ONLY the geometry sharpness (ka/pp) and keep
+    # the material penalty at full strength (gammac=3) in every phase.
+    # Penalty ramps backfire on rho_V grayness and compliance alike:
+    # gammac 1->2->3 gives 195-225 with gray ~0.62 (the soft-gammac phase
+    # creates spread-out gray-mass sheets the later phases cannot
+    # consolidate); stacking p_penalty 1->3 on top gives 203-357 with zero
+    # solid elements (effective Mc^9 collapses mid-gray stiffness). The
+    # ka/pp-only schedule + tr_init=0.05 gives 127/155/206 (rho_V gray 0.44).
+    ({"ka": 3.0, "pp": 20.0}, 0.35),
+    ({"ka": 6.0, "pp": 50.0}, 0.30),
     ({}, 0.35),
 ]
 
