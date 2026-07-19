@@ -796,9 +796,13 @@ def loo_select_support(X: np.ndarray, Y: np.ndarray, G: np.ndarray, h: float,
     sg2 = np.maximum(np.mean(np.sum(G * G, axis=1), axis=0), 1e-30)
     best_fac, best_err = float(factors[0]), np.inf
     idx = np.arange(n)
+    # Cap the number of scored (held-out) points: a spread-out deterministic
+    # subset keeps the selection cost bounded for large windows.
+    scored = (idx if n <= 20
+              else np.unique(np.linspace(0, n - 1, 20).astype(int)))
     for fac in factors:
         err = 0.0
-        for i in range(n):
+        for i in scored:
             keep = idx != i
             s = ProductHermiteSurrogate(X[keep], Y[keep], G[keep], h,
                                         support_factor=fac, w_arg=w_arg)
