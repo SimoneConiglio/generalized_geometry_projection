@@ -122,15 +122,21 @@ class MLSSBOConfig:
     # gradient-only secants), or "all".
     fit_values: str = "constraints"
     # Model of the exploitation subproblem:
-    #   "product"   (default) product-form Hermite shape functions - the
-    #               full cardinal constraint set for ANY node spacing and
-    #               any d_max (cardinality by product zeros), closed form,
-    #               exactly consistent analytic gradients;
-    #   "tangent"   weighted sum of tangent hyperplanes (closed form,
-    #               consistent gradients, cardinal only per weighting);
-    #   "quadratic" anchored separable quadratic (centre-frozen weights);
+    #   "quadratic" (default) anchored separable quadratic (centre-frozen
+    #               weights) - measured best STEP model on the cantilever
+    #               (127/155/206 vs product's 324-772 under the same
+    #               continuation+cap protocol): curvature at the trust-
+    #               region centre is what earns good steps, and cardinal
+    #               interpolants are flat there by construction;
+    #   "product"   product-form Hermite shape functions - the full
+    #               cardinal constraint set for ANY node spacing
+    #               (cardinality by product zeros), closed form, exactly
+    #               consistent analytic gradients; the best measured
+    #               *surrogate* (beats GEK on Branin) - use it when the
+    #               model itself is the deliverable;
+    #   "tangent"   weighted sum of tangent hyperplanes;
     #   "planar"    centre-frozen planar Hermite MLS (no curvature term).
-    model: str = "product"
+    model: str = "quadratic"
     # Support radii for model="product":
     #   radius="nn" (default): Deparis RL-RBF localization - per-point
     #     rho_i = nn_factor * nearest-neighbour distance; parameter-free

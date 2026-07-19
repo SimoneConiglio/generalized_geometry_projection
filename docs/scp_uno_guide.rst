@@ -158,6 +158,21 @@ The framework provides seven major algorithms:
    and most consistent MLS_SBO configuration measured, within ~2x of
    MMA's 75.7 at iso-budget.
 
+   **Surrogate quality is not step quality.** The product-form Hermite
+   shape functions (``model="product"``: exact value+gradient
+   interpolation at every sample for any spacing, cardinality by product
+   zeros; support radii either Deparis nearest-neighbour ``radius="nn"``
+   or LOO-selected global ``radius="global", auto_support=True``) are the
+   best measured *surrogate* — on a 10-point Branin sampling they beat
+   gradient-enhanced kriging (f RMSE 22.9 vs 30.2, max grad err 970 vs
+   2084) with exact node interpolation. As the optimizer's *step model*
+   under the continuation+cap protocol they nonetheless trail the
+   anchored quadratic (LOO-global 349/408/415, Deparis-nn 324/772/416 vs
+   127/155/206): cardinal interpolants are flat at the trust-region
+   centre by construction (the grad-alpha=0 conditions), and curvature at
+   the centre is what earns good steps. Default step model: quadratic;
+   use ``model="product"`` when the surrogate itself is the deliverable.
+
    **Penalty continuation does NOT help** (measured on the geometric mass
    field ``rho_V``, the honest binarization metric — ``rho_E`` carries
    ``gammac`` and overstates grayness): ramping ``gammac`` 1→2→3 raises
