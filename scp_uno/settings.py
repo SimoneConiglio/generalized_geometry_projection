@@ -265,6 +265,14 @@ class MLSSBOSettings(BaseOptimizerSettings):
     support_factor: float = Field(
         3.0, description="Support radius cap as a multiple of the length scale h."
     )
+    auto_support: bool = Field(
+        True,
+        description=(
+            "model='product': self-compute the support radius each iteration "
+            "by gradient-enhanced leave-one-out (the likelihood analogue for "
+            "interpolants) instead of using the fixed support_factor."
+        ),
+    )
     min_sep_frac: float = Field(
         0.5,
         description=(

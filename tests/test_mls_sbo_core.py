@@ -409,6 +409,35 @@ def test_product_shape_functions_compact_support_and_fallback():
     assert np.allclose(grad[:, 0], 0.0)
 
 
+def test_loo_selects_a_sensible_support_radius():
+    """The gradient-enhanced LOO selector must pick a support factor whose
+    TRUE held-out error is close to the best in the grid (likelihood
+    analogue, computed blind)."""
+    from scp_uno.mls_sbo_core import loo_select_support
+    rng = np.random.default_rng(40)
+    d = 2
+
+    def f(x):
+        return float(np.sin(3 * x[0]) + (x[1] - 0.4) ** 2), \
+            np.array([3 * np.cos(3 * x[0]), 2 * (x[1] - 0.4)])
+
+    X = rng.random((12, d))
+    Y = np.array([[f(x)[0]] for x in X])
+    G = np.stack([f(x)[1][:, None] for x in X])
+    h = 0.15
+    factors = (1.0, 2.0, 3.0, 4.5, 6.0)
+    fac = loo_select_support(X, Y, G, h, factors=factors)
+    assert fac in factors
+    # true generalization error of each candidate on a probe set
+    probes = rng.random((150, d))
+    def true_err(fc):
+        s = ProductHermiteSurrogate(X, Y, G, h, support_factor=fc)
+        return np.sqrt(np.mean([(s.value_and_slope(p)[0][0] - f(p)[0]) ** 2
+                                for p in probes]))
+    errs = {fc: true_err(fc) for fc in factors}
+    assert errs[fac] <= 1.5 * min(errs.values())
+
+
 def test_product_model_drives_the_sequential_optimizer():
     d = 6
     f0 = sphere_problem(d)(np.full(d, 0.8))[0]

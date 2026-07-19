@@ -51,7 +51,7 @@ from __future__ import annotations
 
 import dataclasses
 import logging
-from typing import Callable, List, Optional, Tuple
+from typing import Callable, List, Optional, Sequence, Tuple
 
 import numpy as np
 from scipy.optimize import minimize
@@ -131,6 +131,11 @@ class MLSSBOConfig:
     #   "quadratic" anchored separable quadratic (centre-frozen weights);
     #   "planar"    centre-frozen planar Hermite MLS (no curvature term).
     model: str = "product"
+    # Self-computed support radius for model="product": gradient-enhanced
+    # leave-one-out (the likelihood analogue for interpolants) picks the
+    # support factor from a small grid each iteration, so rmax is not a
+    # user input. False falls back to the fixed support_factor.
+    auto_support: bool = True
     # Tangent-blend weights:
     #   "wendland" (default) separation-aware smooth cardinal bumps - each
     #              node's support stays clear of every other node, so the
@@ -654,7 +659,8 @@ class ProductHermiteSurrogate:
     """
 
     def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
-                 h: float, support_factor: float = 3.0) -> None:
+                 h: float, support_factor: float = 3.0,
+                 w_arg: str = "r") -> None:
         self.X = np.atleast_2d(np.asarray(X, float))         # (n, d)
         Y = np.asarray(Y, float)
         self.Y = Y if Y.ndim == 2 else Y[:, None]            # (n, m)
@@ -662,6 +668,12 @@ class ProductHermiteSurrogate:
         self.G = G if G.ndim == 3 else G[:, :, None]         # (n, d, m)
         self.rmax = float(support_factor) * float(h)
         self.dmax = self.rmax ** 2
+        # Smoothstep argument: "r" (linear distance, default) keeps all the
+        # cardinal conditions with a QUADRATIC node plateau; "d2" (squared
+        # distance, the original sheet form) has a quartic plateau whose
+        # waterbed compensation was measured to triple the gradient ringing
+        # between nodes (Branin study: max grad err 7042 vs 2223 @ rmax=0.75).
+        self.w_arg = w_arg
         n = len(self.X)
         # per-node normalizers N_i = prod_{l != i} (1 - W_l(x_i))
         self.N = np.empty(n)
@@ -674,9 +686,16 @@ class ProductHermiteSurrogate:
         """Smoothstep weights and their gradients at one point."""
         S = x[None, :] - self.X                              # (n, d)
         dd = np.sum(S * S, axis=1)
+        if self.w_arg == "r":
+            r = np.sqrt(dd)
+            t = np.clip(r / self.rmax, 0.0, 1.0)
+            w = 2.0 * t ** 3 - 3.0 * t * t + 1.0
+            with np.errstate(invalid="ignore", divide="ignore"):
+                coef = np.where(r > 1e-30,
+                                (6.0 * t * t - 6.0 * t) / (self.rmax * r), 0.0)
+            return w, coef[:, None] * S, S
         t = np.clip(dd / self.dmax, 0.0, 1.0)
         w = 2.0 * t ** 3 - 3.0 * t * t + 1.0
-        # dW/dx = W'(t)/dmax * 2 (x - x_i);  W'(t) = 6t^2 - 6t
         dw = ((6.0 * t * t - 6.0 * t) / self.dmax)[:, None] * (2.0 * S)
         return w, dw, S
 
@@ -741,6 +760,54 @@ class ProductHermiteSurrogate:
         """Batch values ``(q, m)`` (loop; used by the global subproblem scan)."""
         Xq = np.atleast_2d(np.asarray(Xq, float))
         return np.stack([self.value_and_slope(xq)[0] for xq in Xq])
+
+
+def loo_select_support(X: np.ndarray, Y: np.ndarray, G: np.ndarray, h: float,
+                       factors: Sequence[float] = (1.0, 1.5, 2.0, 3.0, 4.5, 6.0),
+                       w_arg: str = "r") -> float:
+    """Blind support-radius selection by gradient-enhanced leave-one-out.
+
+    The likelihood analogue for a non-probabilistic interpolant: for each
+    candidate ``support_factor``, rebuild the product-form surrogate without
+    each sample in turn (construction is closed form, so a rebuild costs one
+    normalizer pass) and score the held-out prediction on BOTH the value and
+    the gradient, each standardized per output:
+
+    .. math::
+
+        E(r) = \\frac{1}{n} \\sum_i \\Bigl[
+          \\sum_o (\\hat f^{-i}_o(x_i) - y_{io})^2 / \\sigma_{f,o}^2
+        + \\sum_o \\lVert \\nabla \\hat f^{-i}_o(x_i) - g_{io} \\rVert^2
+          / \\sigma_{g,o}^2 \\Bigr]
+
+    On the Branin study this selector recovers the truth-optimal radius
+    exactly at 10 samples and to within one grid step at 20. Returns the
+    best ``support_factor`` from ``factors``.
+    """
+    X = np.atleast_2d(np.asarray(X, float))
+    Y = np.asarray(Y, float)
+    Y = Y if Y.ndim == 2 else Y[:, None]
+    G = np.asarray(G, float)
+    G = G if G.ndim == 3 else G[:, :, None]
+    n, m = Y.shape
+    if n < 3:
+        return float(factors[len(factors) // 2])
+    sf2 = np.maximum(np.var(Y, axis=0), 1e-30)               # (m,)
+    sg2 = np.maximum(np.mean(np.sum(G * G, axis=1), axis=0), 1e-30)
+    best_fac, best_err = float(factors[0]), np.inf
+    idx = np.arange(n)
+    for fac in factors:
+        err = 0.0
+        for i in range(n):
+            keep = idx != i
+            s = ProductHermiteSurrogate(X[keep], Y[keep], G[keep], h,
+                                        support_factor=fac, w_arg=w_arg)
+            v, g = s.value_and_slope(X[i])
+            err += float(np.sum((v - Y[i]) ** 2 / sf2))
+            err += float(np.sum(np.sum((g - G[i]) ** 2, axis=0) / sg2))
+        if err < best_err:
+            best_err, best_fac = err, float(fac)
+    return best_fac
 
 
 class PlanarMLSModel:
@@ -859,8 +926,10 @@ class MLSSBOptimizer:
 
         anchored = None
         if cfg.anchor_center and cfg.model == "product":
+            sfac = (loo_select_support(Xa[keep], Y, G, h)
+                    if cfg.auto_support else cfg.support_factor)
             anchored = ProductHermiteSurrogate(
-                Xa[keep], Y, G, h, support_factor=cfg.support_factor)
+                Xa[keep], Y, G, h, support_factor=sfac)
         elif cfg.anchor_center and cfg.model == "tangent":
             # De-jam: enforce a minimum pairwise separation in the window
             # (keep the center and the incumbent best, then nearest-first).
