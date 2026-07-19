@@ -131,11 +131,16 @@ class MLSSBOConfig:
     #   "quadratic" anchored separable quadratic (centre-frozen weights);
     #   "planar"    centre-frozen planar Hermite MLS (no curvature term).
     model: str = "product"
-    # Self-computed support radius for model="product": gradient-enhanced
-    # leave-one-out (the likelihood analogue for interpolants) picks the
-    # support factor from a small grid each iteration, so rmax is not a
-    # user input. False falls back to the fixed support_factor.
-    auto_support: bool = True
+    # Support radii for model="product":
+    #   radius="nn" (default): Deparis RL-RBF localization - per-point
+    #     rho_i = nn_factor * nearest-neighbour distance; parameter-free
+    #     spacing adaptivity at the cost of one distance pass.
+    #   radius="global": rho_i = support_factor*h for all points; pairs
+    #     with auto_support=True, which LOO-selects the factor per
+    #     iteration (the likelihood analogue - more elegant, less cheap).
+    radius: str = "nn"
+    nn_factor: float = 2.5
+    auto_support: bool = False
     # Tangent-blend weights:
     #   "wendland" (default) separation-aware smooth cardinal bumps - each
     #              node's support stays clear of every other node, so the
@@ -660,7 +665,8 @@ class ProductHermiteSurrogate:
 
     def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
                  h: float, support_factor: float = 3.0,
-                 w_arg: str = "r") -> None:
+                 w_arg: str = "r", radius: str = "nn",
+                 nn_factor: float = 2.5) -> None:
         self.X = np.atleast_2d(np.asarray(X, float))         # (n, d)
         Y = np.asarray(Y, float)
         self.Y = Y if Y.ndim == 2 else Y[:, None]            # (n, m)
@@ -668,6 +674,18 @@ class ProductHermiteSurrogate:
         self.G = G if G.ndim == 3 else G[:, :, None]         # (n, d, m)
         self.rmax = float(support_factor) * float(h)
         self.dmax = self.rmax ** 2
+        # Per-point support radii. "nn" (default) is the Deparis RL-RBF
+        # localization rule: rho_i = nn_factor * (distance from x_i to its
+        # nearest other sample) - parameter-free spacing adaptivity at the
+        # cost of one distance pass; "global" uses rho_i = support_factor*h
+        # for all points (pairs with the LOO selector).
+        nX = len(self.X)
+        if radius == "nn" and nX > 1:
+            D = np.linalg.norm(self.X[:, None, :] - self.X[None, :, :], axis=2)
+            D[np.diag_indices(nX)] = np.inf
+            self.rho = float(nn_factor) * D.min(axis=1)      # (n,)
+        else:
+            self.rho = np.full(nX, self.rmax)
         # Smoothstep argument: "r" (linear distance, default) keeps all the
         # cardinal conditions with a QUADRATIC node plateau; "d2" (squared
         # distance, the original sheet form) has a quartic plateau whose
@@ -688,15 +706,15 @@ class ProductHermiteSurrogate:
         dd = np.sum(S * S, axis=1)
         if self.w_arg == "r":
             r = np.sqrt(dd)
-            t = np.clip(r / self.rmax, 0.0, 1.0)
+            t = np.clip(r / self.rho, 0.0, 1.0)
             w = 2.0 * t ** 3 - 3.0 * t * t + 1.0
             with np.errstate(invalid="ignore", divide="ignore"):
                 coef = np.where(r > 1e-30,
-                                (6.0 * t * t - 6.0 * t) / (self.rmax * r), 0.0)
+                                (6.0 * t * t - 6.0 * t) / (self.rho * r), 0.0)
             return w, coef[:, None] * S, S
-        t = np.clip(dd / self.dmax, 0.0, 1.0)
+        t = np.clip(dd / (self.rho * self.rho), 0.0, 1.0)
         w = 2.0 * t ** 3 - 3.0 * t * t + 1.0
-        dw = ((6.0 * t * t - 6.0 * t) / self.dmax)[:, None] * (2.0 * S)
+        dw = ((6.0 * t * t - 6.0 * t) / (self.rho * self.rho))[:, None] * (2.0 * S)
         return w, dw, S
 
     @staticmethod
@@ -739,20 +757,20 @@ class ProductHermiteSurrogate:
         ah = alpha / Ssum
         dah = (dalpha * Ssum - alpha[:, None] * dSsum[None, :]) / (Ssum * Ssum)
         # beta_ij and gradient
-        t = S / self.rmax                                    # (n, d)
+        t = S / self.rho[:, None]                            # (n, d)
         inside = np.abs(t) < 1.0
         g = np.where(inside, t * (t * t - 1.0) ** 2, 0.0)    # gamma(t)
         gp = np.where(inside, (t * t - 1.0) * (5.0 * t * t - 1.0), 0.0)
-        # beta_ij = rmax gamma(t_ij) alpha_hat_i: the NORMALIZED alpha is the
-        # envelope, so |beta| <= 0.19 rmax is bounded by construction (the
-        # raw per-node normalizer 1/N_i amplifies between nodes when the
-        # supports overlap; all node conditions are unchanged since
+        # beta_ij = rho_i gamma(t_ij) alpha_hat_i: the NORMALIZED alpha is
+        # the envelope, so |beta| <= 0.19 rho_i is bounded by construction
+        # (the raw per-node normalizer 1/N_i amplifies between nodes when
+        # the supports overlap; all node conditions are unchanged since
         # gamma(0)=0, gamma'(0)=1, alpha_hat_i(x_i)=1, grad alpha_hat=0).
-        B = self.rmax * g * ah[:, None]                      # (n, d) = beta_ij
-        val = ah @ self.Y + np.einsum("nj,njm->m", B, self.G)
-        # dbeta_ij/dx_k = rmax g_ij dah_ik + gamma'_ij delta_jk ah_i
+        rg = self.rho[:, None] * g                           # (n, d)
+        val = ah @ self.Y + np.einsum("nj,njm->m", rg * ah[:, None], self.G)
+        # dbeta_ij/dx_k = rho_i g_ij dah_ik + gamma'_ij delta_jk ah_i
         grad = dah.T @ self.Y                                # value part (d, m)
-        grad += np.einsum("nj,nk,njm->km", self.rmax * g, dah, self.G)
+        grad += np.einsum("nj,nk,njm->km", rg, dah, self.G)
         grad += np.einsum("nj,njm->jm", gp * ah[:, None], self.G)
         return val, grad
 
@@ -805,7 +823,8 @@ def loo_select_support(X: np.ndarray, Y: np.ndarray, G: np.ndarray, h: float,
         for i in scored:
             keep = idx != i
             s = ProductHermiteSurrogate(X[keep], Y[keep], G[keep], h,
-                                        support_factor=fac, w_arg=w_arg)
+                                        support_factor=fac, w_arg=w_arg,
+                                        radius="global")
             v, g = s.value_and_slope(X[i])
             err += float(np.sum((v - Y[i]) ** 2 / sf2))
             err += float(np.sum(np.sum((g - G[i]) ** 2, axis=0) / sg2))
@@ -931,9 +950,11 @@ class MLSSBOptimizer:
         anchored = None
         if cfg.anchor_center and cfg.model == "product":
             sfac = (loo_select_support(Xa[keep], Y, G, h)
-                    if cfg.auto_support else cfg.support_factor)
+                    if (cfg.auto_support and cfg.radius == "global")
+                    else cfg.support_factor)
             anchored = ProductHermiteSurrogate(
-                Xa[keep], Y, G, h, support_factor=sfac)
+                Xa[keep], Y, G, h, support_factor=sfac,
+                radius=cfg.radius, nn_factor=cfg.nn_factor)
         elif cfg.anchor_center and cfg.model == "tangent":
             # De-jam: enforce a minimum pairwise separation in the window
             # (keep the center and the incumbent best, then nearest-first).

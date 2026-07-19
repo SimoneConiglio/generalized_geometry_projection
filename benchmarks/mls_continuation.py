@@ -60,15 +60,19 @@ def solver_options(config: str, seed: int, tr_init=None) -> tuple[str, dict]:
                            "n_global": 0}
     if config == "wendland":
         return "MLS_SBO", {**common, "model": "tangent", "weighting": "wendland"}
-    if config == "product":
+    if config == "product":                    # Deparis nn-radii (default)
         return "MLS_SBO", {**common, "model": "product"}
+    if config == "product_loo":                # global radius, LOO-selected
+        return "MLS_SBO", {**common, "model": "product",
+                           "radius": "global", "auto_support": True}
     raise SystemExit(f"unknown config {config}")
 
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config",
-                        choices=["quadratic", "wendland", "product", "mma"],
+                        choices=["quadratic", "wendland", "product",
+                                 "product_loo", "mma"],
                         default="quadratic")
     parser.add_argument("--max-evals", type=int, default=200,
                         help="TOTAL budget across all phases.")

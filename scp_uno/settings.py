@@ -265,12 +265,23 @@ class MLSSBOSettings(BaseOptimizerSettings):
     support_factor: float = Field(
         3.0, description="Support radius cap as a multiple of the length scale h."
     )
-    auto_support: bool = Field(
-        True,
+    radius: str = Field(
+        "nn",
         description=(
-            "model='product': self-compute the support radius each iteration "
-            "by gradient-enhanced leave-one-out (the likelihood analogue for "
-            "interpolants) instead of using the fixed support_factor."
+            "model='product' support radii: 'nn' (default, Deparis RL-RBF "
+            "rule - per-point rho_i = nn_factor * nearest-neighbour "
+            "distance) or 'global' (support_factor*h for all points)."
+        ),
+    )
+    nn_factor: float = Field(
+        2.5, description="Multiplier of the nearest-neighbour distance for radius='nn'."
+    )
+    auto_support: bool = Field(
+        False,
+        description=(
+            "model='product', radius='global': self-compute the support "
+            "factor each iteration by gradient-enhanced leave-one-out (the "
+            "likelihood analogue for interpolants)."
         ),
     )
     min_sep_frac: float = Field(
