@@ -241,13 +241,14 @@ class MLSSBOSettings(BaseOptimizerSettings):
         ),
     )
     model: str = Field(
-        "tangent",
+        "product",
         description=(
-            "Exploitation-subproblem model: 'tangent' (default - weighted "
-            "sum of tangent hyperplanes, closed form with exactly "
-            "consistent analytic gradients), 'quadratic' (anchored "
-            "separable quadratic, center-frozen weights) or 'planar' "
-            "(center-frozen planar Hermite MLS, no curvature term)."
+            "Exploitation-subproblem model: 'product' (default - "
+            "product-form Hermite shape functions, the full cardinal "
+            "constraint set for any node spacing, closed form with exactly "
+            "consistent analytic gradients), 'tangent' (weighted sum of "
+            "tangent hyperplanes), 'quadratic' (anchored separable "
+            "quadratic) or 'planar' (center-frozen planar Hermite MLS)."
         ),
     )
     weighting: str = Field(

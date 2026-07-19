@@ -122,12 +122,15 @@ class MLSSBOConfig:
     # gradient-only secants), or "all".
     fit_values: str = "constraints"
     # Model of the exploitation subproblem:
-    #   "tangent"   (default) weighted sum of tangent hyperplanes -
-    #               closed form, exactly consistent analytic gradients, no
-    #               centre-freezing needed;
+    #   "product"   (default) product-form Hermite shape functions - the
+    #               full cardinal constraint set for ANY node spacing and
+    #               any d_max (cardinality by product zeros), closed form,
+    #               exactly consistent analytic gradients;
+    #   "tangent"   weighted sum of tangent hyperplanes (closed form,
+    #               consistent gradients, cardinal only per weighting);
     #   "quadratic" anchored separable quadratic (centre-frozen weights);
     #   "planar"    centre-frozen planar Hermite MLS (no curvature term).
-    model: str = "tangent"
+    model: str = "product"
     # Tangent-blend weights:
     #   "wendland" (default) separation-aware smooth cardinal bumps - each
     #              node's support stays clear of every other node, so the
@@ -612,6 +615,134 @@ class TangentPlaneSurrogate:
         return np.einsum("qn,qnm->qm", lam, T)               # (q, m)
 
 
+class ProductHermiteSurrogate:
+    """Product-form Hermite shape functions (Coniglio construction).
+
+    .. math::
+
+        \\hat f(x) = \\sum_i \\hat\\alpha_i(x) f_i
+                     + \\sum_{i,j} \\beta_{ij}(x)\\, (\\nabla f_i)_j
+
+    built from the cubic smoothstep weight in normalized *squared* distance
+    ``W(t) = 2t^3 - 3t^2 + 1``, ``t = d_i/d_max`` (flat at both ends,
+    compactly supported) and the truncated quintic
+    ``gamma(t) = t (t^2 - 1)^2`` (``gamma(0)=0, gamma'(0)=1``, value and
+    slope zero at ``|t| = 1``, zero beyond):
+
+    .. math::
+
+        \\alpha_i = \\frac{W_i(x) \\prod_{l \\ne i} (1 - W_l(x))}
+                          {\\prod_{l \\ne i} (1 - W_l(x_i))}, \\qquad
+        \\hat\\alpha_i = \\alpha_i / \\textstyle\\sum_l \\alpha_l,
+
+    .. math::
+
+        \\beta_{ij} = r_{max}\\, \\gamma\\!\\Bigl(\\tfrac{x_j - x_{ij}}{r_{max}}\\Bigr)
+                      \\, \\frac{W_i(x) \\prod_{l \\ne i}(1 - W_l(x))}
+                               {\\prod_{l \\ne i}(1 - W_l(x_i))} .
+
+    The decisive property: **cardinality comes from product zeros, not from
+    support exclusion** — each factor ``(1 - W_l)`` vanishes *with zero
+    slope* at ``x_l`` (flat top of the smoothstep), so the complete Hermite
+    constraint set (``alpha_i(x_k) = delta_ik``, ``beta_ij(x_k) = 0``,
+    ``grad alpha_i(x_k) = 0``, ``grad beta_ij(x_k) = delta_ik e_j``,
+    monotone decay, compact support ``d_max``, partition of unity where
+    covered) holds for ANY node spacing and ANY ``d_max`` — no separation
+    radii, no singular weights. Where no weight covers ``x`` the nearest
+    sample's tangent plane takes over. All outputs share the shape
+    functions.
+    """
+
+    def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
+                 h: float, support_factor: float = 3.0) -> None:
+        self.X = np.atleast_2d(np.asarray(X, float))         # (n, d)
+        Y = np.asarray(Y, float)
+        self.Y = Y if Y.ndim == 2 else Y[:, None]            # (n, m)
+        G = np.asarray(G, float)
+        self.G = G if G.ndim == 3 else G[:, :, None]         # (n, d, m)
+        self.rmax = float(support_factor) * float(h)
+        self.dmax = self.rmax ** 2
+        n = len(self.X)
+        # per-node normalizers N_i = prod_{l != i} (1 - W_l(x_i))
+        self.N = np.empty(n)
+        for i in range(n):
+            w = self._W(self.X[i])[0]
+            self.N[i] = max(np.prod(np.delete(1.0 - w, i)), 1e-300)
+
+    # ------------------------------------------------------------------ w
+    def _W(self, x: np.ndarray):
+        """Smoothstep weights and their gradients at one point."""
+        S = x[None, :] - self.X                              # (n, d)
+        dd = np.sum(S * S, axis=1)
+        t = np.clip(dd / self.dmax, 0.0, 1.0)
+        w = 2.0 * t ** 3 - 3.0 * t * t + 1.0
+        # dW/dx = W'(t)/dmax * 2 (x - x_i);  W'(t) = 6t^2 - 6t
+        dw = ((6.0 * t * t - 6.0 * t) / self.dmax)[:, None] * (2.0 * S)
+        return w, dw, S
+
+    @staticmethod
+    def _loo(u: np.ndarray):
+        """Leave-one-out products ``P[i] = prod_{m != i} u_m`` (zero-aware)."""
+        zero = np.nonzero(u == 0.0)[0]
+        n = len(u)
+        if len(zero) == 0:
+            Q = np.prod(u)
+            return Q / u
+        if len(zero) == 1:
+            P = np.zeros(n)
+            p = zero[0]
+            P[p] = np.prod(np.delete(u, p))
+            return P
+        return np.zeros(n)
+
+    def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        """Values ``(m,)`` and exact analytic gradients ``(d, m)`` at ``x``."""
+        x = np.asarray(x, float)
+        n, d = self.X.shape
+        w, dw, S = self._W(x)
+        u = 1.0 - w
+        P = self._loo(u)                                     # (n,)
+        # dP_i/dx = sum_{l != i} (-dw_l) prod_{m not in {i,l}} u_m
+        dP = np.zeros((n, d))
+        for i in range(n):
+            ui = np.delete(u, i)
+            dwi = np.delete(dw, i, axis=0)
+            Pil = self._loo(ui)                              # (n-1,) leave-two-out
+            dP[i] = -(Pil[:, None] * dwi).sum(axis=0)
+        alpha = w * P / self.N                               # (n,)
+        dalpha = (dw * P[:, None] + w[:, None] * dP) / self.N[:, None]
+        Ssum = float(alpha.sum())
+        if Ssum <= 1e-300:                                   # no coverage
+            i0 = int(np.argmin(np.sum(S * S, axis=1)))
+            val = self.Y[i0] + S[i0] @ self.G[i0]
+            return val, self.G[i0].copy()
+        dSsum = dalpha.sum(axis=0)                           # (d,)
+        ah = alpha / Ssum
+        dah = (dalpha * Ssum - alpha[:, None] * dSsum[None, :]) / (Ssum * Ssum)
+        # beta_ij and gradient
+        t = S / self.rmax                                    # (n, d)
+        inside = np.abs(t) < 1.0
+        g = np.where(inside, t * (t * t - 1.0) ** 2, 0.0)    # gamma(t)
+        gp = np.where(inside, (t * t - 1.0) * (5.0 * t * t - 1.0), 0.0)
+        # beta_ij = rmax gamma(t_ij) alpha_hat_i: the NORMALIZED alpha is the
+        # envelope, so |beta| <= 0.19 rmax is bounded by construction (the
+        # raw per-node normalizer 1/N_i amplifies between nodes when the
+        # supports overlap; all node conditions are unchanged since
+        # gamma(0)=0, gamma'(0)=1, alpha_hat_i(x_i)=1, grad alpha_hat=0).
+        B = self.rmax * g * ah[:, None]                      # (n, d) = beta_ij
+        val = ah @ self.Y + np.einsum("nj,njm->m", B, self.G)
+        # dbeta_ij/dx_k = rmax g_ij dah_ik + gamma'_ij delta_jk ah_i
+        grad = dah.T @ self.Y                                # value part (d, m)
+        grad += np.einsum("nj,nk,njm->km", self.rmax * g, dah, self.G)
+        grad += np.einsum("nj,njm->jm", gp * ah[:, None], self.G)
+        return val, grad
+
+    def values(self, Xq: np.ndarray) -> np.ndarray:
+        """Batch values ``(q, m)`` (loop; used by the global subproblem scan)."""
+        Xq = np.atleast_2d(np.asarray(Xq, float))
+        return np.stack([self.value_and_slope(xq)[0] for xq in Xq])
+
+
 class PlanarMLSModel:
     """Center-frozen planar Hermite MLS model (no curvature term).
 
@@ -727,7 +858,10 @@ class MLSSBOptimizer:
         cons_shift = (mls._ym[1:] / mls._ys[1:]) if m else np.empty(0)
 
         anchored = None
-        if cfg.anchor_center and cfg.model == "tangent":
+        if cfg.anchor_center and cfg.model == "product":
+            anchored = ProductHermiteSurrogate(
+                Xa[keep], Y, G, h, support_factor=cfg.support_factor)
+        elif cfg.anchor_center and cfg.model == "tangent":
             # De-jam: enforce a minimum pairwise separation in the window
             # (keep the center and the incumbent best, then nearest-first).
             sel = self._thin(keep, center, h * cfg.min_sep_frac,

@@ -16,6 +16,7 @@ from scp_uno.mls_sbo_core import (
     MLSSBOptimizer,
     MovingLeastSquares,
     PlanarMLSModel,
+    ProductHermiteSurrogate,
     TangentPlaneSurrogate,
     mls_sbo_minimize,
 )
@@ -362,6 +363,61 @@ def test_sequential_mode_spends_budget_and_converges():
     assert result.f_opt < 1e-4 * f0 or result.n_evals >= 96
     assert result.f_opt < 1e-3 * f0
     assert any(r["subproblem"] == "slsqp" for r in records)
+
+
+def test_product_shape_functions_full_hermite_interpolation_any_spacing():
+    """Product-form construction: exact interpolation of every sample's
+    value AND gradient — including a jammed pair at distance 1e-3
+    (cardinality by product zeros holds for ANY spacing and d_max)."""
+    rng = np.random.default_rng(30)
+    X = np.vstack([rng.random((5, 3)),
+                   [0.5 * np.ones(3)], [0.5 * np.ones(3) + 1e-3]])
+    Y = rng.standard_normal((7, 2)) * 2.0
+    G = rng.standard_normal((7, 3, 2))
+    surr = ProductHermiteSurrogate(X, Y, G, h=0.3, support_factor=3.0)
+    for i in range(7):
+        val, grad = surr.value_and_slope(X[i])
+        assert np.allclose(val, Y[i], atol=1e-9)
+        assert np.allclose(grad, G[i], atol=1e-7)
+
+
+def test_product_shape_functions_analytic_gradient_matches_fd():
+    rng = np.random.default_rng(31)
+    X = rng.random((8, 4))
+    Y = rng.standard_normal((8, 2))
+    G = rng.standard_normal((8, 4, 2))
+    surr = ProductHermiteSurrogate(X, Y, G, h=0.25, support_factor=3.0)
+    x0 = rng.random(4)
+    _, grad = surr.value_and_slope(x0)
+    eps = 1e-6
+    for k in range(4):
+        xp, xm = x0.copy(), x0.copy()
+        xp[k] += eps
+        xm[k] -= eps
+        fd = (surr.value_and_slope(xp)[0] - surr.value_and_slope(xm)[0]) / (2 * eps)
+        assert np.allclose(grad[k], fd, rtol=1e-5, atol=1e-7)
+
+
+def test_product_shape_functions_compact_support_and_fallback():
+    X = np.array([[0.2, 0.2], [0.3, 0.2]])
+    Y = np.array([[1.0], [4.0]])
+    G = np.zeros((2, 2, 1))
+    surr = ProductHermiteSurrogate(X, Y, G, h=0.03, support_factor=3.0)
+    # far outside every support: nearest sample's tangent plane
+    val, grad = surr.value_and_slope(np.array([0.95, 0.95]))
+    assert np.isclose(val[0], 4.0)
+    assert np.allclose(grad[:, 0], 0.0)
+
+
+def test_product_model_drives_the_sequential_optimizer():
+    d = 6
+    f0 = sphere_problem(d)(np.full(d, 0.8))[0]
+    result = mls_sbo_minimize(
+        sphere_problem(d), np.full(d, 0.8), np.zeros(d), np.ones(d),
+        MLSSBOConfig(max_evals=100, batch_size=1, max_outer_iter=200,
+                     model="product", seed=32),
+    )
+    assert result.f_opt < 0.05 * f0
 
 
 def test_wendland_weights_are_cardinal_with_bounded_gradients():
