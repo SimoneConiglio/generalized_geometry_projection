@@ -168,10 +168,14 @@ The framework provides seven major algorithms:
    2084) with exact node interpolation. As the optimizer's *step model*
    under the continuation+cap protocol they nonetheless trail the
    anchored quadratic (LOO-global 349/408/415, Deparis-nn 324/772/416 vs
-   127/155/206): cardinal interpolants are flat at the trust-region
-   centre by construction (the grad-alpha=0 conditions), and curvature at
-   the centre is what earns good steps. Default step model: quadratic;
-   use ``model="product"`` when the surrogate itself is the deliverable.
+   127/155/206). NOTE: the model is NOT flat at the centre — the gradient
+   there is exact by construction (beta contributes
+   ``grad beta_ij(x_i) = e_j``); the step-quality gap is under
+   investigation, with the trust-region size relative to the surrogate's
+   covered region as the leading hypothesis (outside all supports the
+   nearest-plane fallback rules, and its Voronoi kinks can attract the
+   subproblem). Default step model: quadratic; use ``model="product"``
+   when the surrogate itself is the deliverable.
 
    **Penalty continuation does NOT help** (measured on the geometric mass
    field ``rho_V``, the honest binarization metric — ``rho_E`` carries

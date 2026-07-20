@@ -739,31 +739,46 @@ class ProductHermiteSurrogate:
         return np.zeros(n)
 
     def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
-        """Values ``(m,)`` and exact analytic gradients ``(d, m)`` at ``x``."""
+        """Values ``(m,)`` and exact analytic gradients ``(d, m)`` at ``x``.
+
+        Active-set pruning: terms with ``r_i >= rho_i`` have ``W_i == 0``
+        with zero slope, so restricting every product/loop to the active set
+        is EXACT (inactive factors are 1, inactive alphas and their
+        gradients are 0) and cuts the cost from O(n^2 d) to O(|A|^2 d).
+        """
         x = np.asarray(x, float)
-        n, d = self.X.shape
-        w, dw, S = self._W(x)
+        d = self.X.shape[1]
+        w_all, dw_all, S_all = self._W(x)
+        A = np.nonzero(w_all > 0.0)[0]
+        if len(A) == 0:                                      # no coverage
+            i0 = int(np.argmin(np.sum(S_all * S_all, axis=1)))
+            val = self.Y[i0] + S_all[i0] @ self.G[i0]
+            return val, self.G[i0].copy()
+        w, dw = w_all[A], dw_all[A]
+        S, Yv, Gv, Nv = S_all[A], self.Y[A], self.G[A], self.N[A]
+        rho = self.rho[A]
+        na = len(A)
         u = 1.0 - w
-        P = self._loo(u)                                     # (n,)
+        P = self._loo(u)                                     # (na,)
         # dP_i/dx = sum_{l != i} (-dw_l) prod_{m not in {i,l}} u_m
-        dP = np.zeros((n, d))
-        for i in range(n):
+        dP = np.zeros((na, d))
+        for i in range(na):
             ui = np.delete(u, i)
             dwi = np.delete(dw, i, axis=0)
-            Pil = self._loo(ui)                              # (n-1,) leave-two-out
+            Pil = self._loo(ui)                              # leave-two-out
             dP[i] = -(Pil[:, None] * dwi).sum(axis=0)
-        alpha = w * P / self.N                               # (n,)
-        dalpha = (dw * P[:, None] + w[:, None] * dP) / self.N[:, None]
+        alpha = w * P / Nv                                   # (na,)
+        dalpha = (dw * P[:, None] + w[:, None] * dP) / Nv[:, None]
         Ssum = float(alpha.sum())
-        if Ssum <= 1e-300:                                   # no coverage
-            i0 = int(np.argmin(np.sum(S * S, axis=1)))
-            val = self.Y[i0] + S[i0] @ self.G[i0]
+        if Ssum <= 1e-300:
+            i0 = int(np.argmin(np.sum(S_all * S_all, axis=1)))
+            val = self.Y[i0] + S_all[i0] @ self.G[i0]
             return val, self.G[i0].copy()
         dSsum = dalpha.sum(axis=0)                           # (d,)
         ah = alpha / Ssum
         dah = (dalpha * Ssum - alpha[:, None] * dSsum[None, :]) / (Ssum * Ssum)
         # beta_ij and gradient
-        t = S / self.rho[:, None]                            # (n, d)
+        t = S / rho[:, None]                                 # (na, d)
         inside = np.abs(t) < 1.0
         g = np.where(inside, t * (t * t - 1.0) ** 2, 0.0)    # gamma(t)
         gp = np.where(inside, (t * t - 1.0) * (5.0 * t * t - 1.0), 0.0)
@@ -772,12 +787,12 @@ class ProductHermiteSurrogate:
         # (the raw per-node normalizer 1/N_i amplifies between nodes when
         # the supports overlap; all node conditions are unchanged since
         # gamma(0)=0, gamma'(0)=1, alpha_hat_i(x_i)=1, grad alpha_hat=0).
-        rg = self.rho[:, None] * g                           # (n, d)
-        val = ah @ self.Y + np.einsum("nj,njm->m", rg * ah[:, None], self.G)
+        rg = rho[:, None] * g                                # (na, d)
+        val = ah @ Yv + np.einsum("nj,njm->m", rg * ah[:, None], Gv)
         # dbeta_ij/dx_k = rho_i g_ij dah_ik + gamma'_ij delta_jk ah_i
-        grad = dah.T @ self.Y                                # value part (d, m)
-        grad += np.einsum("nj,nk,njm->km", rg, dah, self.G)
-        grad += np.einsum("nj,njm->jm", gp * ah[:, None], self.G)
+        grad = dah.T @ Yv                                    # value part (d, m)
+        grad += np.einsum("nj,nk,njm->km", rg, dah, Gv)
+        grad += np.einsum("nj,njm->jm", gp * ah[:, None], Gv)
         return val, grad
 
     def values(self, Xq: np.ndarray) -> np.ndarray:
