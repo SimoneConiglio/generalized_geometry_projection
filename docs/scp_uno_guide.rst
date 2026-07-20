@@ -170,12 +170,20 @@ The framework provides seven major algorithms:
    anchored quadratic (LOO-global 349/408/415, Deparis-nn 324/772/416 vs
    127/155/206). NOTE: the model is NOT flat at the centre — the gradient
    there is exact by construction (beta contributes
-   ``grad beta_ij(x_i) = e_j``); the step-quality gap is under
-   investigation, with the trust-region size relative to the surrogate's
-   covered region as the leading hypothesis (outside all supports the
-   nearest-plane fallback rules, and its Voronoi kinks can attract the
-   subproblem). Default step model: quadratic; use ``model="product"``
-   when the surrogate itself is the deliverable.
+   ``grad beta_ij(x_i) = e_j``). The gap was largely a TRUST-REGION-SIZE
+   artifact: the interpolant is only informative inside its covered
+   region, and steps that outrun it land in nearest-plane fallback
+   territory. Deterministic ``tr_init`` sweep (product-nn, 3 seeds):
+   0.02 → 260/269/345, 0.05 → 324/416/772, 0.10 → 292/407/1368 —
+   monotone in the worst case, exactly as the coverage argument predicts.
+   At the matched ``tr_init=0.02`` the two step models are near parity
+   (product median 269 vs quadratic 233; the quadratic's best single run,
+   104, is the study's overall best). An initial LHS DOE (20 points in
+   the first trust region) reduces variance (382/400/454) but does not
+   beat the smaller step: in d=108 no affordable DOE covers a box —
+   confining steps to the sampled tube is what works. Default step model
+   remains quadratic; ``model="product"`` with a small ``tr_init`` is
+   competitive and is the best measured surrogate.
 
    **Penalty continuation does NOT help** (measured on the geometric mass
    field ``rho_V``, the honest binarization metric — ``rho_E`` carries
