@@ -78,6 +78,9 @@ def main() -> None:
                         help="TOTAL budget across all phases.")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--tr-init", type=float, default=None)
+    parser.add_argument("--n-init", type=int, default=None,
+                        help="LHS DOE size inside the initial trust region "
+                             "(first phase only; later phases warm-start).")
     parser.add_argument("--plot-dir", type=Path, default=None)
     args = parser.parse_args()
 
@@ -88,11 +91,13 @@ def main() -> None:
     result = None
     for i, (overrides, frac) in enumerate(DEFAULT_SCHEDULE):
         iters = max(1, int(round(args.max_evals * frac)))
+        phase_opts = spec.solver.options if options is None else dict(options)
+        if options is not None and args.n_init and i == 0:
+            phase_opts = {**phase_opts, "n_init_doe": args.n_init}
         s = replace(spec, solver=replace(
             spec.solver, algorithm=algo, max_iter=iters,
             fem_solver="direct",
-            options=(spec.solver.options if options is None
-                     else dict(options)),
+            options=phase_opts,
         ))
         result = GGPPipeline(s, x0=x, overrides=dict(overrides)).run()
         x = np.asarray(result.design_variables, float).flatten()
