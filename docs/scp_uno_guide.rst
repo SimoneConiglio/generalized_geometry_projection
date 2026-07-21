@@ -187,7 +187,19 @@ The framework provides seven major algorithms:
    blow-ups (worst 472 vs 772/1368) without improving the median — a
    robustness device, not an accelerator; the floor only binds when the
    sampling is denser than the step (seed-0 trajectories at tr=0.02 are
-   bit-identical with and without it). Default step model
+   bit-identical with and without it).
+
+   **Hold-region policy** (``hold_region=True``, default): keep the
+   center AND radius fixed until an improved point is found inside the
+   region — a rejected candidate is a new interpolation point that
+   refines the model exactly where the search happens (null steps sample
+   a random interior point; ``region_patience`` failures still shrink as
+   a safeguard). Deterministic results: quadratic @0.05 improves to
+   126/144/144 (median 155 → 144, the study's best median) and product
+   @0.02 to 241/248/275 (median 269 → 248, the tightest band measured);
+   in the wrong step regime (product @0.05) holding an uncovered region
+   amplifies failures (worst 1573) — the policy rewards, and requires, a
+   step size matched to the model. Default step model
    remains quadratic; ``model="product"`` with a small ``tr_init`` is
    competitive and is the best measured surrogate.
 
