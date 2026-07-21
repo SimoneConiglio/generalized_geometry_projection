@@ -381,6 +381,22 @@ def test_product_shape_functions_full_hermite_interpolation_any_spacing():
         assert np.allclose(grad, G[i], atol=1e-7)
 
 
+def test_product_delta_coupling_preserves_interpolation():
+    """rho_i = nn_factor * max(d_nn, delta): cardinality is
+    radius-independent, so exact Hermite interpolation must survive the
+    trust-region coupling."""
+    rng = np.random.default_rng(33)
+    X = rng.random((6, 3))
+    Y = rng.standard_normal((6, 2))
+    G = rng.standard_normal((6, 3, 2))
+    surr = ProductHermiteSurrogate(X, Y, G, h=0.2, delta=0.3)
+    assert np.all(surr.rho >= 2.5 * 0.3 - 1e-12)      # floor active
+    for i in range(6):
+        val, grad = surr.value_and_slope(X[i])
+        assert np.allclose(val, Y[i], atol=1e-9)
+        assert np.allclose(grad, G[i], atol=1e-7)
+
+
 def test_product_shape_functions_analytic_gradient_matches_fd():
     rng = np.random.default_rng(31)
     X = rng.random((8, 4))

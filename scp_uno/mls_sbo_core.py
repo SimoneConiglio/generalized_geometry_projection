@@ -672,7 +672,8 @@ class ProductHermiteSurrogate:
     def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
                  h: float, support_factor: float = 3.0,
                  w_arg: str = "r", radius: str = "nn",
-                 nn_factor: float = 2.5) -> None:
+                 nn_factor: float = 2.5,
+                 delta: Optional[float] = None) -> None:
         self.X = np.atleast_2d(np.asarray(X, float))         # (n, d)
         Y = np.asarray(Y, float)
         self.Y = Y if Y.ndim == 2 else Y[:, None]            # (n, m)
@@ -689,7 +690,14 @@ class ProductHermiteSurrogate:
         if radius == "nn" and nX > 1:
             D = np.linalg.norm(self.X[:, None, :] - self.X[None, :, :], axis=2)
             D[np.diag_indices(nX)] = np.inf
-            self.rho = float(nn_factor) * D.min(axis=1)      # (n,)
+            base = D.min(axis=1)                             # (n,)
+            if delta is not None:
+                # Trust-region coupling: the interpolant is only informative
+                # inside its covered region, so the TR radius acts as an
+                # effective spacing floor - supports always reach where the
+                # subproblem searches, however dense the sampling.
+                base = np.maximum(base, float(delta))
+            self.rho = float(nn_factor) * base               # (n,)
         else:
             self.rho = np.full(nX, self.rmax)
         # Smoothstep argument: "r" (linear distance, default) keeps all the
@@ -975,7 +983,7 @@ class MLSSBOptimizer:
                     else cfg.support_factor)
             anchored = ProductHermiteSurrogate(
                 Xa[keep], Y, G, h, support_factor=sfac,
-                radius=cfg.radius, nn_factor=cfg.nn_factor)
+                radius=cfg.radius, nn_factor=cfg.nn_factor, delta=delta)
         elif cfg.anchor_center and cfg.model == "tangent":
             # De-jam: enforce a minimum pairwise separation in the window
             # (keep the center and the incumbent best, then nearest-first).
