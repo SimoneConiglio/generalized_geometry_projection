@@ -308,6 +308,18 @@ class MLSSBOSettings(BaseOptimizerSettings):
             "or stall, until the evaluation budget is exhausted."
         ),
     )
+    hold_region: bool = Field(
+        True,
+        description=(
+            "Keep the trust-region center AND radius fixed until an improved "
+            "point is found inside it: failed candidates enrich the model as "
+            "interpolation points (null steps sample a random interior "
+            "point). Shrink only after region_patience consecutive failures."
+        ),
+    )
+    region_patience: int = Field(
+        8, description="Consecutive failures inside the region before shrinking."
+    )
 
     # -- merit / stopping --
     penalty: float = Field(

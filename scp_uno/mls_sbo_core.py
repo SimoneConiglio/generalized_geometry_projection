@@ -93,6 +93,14 @@ class MLSSBOConfig:
     eta_shrink: float = 0.25           # rho below this shrinks the radius
     eta_expand: float = 0.5
     n_resets: int = 8                  # TR restarts from the best point on collapse
+    # Hold-region policy: keep the center AND radius fixed until an improved
+    # point is found inside the region - a rejected candidate is a new
+    # interpolation point that refines the model exactly where the search
+    # happens (null steps sample a random interior point instead of
+    # shrinking). region_patience consecutive failures still shrink, as a
+    # budget safeguard.
+    hold_region: bool = True
+    region_patience: int = 8
 
     # -- anchored model / sequential subproblem --
     anchor_center: bool = True         # exact f, grad interpolation at the center
@@ -1193,6 +1201,7 @@ class MLSSBOptimizer:
         center = xi0.copy()
         center_i = 0
         stall = 0
+        fails = 0
         W = np.eye(d)
 
         resets = 0
@@ -1219,6 +1228,7 @@ class MLSSBOptimizer:
                 delta = max(cfg.tr_init / 2.0 ** ((resets - 1) % 3),
                             cfg.tr_min * 100.0)
                 stall = 0
+                fails = 0
                 if self.n_evals < cfg.max_evals:
                     lo_r = np.maximum(0.0, center - delta)
                     hi_r = np.minimum(1.0, center + delta)
@@ -1237,23 +1247,31 @@ class MLSSBOptimizer:
                 x_new, sub_tag = self._solve_subproblem(
                     anchored, center, self.X[best_i], lo, hi)
                 if float(np.max(np.abs(x_new - center))) < 1e-12:
-                    # model KKT point at the center: no descent is possible in
-                    # this radius — classical null step, shrink WITHOUT
-                    # spending a true evaluation on a duplicate of the center.
-                    delta *= cfg.tr_shrink
-                    stall += 1
-                    rec = {
-                        "iter": it, "n_evals": self.n_evals, "delta": delta,
-                        "lengthscale": h, "min_dist": d_min, "pred_error": 0.0,
-                        "batch_indices": [], "rho": 0.0,
-                        "resets": resets, "subproblem": "null",
-                        "merit_center": self._merit(center_i),
-                        "best_f": self.F[self._best_index()],
-                    }
-                    history.append(rec)
-                    if self.on_iteration is not None:
-                        self.on_iteration(rec)
-                    continue
+                    if cfg.hold_region:
+                        # model KKT at the center: under the hold-region
+                        # policy, spend the evaluation on a random interior
+                        # point - new information inside the SAME region -
+                        # rather than shrinking.
+                        x_new = lo + (hi - lo) * self._rng.random(d)
+                        sub_tag = "region-sample"
+                    else:
+                        # classical null step: shrink WITHOUT spending a
+                        # true evaluation on a duplicate of the center.
+                        delta *= cfg.tr_shrink
+                        stall += 1
+                        rec = {
+                            "iter": it, "n_evals": self.n_evals,
+                            "delta": delta, "lengthscale": h,
+                            "min_dist": d_min, "pred_error": 0.0,
+                            "batch_indices": [], "rho": 0.0,
+                            "resets": resets, "subproblem": "null",
+                            "merit_center": self._merit(center_i),
+                            "best_f": self.F[self._best_index()],
+                        }
+                        history.append(rec)
+                        if self.on_iteration is not None:
+                            self.on_iteration(rec)
+                        continue
                 batch = [x_new]
             else:
                 batch = propose_batch(
@@ -1296,13 +1314,24 @@ class MLSSBOptimizer:
             step = float(np.max(np.abs(self.X[cand_i] - center)))
             if actual > 0 and rho >= cfg.eta_accept:
                 center, center_i = self.X[cand_i].copy(), cand_i
-            # classical three-zone radius update: shrink only on poor
-            # agreement, hold in the middle band, expand on strong agreement
-            # at the trust-region boundary.
-            if actual <= 0 or rho < cfg.eta_shrink:
-                delta *= cfg.tr_shrink
-            elif rho >= cfg.eta_expand and step >= 0.8 * delta:
-                delta = min(delta * cfg.tr_expand, cfg.tr_max)
+                fails = 0
+                if rho >= cfg.eta_expand and step >= 0.8 * delta:
+                    delta = min(delta * cfg.tr_expand, cfg.tr_max)
+            elif cfg.hold_region:
+                # Hold-region policy: the failed candidate stays in the
+                # archive as an interpolation point; keep the center and
+                # radius FIXED and re-solve on the enriched model. Shrink
+                # only after region_patience consecutive failures.
+                fails += 1
+                if fails >= cfg.region_patience:
+                    delta *= cfg.tr_shrink
+                    fails = 0
+            else:
+                # classical three-zone update
+                if actual <= 0 or rho < cfg.eta_shrink:
+                    delta *= cfg.tr_shrink
+                elif rho >= cfg.eta_expand and step >= 0.8 * delta:
+                    delta = min(delta * cfg.tr_expand, cfg.tr_max)
 
             stall = stall + 1 if actual <= cfg.ftol_abs else 0
             rec = {

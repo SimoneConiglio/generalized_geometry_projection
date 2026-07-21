@@ -659,9 +659,10 @@ def test_sequential_mode_constrained():
     assert result.f_opt < 0.6
 
 
-def test_resets_keep_spending_budget_on_flat_function():
-    """A flat function rejects every step; the driver must reset the trust
-    region instead of quitting, and terminate cleanly."""
+def test_flat_function_spends_budget_sampling_the_region():
+    """A flat function never improves; under the hold-region policy the
+    driver keeps sampling inside the fixed region (each failure is an
+    interpolation point) and terminates cleanly within budget."""
     d = 3
 
     def flat(x):
@@ -675,8 +676,17 @@ def test_resets_keep_spending_budget_on_flat_function():
         on_iteration=records.append,
     )
     assert result.n_evals <= 60
-    assert max(r["resets"] for r in records) >= 1
+    assert result.n_evals >= 40          # budget spent on region samples
     assert result.status
+    # classical mode still resets as before
+    records2 = []
+    result2 = mls_sbo_minimize(
+        flat, np.full(d, 0.5), np.zeros(d), np.ones(d),
+        MLSSBOConfig(max_evals=60, batch_size=1, max_outer_iter=300,
+                     n_resets=3, seed=8, hold_region=False),
+        on_iteration=records2.append,
+    )
+    assert max(r["resets"] for r in records2) >= 1
 
 
 def test_result_fields_are_consistent():
