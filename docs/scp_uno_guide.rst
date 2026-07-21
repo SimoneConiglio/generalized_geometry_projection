@@ -181,7 +181,13 @@ The framework provides seven major algorithms:
    104, is the study's overall best). An initial LHS DOE (20 points in
    the first trust region) reduces variance (382/400/454) but does not
    beat the smaller step: in d=108 no affordable DOE covers a box —
-   confining steps to the sampled tube is what works. Default step model
+   confining steps to the sampled tube is what works. Coupling the radii
+   to the trust region (``rho_i = nn_factor * max(d_nn, delta)``,
+   automatic when the driver passes ``delta``) removes the large-step
+   blow-ups (worst 472 vs 772/1368) without improving the median — a
+   robustness device, not an accelerator; the floor only binds when the
+   sampling is denser than the step (seed-0 trajectories at tr=0.02 are
+   bit-identical with and without it). Default step model
    remains quadratic; ``model="product"`` with a small ``tr_init`` is
    competitive and is the best measured surrogate.
 
