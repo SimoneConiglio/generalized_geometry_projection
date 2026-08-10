@@ -69,6 +69,8 @@ def solver_options(config: str, seed: int, tr_init=None) -> tuple[str, dict]:
         return "MLS_SBO", {**common, "model": "oa"}
     if config == "alpha":                      # alphaBB underestimator
         return "MLS_SBO", {**common, "model": "alpha"}
+    if config == "alpha_diag":                 # nonuniform (diagonal) shift
+        return "MLS_SBO", {**common, "model": "alpha", "alpha_mode": "diag"}
     raise SystemExit(f"unknown config {config}")
 
 
@@ -76,7 +78,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config",
                         choices=["quadratic", "wendland", "product",
-                                 "product_loo", "oa", "alpha", "mma"],
+                                 "product_loo", "oa", "alpha", "alpha_diag",
+                                 "mma"],
                         default="quadratic")
     parser.add_argument("--max-evals", type=int, default=200,
                         help="TOTAL budget across all phases.")

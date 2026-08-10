@@ -109,6 +109,7 @@ class MLSSBOConfig:
     # interpolating). Subproblem via the standard scan+SLSQP machinery -
     # the OA study showed solver exactness is not the binding resource.
     alpha_safety: float = 1.5
+    alpha_mode: str = "iso"            # "iso" | "diag" (nonuniform shift)
 
     # -- anchored model / sequential subproblem --
     anchor_center: bool = True         # exact f, grad interpolation at the center
@@ -693,28 +694,64 @@ class AlphaUnderestimator(OATangentPlanes):
 
     def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
                  alpha: Optional[np.ndarray] = None,
-                 safety: float = 1.5) -> None:
+                 safety: float = 1.5, mode: str = "iso") -> None:
         super().__init__(X, Y, G)
         n, d = self.X.shape
         m = self.Y.shape[1]
-        if alpha is None:
+        if alpha is not None:
+            alpha = np.asarray(alpha, float)
+        elif mode == "diag" and n > 1:
+            # Nonuniform (diagonal) shift: alpha_k = beta * w_k with a
+            # per-coordinate curvature profile w_k from Hermite gradient
+            # differences (|dg_k| / |dx_k| over pairs, median), and beta
+            # the smallest scaling satisfying the pairwise secant validity
+            # condition sum_k alpha_k dx_k^2 >= plane_i(x_j) - f_j. A stiff
+            # direction no longer poisons the soft ones.
+            w = np.ones((d, m))
+            num = np.zeros((d, m))
+            cnt = np.zeros((d, m))
+            for i in range(n):
+                dX = self.X - self.X[i][None, :]             # (n, d)
+                ok = np.abs(dX) > 1e-12
+                c = np.abs(self.G - self.G[i][None, :, :]) / np.maximum(
+                    np.abs(dX)[:, :, None], 1e-12)           # (n, d, m)
+                sel = ok[:, :, None] & np.isfinite(c)
+                num += np.where(sel, c, 0.0).sum(axis=0)
+                cnt += sel.sum(axis=0)
+            w = np.where(cnt > 0, num / np.maximum(cnt, 1), 1.0)
+            w = np.maximum(w, 1e-12 + w.max(axis=0, keepdims=True) * 1e-6)
+            beta = np.zeros(m)
+            for i in range(n):
+                dX = self.X - self.X[i][None, :]
+                planes = self.Y[i][None, :] + dX @ self.G[i]
+                denom = np.einsum("nd,dm->nm", dX * dX, w)   # (n, m)
+                ok = denom > 1e-20
+                if np.any(ok):
+                    need = np.where(ok, (planes - self.Y) / np.maximum(
+                        denom, 1e-20), 0.0)
+                    beta = np.maximum(beta, need.max(axis=0))
+            alpha = np.maximum(beta, 0.0)[None, :] * w * safety   # (d, m)
+        else:
             amax = np.zeros(m)
             for i in range(n):
-                D = self.X - self.X[i][None, :]              # (n, d)
-                dd = np.sum(D * D, axis=1)
-                planes = self.Y[i][None, :] + D @ self.G[i]  # (n, m)
+                dX = self.X - self.X[i][None, :]             # (n, d)
+                dd = np.sum(dX * dX, axis=1)
+                planes = self.Y[i][None, :] + dX @ self.G[i]
                 ok = dd > 1e-20
                 if np.any(ok):
                     need = (planes[ok] - self.Y[ok]) / dd[ok, None]
                     amax = np.maximum(amax, need.max(axis=0))
-            alpha = np.maximum(amax, 0.0) * safety
-        self.alpha = np.asarray(alpha, float)                # (m,)
+            alpha = np.maximum(amax, 0.0) * safety           # (m,)
+        # store as (d, m): isotropic alphas broadcast to a constant column
+        alpha = np.asarray(alpha, float)
+        self.alpha = (np.broadcast_to(alpha[None, :], (d, m)).copy()
+                      if alpha.ndim == 1 else alpha)
 
     def _pieces(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         D = x[None, :] - self.X                              # (n, d)
-        dd = np.sum(D * D, axis=1)
         vals = self.Y + np.einsum("nd,ndm->nm", D, self.G)   # (n, m)
-        return vals - dd[:, None] * self.alpha[None, :], D
+        quad = np.einsum("nd,dm->nm", D * D, self.alpha)
+        return vals - quad, D
 
     def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         x = np.asarray(x, float)
@@ -722,7 +759,7 @@ class AlphaUnderestimator(OATangentPlanes):
         best = np.argmax(pieces, axis=0)                     # (m,)
         val = pieces[best, np.arange(len(best))]
         grad = np.stack([
-            self.G[b, :, k] - 2.0 * self.alpha[k] * D[b]
+            self.G[b, :, k] - 2.0 * self.alpha[:, k] * D[b]
             for k, b in enumerate(best)
         ], axis=1)                                           # (d, m)
         return val, grad
@@ -1086,7 +1123,8 @@ class MLSSBOptimizer:
             anchored = OATangentPlanes(Xa[keep], Y, G)
         elif cfg.anchor_center and cfg.model == "alpha":
             anchored = AlphaUnderestimator(Xa[keep], Y, G,
-                                           safety=cfg.alpha_safety)
+                                           safety=cfg.alpha_safety,
+                                           mode=cfg.alpha_mode)
         elif cfg.anchor_center and cfg.model == "product":
             sfac = (loo_select_support(Xa[keep], Y, G, h)
                     if (cfg.auto_support and cfg.radius == "global")

@@ -261,6 +261,14 @@ class MLSSBOSettings(BaseOptimizerSettings):
     alpha_safety: float = Field(
         1.5, description="model='alpha': safety factor on the secant alpha bound."
     )
+    alpha_mode: str = Field(
+        "iso",
+        description=(
+            "model='alpha': 'iso' (one alpha per output) or 'diag' "
+            "(nonuniform shift - per-coordinate alpha_k from Hermite "
+            "gradient differences, scaled to the pairwise validity bound)."
+        ),
+    )
     weighting: str = Field(
         "wendland",
         description=(

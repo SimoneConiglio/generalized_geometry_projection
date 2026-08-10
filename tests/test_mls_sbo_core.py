@@ -443,6 +443,28 @@ def test_alpha_underestimator_interpolates_and_underestimates():
         assert np.all(pieces <= Y[j][None, :] + 1e-8)
 
 
+def test_alpha_diag_interpolates_and_underestimates():
+    """The nonuniform (diagonal) shift must keep exact Hermite interpolation
+    and cross-piece underestimation at the samples."""
+    from scp_uno.mls_sbo_core import AlphaUnderestimator
+
+    rng = np.random.default_rng(21)
+    X = rng.random((7, 3))
+    Y = rng.standard_normal((7, 2))
+    G = rng.standard_normal((7, 3, 2))
+    surr = AlphaUnderestimator(X, Y, G, safety=1.0 + 1e-9, mode="diag")
+    assert surr.alpha.shape == (3, 2)
+    # directional: the alphas differ across coordinates
+    assert not np.allclose(surr.alpha[0], surr.alpha[1])
+    for i in range(7):
+        val, grad = surr.value_and_slope(X[i])
+        assert np.allclose(val, Y[i], atol=1e-9)
+        assert np.allclose(grad, G[i], atol=1e-7)
+    for j in range(7):
+        pieces, _ = surr._pieces(X[j])
+        assert np.all(pieces <= Y[j][None, :] + 1e-8)
+
+
 def test_alpha_driver_converges_on_sphere():
     d = 4
 
