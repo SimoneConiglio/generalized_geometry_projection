@@ -65,6 +65,8 @@ def solver_options(config: str, seed: int, tr_init=None) -> tuple[str, dict]:
     if config == "product_loo":                # global radius, LOO-selected
         return "MLS_SBO", {**common, "model": "product",
                            "radius": "global", "auto_support": True}
+    if config == "oa":                         # outer approximation (MILP)
+        return "MLS_SBO", {**common, "model": "oa"}
     raise SystemExit(f"unknown config {config}")
 
 
@@ -72,7 +74,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config",
                         choices=["quadratic", "wendland", "product",
-                                 "product_loo", "mma"],
+                                 "product_loo", "oa", "mma"],
                         default="quadratic")
     parser.add_argument("--max-evals", type=int, default=200,
                         help="TOTAL budget across all phases.")

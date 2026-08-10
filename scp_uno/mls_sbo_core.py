@@ -101,6 +101,9 @@ class MLSSBOConfig:
     # budget safeguard.
     hold_region: bool = True
     region_patience: int = 8
+    # model="oa": outer approximation - nearest-plane model whose
+    # exploitation subproblem is solved EXACTLY as a MILP (HiGHS).
+    oa_time_limit: float = 30.0        # seconds per MILP solve
 
     # -- anchored model / sequential subproblem --
     anchor_center: bool = True         # exact f, grad interpolation at the center
@@ -639,7 +642,39 @@ class TangentPlaneSurrogate:
         return np.einsum("qn,qnm->qm", lam, T)               # (q, m)
 
 
+class OATangentPlanes:
+    """Outer-approximation model: the tangent plane of the NEAREST sample.
+
+    ``value_and_slope`` makes it a drop-in surrogate for the ratio test;
+    the exploitation subproblem is NOT solved by scan+SLSQP but exactly, as
+    a mixed-integer linear program (:meth:`MLSSBOptimizer._solve_oa_milp`):
+    binaries select the active plane and Voronoi cells are polyhedra, so
+    "nearest" is expressible with big-M rows.
+    """
+
+    def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray) -> None:
+        self.X = np.atleast_2d(np.asarray(X, float))         # (n, d)
+        Y = np.asarray(Y, float)
+        self.Y = Y if Y.ndim == 2 else Y[:, None]            # (n, m)
+        G = np.asarray(G, float)
+        self.G = G if G.ndim == 3 else G[:, :, None]         # (n, d, m)
+
+    def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        x = np.asarray(x, float)
+        i = int(np.argmin(np.sum((self.X - x[None, :]) ** 2, axis=1)))
+        val = self.Y[i] + (x - self.X[i]) @ self.G[i]
+        return val, self.G[i].copy()
+
+    def values(self, Q: np.ndarray) -> np.ndarray:
+        Q = np.atleast_2d(np.asarray(Q, float))
+        D = np.sum((Q[:, None, :] - self.X[None, :, :]) ** 2, axis=2)
+        near = np.argmin(D, axis=1)
+        return np.stack([self.Y[i] + (q - self.X[i]) @ self.G[i]
+                         for q, i in zip(Q, near)])
+
+
 class ProductHermiteSurrogate:
+
     """Product-form Hermite shape functions (Coniglio construction).
 
     .. math::
@@ -985,7 +1020,9 @@ class MLSSBOptimizer:
         cons_shift = (mls._ym[1:] / mls._ys[1:]) if m else np.empty(0)
 
         anchored = None
-        if cfg.anchor_center and cfg.model == "product":
+        if cfg.anchor_center and cfg.model == "oa":
+            anchored = OATangentPlanes(Xa[keep], Y, G)
+        elif cfg.anchor_center and cfg.model == "product":
             sfac = (loo_select_support(Xa[keep], Y, G, h)
                     if (cfg.auto_support and cfg.radius == "global")
                     else cfg.support_factor)
@@ -1069,6 +1106,97 @@ class MLSSBOptimizer:
             dist = np.linalg.norm(Xa - center[None, :], axis=1)
             dist = dist[dist > 1e-14]
         return float(np.min(dist)) if len(dist) else self.cfg.ls_min
+
+    def _solve_oa_milp(self, oa: OATangentPlanes, center: np.ndarray,
+                       lo: np.ndarray, hi: np.ndarray) -> Tuple[np.ndarray, str]:
+        """Exact global minimum of the nearest-plane model over the box.
+
+        MILP: continuous ``x`` (d), epigraph ``eta``, binaries ``z_i``
+        selecting the active sample. Voronoi cells are polyhedra
+        (``2 (x_j - x_i)^T x <= |x_j|^2 - |x_i|^2``), so "plane i is the
+        nearest" is linear in ``x`` under big-M relaxation; the selected
+        sample's objective plane bounds ``eta`` and its constraint planes
+        must hold. Big-Ms are computed row-tight from the box, and the
+        whole thing goes to HiGHS via ``scipy.optimize.milp``.
+        """
+        from scipy.optimize import LinearConstraint, Bounds, milp
+        from scipy.sparse import lil_matrix
+
+        Xw, Y, G = oa.X, oa.Y, oa.G                          # raw window data
+        n, d = Xw.shape
+        m = Y.shape[1] - 1
+        mid, half = 0.5 * (lo + hi), 0.5 * (hi - lo)
+
+        def plane_range(f0, g, xi):
+            """min/max of f0 + g^T (x - xi) over the box, closed form."""
+            base = f0 + g @ (mid - xi)
+            spread = np.abs(g) @ half
+            return base - spread, base + spread
+
+        pf = np.array([plane_range(Y[i, 0], G[i, :, 0], Xw[i])
+                       for i in range(n)])                   # (n, 2)
+        eta_lo = float(pf[:, 0].min())
+        eta_hi = float(pf[:, 1].max())
+
+        nv = d + 1 + n                                       # x, eta, z
+        c_obj = np.zeros(nv)
+        c_obj[d] = 1.0
+        rows = lil_matrix((n + n * (n - 1) + n * m + 1, nv))
+        ub = np.empty(rows.shape[0])
+        r = 0
+        # objective planes: plane_i(x) - eta <= M_i (1 - z_i)
+        for i in range(n):
+            Mi = max(pf[i, 1] - eta_lo, 0.0) + 1e-9
+            rows[r, :d] = G[i, :, 0]
+            rows[r, d] = -1.0
+            rows[r, d + 1 + i] = Mi
+            ub[r] = Mi + G[i, :, 0] @ Xw[i] - Y[i, 0]
+            r += 1
+        # Voronoi rows: z_i = 1  =>  x closer to x_i than to x_j
+        for i in range(n):
+            for j in range(n):
+                if j == i:
+                    continue
+                a = 2.0 * (Xw[j] - Xw[i])
+                b = float(Xw[j] @ Xw[j] - Xw[i] @ Xw[i])
+                slack = max(a @ mid + np.abs(a) @ half - b, 0.0) + 1e-9
+                rows[r, :d] = a
+                rows[r, d + 1 + i] = slack
+                ub[r] = b + slack
+                r += 1
+        # constraint planes of the selected sample: c_j(x) <= M (1 - z_i)
+        for i in range(n):
+            for cj in range(m):
+                _, cmax = plane_range(Y[i, 1 + cj], G[i, :, 1 + cj], Xw[i])
+                Mc = max(cmax, 0.0) + 1e-9
+                rows[r, :d] = G[i, :, 1 + cj]
+                rows[r, d + 1 + i] = Mc
+                ub[r] = Mc + G[i, :, 1 + cj] @ Xw[i] - Y[i, 1 + cj]
+                r += 1
+        # sum z = 1 (as two inequalities via equality row in LinearConstraint)
+        rows[r, d + 1:] = 1.0
+        ub[r] = 1.0
+        lb_rows = np.full(rows.shape[0], -np.inf)
+        lb_rows[r] = 1.0
+
+        bounds = Bounds(
+            np.concatenate([lo, [eta_lo - 1.0], np.zeros(n)]),
+            np.concatenate([hi, [eta_hi + 1.0], np.ones(n)]),
+        )
+        integrality = np.concatenate([np.zeros(d + 1), np.ones(n)])
+        try:
+            res = milp(
+                c=c_obj,
+                constraints=LinearConstraint(rows.tocsr(), lb_rows, ub),
+                bounds=bounds, integrality=integrality,
+                options={"time_limit": self.cfg.oa_time_limit,
+                         "mip_rel_gap": 1e-6},
+            )
+        except Exception:                                    # pragma: no cover
+            res = None
+        if res is None or res.x is None:
+            return lo + (hi - lo) * self._rng.random(d), "oa-fallback"
+        return np.clip(res.x[:d], lo, hi), "oa-milp"
 
     def _solve_subproblem(self, anchored: AnchoredSeparableQuadratic,
                           center: np.ndarray,
@@ -1244,8 +1372,12 @@ class MLSSBOptimizer:
             best_i = self._best_index()
             if anchored is not None and cfg.batch_size == 1:
                 # sequential (MMA-regime) step: solved constrained subproblem
-                x_new, sub_tag = self._solve_subproblem(
-                    anchored, center, self.X[best_i], lo, hi)
+                if cfg.model == "oa":
+                    x_new, sub_tag = self._solve_oa_milp(
+                        anchored, center, lo, hi)
+                else:
+                    x_new, sub_tag = self._solve_subproblem(
+                        anchored, center, self.X[best_i], lo, hi)
                 if float(np.max(np.abs(x_new - center))) < 1e-12:
                     if cfg.hold_region:
                         # model KKT at the center: under the hold-region

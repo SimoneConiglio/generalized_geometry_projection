@@ -248,8 +248,12 @@ class MLSSBOSettings(BaseOptimizerSettings):
             "(product-form Hermite shape functions - exact cardinal "
             "interpolant, the measured best surrogate), 'tangent' (weighted "
             "sum of tangent hyperplanes) or 'planar' (center-frozen planar "
-            "Hermite MLS)."
+            "Hermite MLS) or 'oa' (outer approximation: nearest-plane model "
+            "whose subproblem is solved exactly as a MILP by HiGHS)."
         ),
+    )
+    oa_time_limit: float = Field(
+        30.0, description="model='oa': time limit in seconds per MILP solve."
     )
     weighting: str = Field(
         "wendland",

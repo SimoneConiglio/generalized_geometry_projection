@@ -381,6 +381,47 @@ def test_product_shape_functions_full_hermite_interpolation_any_spacing():
         assert np.allclose(grad, G[i], atol=1e-7)
 
 
+def test_oa_milp_finds_nearest_plane_global_minimum():
+    """The MILP must return the exact global minimum of the nearest-plane
+    model over the box - verified against a dense brute-force grid."""
+    from scp_uno.mls_sbo_core import MLSSBOptimizer, OATangentPlanes
+
+    rng = np.random.default_rng(4)
+    X = rng.random((5, 2))
+    Y = rng.standard_normal((5, 1))
+    G = rng.standard_normal((5, 2, 1))
+    oa = OATangentPlanes(X, Y, G)
+
+    def fobj(x):
+        return 0.0, np.zeros(2), np.zeros(0), np.zeros((0, 2))
+
+    opt = MLSSBOptimizer(fobj, np.zeros(2), np.ones(2),
+                         MLSSBOConfig(max_evals=2, seed=0))
+    lo, hi = np.zeros(2), np.ones(2)
+    x_star, tag = opt._solve_oa_milp(oa, np.full(2, 0.5), lo, hi)
+    assert tag == "oa-milp"
+    gx, gy = np.meshgrid(np.linspace(0, 1, 201), np.linspace(0, 1, 201))
+    grid = np.column_stack([gx.ravel(), gy.ravel()])
+    brute = float(np.min(oa.values(grid)[:, 0]))
+    got = float(oa.value_and_slope(x_star)[0][0])
+    assert got <= brute + 1e-6
+
+
+def test_oa_driver_converges_on_sphere():
+    d = 4
+
+    def sphere(x):
+        return float(np.sum((x - 0.3) ** 2)), 2 * (x - 0.3), \
+            np.zeros(0), np.zeros((0, d))
+
+    result = mls_sbo_minimize(
+        sphere, np.full(d, 0.8), np.zeros(d), np.ones(d),
+        MLSSBOConfig(max_evals=60, batch_size=1, model="oa", seed=1,
+                     max_outer_iter=200),
+    )
+    assert result.f_best < 1e-2
+
+
 def test_product_delta_coupling_preserves_interpolation():
     """rho_i = nn_factor * max(d_nn, delta): cardinality is
     radius-independent, so exact Hermite interpolation must survive the
