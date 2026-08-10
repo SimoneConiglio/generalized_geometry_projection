@@ -249,11 +249,17 @@ class MLSSBOSettings(BaseOptimizerSettings):
             "interpolant, the measured best surrogate), 'tangent' (weighted "
             "sum of tangent hyperplanes) or 'planar' (center-frozen planar "
             "Hermite MLS) or 'oa' (outer approximation: nearest-plane model "
-            "whose subproblem is solved exactly as a MILP by HiGHS)."
+            "whose subproblem is solved exactly as a MILP by HiGHS) or "
+            "'alpha' (alphaBB piecewise quadratic underestimator: max of "
+            "alpha-lowered tangent planes - continuous, curvature-aware, "
+            "interpolating)."
         ),
     )
     oa_time_limit: float = Field(
         30.0, description="model='oa': time limit in seconds per MILP solve."
+    )
+    alpha_safety: float = Field(
+        1.5, description="model='alpha': safety factor on the secant alpha bound."
     )
     weighting: str = Field(
         "wendland",

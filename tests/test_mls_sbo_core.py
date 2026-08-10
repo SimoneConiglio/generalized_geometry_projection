@@ -422,6 +422,42 @@ def test_oa_driver_converges_on_sphere():
     assert result.f_opt < 1e-2
 
 
+def test_alpha_underestimator_interpolates_and_underestimates():
+    """With alpha at the secant bound, the max of alpha-lowered planes is an
+    exact value+gradient interpolant at every sample, and each cross piece
+    stays below the data at the samples."""
+    from scp_uno.mls_sbo_core import AlphaUnderestimator
+
+    rng = np.random.default_rng(11)
+    X = rng.random((7, 3))
+    Y = rng.standard_normal((7, 2))
+    G = rng.standard_normal((7, 3, 2))
+    surr = AlphaUnderestimator(X, Y, G, safety=1.0 + 1e-9)
+    for i in range(7):
+        val, grad = surr.value_and_slope(X[i])
+        assert np.allclose(val, Y[i], atol=1e-9)
+        assert np.allclose(grad, G[i], atol=1e-7)
+    # cross pieces underestimate the data at every sample
+    for j in range(7):
+        pieces, _ = surr._pieces(X[j])
+        assert np.all(pieces <= Y[j][None, :] + 1e-8)
+
+
+def test_alpha_driver_converges_on_sphere():
+    d = 4
+
+    def sphere(x):
+        return float(np.sum((x - 0.3) ** 2)), 2 * (x - 0.3), \
+            np.zeros(0), np.zeros((0, d))
+
+    result = mls_sbo_minimize(
+        sphere, np.full(d, 0.8), np.zeros(d), np.ones(d),
+        MLSSBOConfig(max_evals=60, batch_size=1, model="alpha", seed=1,
+                     max_outer_iter=200),
+    )
+    assert result.f_opt < 1e-3
+
+
 def test_product_delta_coupling_preserves_interpolation():
     """rho_i = nn_factor * max(d_nn, delta): cardinality is
     radius-independent, so exact Hermite interpolation must survive the

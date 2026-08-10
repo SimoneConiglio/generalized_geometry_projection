@@ -119,6 +119,7 @@ class MLSSurrogateSBO(BaseOptimizationLibrary[MLSSBOSettings]):
             hold_region=s.hold_region,
             region_patience=s.region_patience,
             oa_time_limit=s.oa_time_limit,
+            alpha_safety=s.alpha_safety,
             tr_init=s.tr_init,
             tr_min=s.tr_min,
             tr_max=s.tr_max,

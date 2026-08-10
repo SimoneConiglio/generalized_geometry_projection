@@ -104,6 +104,11 @@ class MLSSBOConfig:
     # model="oa": outer approximation - nearest-plane model whose
     # exploitation subproblem is solved EXACTLY as a MILP (HiGHS).
     oa_time_limit: float = 30.0        # seconds per MILP solve
+    # model="alpha": alphaBB piecewise quadratic underestimator
+    # (max of alpha-lowered tangent planes; continuous, curvature-aware,
+    # interpolating). Subproblem via the standard scan+SLSQP machinery -
+    # the OA study showed solver exactness is not the binding resource.
+    alpha_safety: float = 1.5
 
     # -- anchored model / sequential subproblem --
     anchor_center: bool = True         # exact f, grad interpolation at the center
@@ -673,6 +678,63 @@ class OATangentPlanes:
                          for q, i in zip(Q, near)])
 
 
+class AlphaUnderestimator(OATangentPlanes):
+    """alphaBB-style piecewise quadratic underestimator (Adjiman/Floudas).
+
+    ``U(x) = max_i [f_i + g_i^T (x - x_i) - alpha ||x - x_i||^2]``: each
+    tangent plane is lowered by a concave quadratic, and the pointwise MAX
+    over the window is taken. This repairs both defects the plain OA
+    nearest-plane model showed: it is CONTINUOUS (max, not nearest - no
+    Voronoi jumps) and CURVATURE-AWARE (the alpha term). With alpha at
+    least the pairwise secant bound ``(plane_i(x_j) - f_j)/|x_j - x_i|^2``
+    the max is also an exact value+gradient interpolant at every sample.
+    alpha is per-output, data-driven, times a safety factor.
+    """
+
+    def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
+                 alpha: Optional[np.ndarray] = None,
+                 safety: float = 1.5) -> None:
+        super().__init__(X, Y, G)
+        n, d = self.X.shape
+        m = self.Y.shape[1]
+        if alpha is None:
+            amax = np.zeros(m)
+            for i in range(n):
+                D = self.X - self.X[i][None, :]              # (n, d)
+                dd = np.sum(D * D, axis=1)
+                planes = self.Y[i][None, :] + D @ self.G[i]  # (n, m)
+                ok = dd > 1e-20
+                if np.any(ok):
+                    need = (planes[ok] - self.Y[ok]) / dd[ok, None]
+                    amax = np.maximum(amax, need.max(axis=0))
+            alpha = np.maximum(amax, 0.0) * safety
+        self.alpha = np.asarray(alpha, float)                # (m,)
+
+    def _pieces(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        D = x[None, :] - self.X                              # (n, d)
+        dd = np.sum(D * D, axis=1)
+        vals = self.Y + np.einsum("nd,ndm->nm", D, self.G)   # (n, m)
+        return vals - dd[:, None] * self.alpha[None, :], D
+
+    def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        x = np.asarray(x, float)
+        pieces, D = self._pieces(x)
+        best = np.argmax(pieces, axis=0)                     # (m,)
+        val = pieces[best, np.arange(len(best))]
+        grad = np.stack([
+            self.G[b, :, k] - 2.0 * self.alpha[k] * D[b]
+            for k, b in enumerate(best)
+        ], axis=1)                                           # (d, m)
+        return val, grad
+
+    def values(self, Q: np.ndarray) -> np.ndarray:
+        Q = np.atleast_2d(np.asarray(Q, float))
+        out = np.empty((len(Q), self.Y.shape[1]))
+        for qi, q in enumerate(Q):
+            out[qi] = self._pieces(q)[0].max(axis=0)
+        return out
+
+
 class ProductHermiteSurrogate:
 
     """Product-form Hermite shape functions (Coniglio construction).
@@ -1022,6 +1084,9 @@ class MLSSBOptimizer:
         anchored = None
         if cfg.anchor_center and cfg.model == "oa":
             anchored = OATangentPlanes(Xa[keep], Y, G)
+        elif cfg.anchor_center and cfg.model == "alpha":
+            anchored = AlphaUnderestimator(Xa[keep], Y, G,
+                                           safety=cfg.alpha_safety)
         elif cfg.anchor_center and cfg.model == "product":
             sfac = (loo_select_support(Xa[keep], Y, G, h)
                     if (cfg.auto_support and cfg.radius == "global")
