@@ -224,6 +224,17 @@ The framework provides seven major algorithms:
    window and the model plunges away from the center, making steps
    timid. DIRECTIONAL secant curvature - the anchored quadratic's
    per-coordinate diagonal - remains the decisive ingredient.
+   The nonuniform-shift variant (``alpha_mode="diag"``: per-coordinate
+   alpha_k from Hermite gradient differences, scaled to the pairwise
+   validity bound) rules out mere directionality as the explanation:
+   373/513/573 @0.02 - no better than the isotropic alpha (436) and
+   still ~3.5x the quadratic. The final form of the finding: the
+   quadratic's decisive ingredient is directional curvature ANCHORED at
+   the incumbent - one curved model centred where the step is decided -
+   not curvature distributed over max-of-pieces envelopes. The validity
+   (underestimation) constraint that defines the alphaBB family is
+   itself the cost: an interpolating step model does not need to be a
+   lower bound, and paying for the certificate buys nothing here.
 
    **Penalty continuation does NOT help** (measured on the geometric mass
    field ``rho_V``, the honest binarization metric — ``rho_E`` carries
