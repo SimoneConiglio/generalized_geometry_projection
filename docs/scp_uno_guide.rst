@@ -214,6 +214,16 @@ The framework provides seven major algorithms:
    conversely the scan+SLSQP heuristic is not what limits the quadratic
    or product models. Ranking at each model's best config (median):
    quadratic+hold 144 < product+hold 248 < OA 460; MMA reference 75.7.
+   The alphaBB repair (``model="alpha"``: max of alpha-lowered tangent
+   planes, alpha per output from the pairwise secant bound - continuous,
+   curvature-aware, interpolating) confirms the diagnosis only halfway:
+   283/436/565 @0.02, 533/679/777 @0.05 - better than plain OA at the
+   matched small step but still far behind the quadratic. Isotropic
+   worst-case curvature (one alpha over all pairs and directions) is too
+   conservative in d=108: one jammed pair inflates alpha for the whole
+   window and the model plunges away from the center, making steps
+   timid. DIRECTIONAL secant curvature - the anchored quadratic's
+   per-coordinate diagonal - remains the decisive ingredient.
 
    **Penalty continuation does NOT help** (measured on the geometric mass
    field ``rho_V``, the honest binarization metric — ``rho_E`` carries
