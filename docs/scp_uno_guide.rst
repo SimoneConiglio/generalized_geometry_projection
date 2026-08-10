@@ -203,6 +203,18 @@ The framework provides seven major algorithms:
    remains quadratic; ``model="product"`` with a small ``tr_init`` is
    competitive and is the best measured surrogate.
 
+   **Outer approximation isolates model bias** (``model="oa"``): the
+   nearest-plane model's subproblem is solved EXACTLY as a MILP (HiGHS;
+   binaries select the plane, Voronoi cells are big-M polyhedra), so
+   every candidate carries a global-optimality certificate — the only
+   heuristic-free subproblem in the study. Results: 484/577/612 @0.05,
+   394/460/491 @0.02 — last place despite the certificate. Conclusion:
+   the binding resource is model QUALITY (curvature), not subproblem
+   solver quality; exact solves cannot rescue a biased model, and
+   conversely the scan+SLSQP heuristic is not what limits the quadratic
+   or product models. Ranking at each model's best config (median):
+   quadratic+hold 144 < product+hold 248 < OA 460; MMA reference 75.7.
+
    **Penalty continuation does NOT help** (measured on the geometric mass
    field ``rho_V``, the honest binarization metric — ``rho_E`` carries
    ``gammac`` and overstates grayness): ramping ``gammac`` 1→2→3 raises
