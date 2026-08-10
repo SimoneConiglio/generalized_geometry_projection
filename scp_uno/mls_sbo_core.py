@@ -1196,7 +1196,15 @@ class MLSSBOptimizer:
             res = None
         if res is None or res.x is None:
             return lo + (hi - lo) * self._rng.random(d), "oa-fallback"
-        return np.clip(res.x[:d], lo, hi), "oa-milp"
+        x_star = res.x[:d]
+        # The cell-wise optimum sits ON the Voronoi boundary (LP vertex),
+        # where the pointwise nearest-plane evaluator may pick the other
+        # side's plane. Nudge infinitesimally toward the selected sample -
+        # cells are star-shaped about their sample, so this stays inside
+        # the intended cell and makes evaluator and MILP agree.
+        sel = int(np.argmax(res.x[d + 1:]))
+        x_star = x_star + 1e-4 * (Xw[sel] - x_star)
+        return np.clip(x_star, lo, hi), "oa-milp"
 
     def _solve_subproblem(self, anchored: AnchoredSeparableQuadratic,
                           center: np.ndarray,
