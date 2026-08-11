@@ -249,6 +249,22 @@ The framework provides seven major algorithms:
    merit-plateau trigger (tunnel while the budget is still young) is the
    untested lever.
 
+   **Per-variable trust region closes most of the MMA gap**
+   (``per_variable_tr=True``): box half-width_k = delta * w_k, the
+   profile grown x1.2 on repeated accepted step direction, clamped x0.7
+   on sign flips, bounded [0.2, 4] (MMA's asymptote rule). Iso-budget
+   control first: MMA under the exact 3-phase 200-eval protocol scores
+   78.2 (solid 0.27), so the scalar-TR driver's 144 was a structural
+   gap, not budget. With the per-variable profile: 87/123/181 (best
+   86.96, gray 0.10, solid 0.35 - the first surrogate designs that
+   BINARIZE like MMA's). Mechanism: density variables that want to run
+   to 0/1 need sustained room while jittery boundary variables need
+   clamping; one scalar delta cannot grant both, and the directional
+   freedom is worth more than any model-family choice measured in this
+   study (quadratic vs product vs alphaBB moved the median by ~100-300;
+   the TR shape moved the best from 126 to 87). Spread widens (181 on
+   seed 0): more freedom, stronger basin lottery.
+
    **Penalty continuation does NOT help** (measured on the geometric mass
    field ``rho_V``, the honest binarization metric — ``rho_E`` carries
    ``gammac`` and overstates grayness): ramping ``gammac`` 1→2→3 raises
