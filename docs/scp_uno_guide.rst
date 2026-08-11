@@ -249,7 +249,36 @@ The framework provides seven major algorithms:
    merit-plateau trigger (tunnel while the budget is still young) is the
    untested lever.
 
-   **Per-variable trust region closes most of the MMA gap**
+   **Per-variable move limits are the single biggest win of the study**
+   (``per_variable_tr=True``, now the DEFAULT). Six-seed head-to-head,
+   quadratic @0.05 under continuation + hold-region:
+
+   ==========================  ==========================  ======  ======
+   step geometry               seeds                       median  best
+   ==========================  ==========================  ======  ======
+   scalar delta                126/144/144/201/221/1345       172     126
+   per-variable, cap 1         99/159/161/162/253/716         162      99
+   per-variable, cap 4         87/92/123/136/181/218          130      87
+   ==========================  ==========================  ======  ======
+
+   MMA at the same 200-eval protocol: 78.2. The cap matters and the
+   tidier choice loses: capping the profile at 1 keeps ``delta`` a true
+   bound on every step, but measured worse than letting a
+   consistently-moving variable reach BEYOND delta (cap 4). So this is a
+   per-variable MOVE LIMIT vector, not a partition of a scalar region -
+   which is what MMA's asymptotes are, MMA having no enclosing region to
+   respect. Mechanism: density variables that want to run to 0/1 need
+   sustained room while jittery boundary variables need clamping; one
+   scalar delta grants neither. It also removes the catastrophic tail
+   (worst 218 vs 1345) and produces the study's only binarizing designs
+   (4/6 runs with solid material, best 87 at gray 0.10 / solid 0.35).
+   Recast of every family with the per-variable step (seeds 0-2,
+   clamp-only) leaves the ladder order intact but lifts the weaker
+   members - alphaBB 436 -> 334, OA 460 -> 399, product 248 -> 229 (its
+   seed-1 run, 154 at solid 0.16, is the first binarizing interpolant
+   result) - confirming the scalar step had been penalizing them too.
+
+   **Historical note: per-variable trust region closes most of the MMA gap**
    (``per_variable_tr=True``): box half-width_k = delta * w_k, the
    profile grown x1.2 on repeated accepted step direction, clamped x0.7
    on sign flips, bounded [0.2, 4] (MMA's asymptote rule). Iso-budget

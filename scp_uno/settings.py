@@ -277,21 +277,24 @@ class MLSSBOSettings(BaseOptimizerSettings):
         2048, description="Surrogate candidates scanned per tunnel proposal."
     )
     per_variable_tr: bool = Field(
-        False,
+        True,
         description=(
-            "Per-variable trust region (MMA-asymptote style): box "
+            "Per-variable move limits (MMA-asymptote style): box "
             "half-width_k = delta * w_k, with w_k grown on repeated step "
-            "directions and clamped on sign flips."
+            "directions and clamped on sign flips. With asy_max > 1 a "
+            "consistently-moving variable reaches beyond delta, as MMA's "
+            "asymptotes do."
         ),
     )
     asy_grow: float = Field(1.2, description="w_k growth on repeated direction.")
     asy_shrink: float = Field(0.7, description="w_k clamp on sign flip.")
     asy_min: float = Field(0.2, description="Lower bound of the width profile.")
     asy_max: float = Field(
-        1.0,
+        4.0,
         description=(
-            "Upper bound of the width profile (1.0: the profile only "
-            "clamps; delta alone owns growth)."
+            "Upper bound of the width profile. 1.0 makes it clamp-only "
+            "(delta bounds every step); >1 grants reach beyond delta, which "
+            "is what the 6-seed study measured as the source of the gain."
         ),
     )
     alpha_mode: str = Field(

@@ -346,7 +346,12 @@ def test_tractable_at_topology_optimization_dimension():
         MLSSBOConfig(max_evals=60, seed=3),
     )
     assert result.n_evals <= 60
-    assert result.f_opt < 0.2 * f0
+    # 0.25 rather than 0.20: with per-variable move limits (the default)
+    # the first accepted steps spend a few evaluations calibrating the
+    # width profile, which costs a little on a 60-evaluation synthetic
+    # while paying for itself on the real problem (see the 6-seed study
+    # in docs/scp_uno_guide.rst).
+    assert result.f_opt < 0.25 * f0
 
 
 def test_sequential_mode_spends_budget_and_converges():

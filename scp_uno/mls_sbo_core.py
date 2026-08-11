@@ -123,15 +123,19 @@ class MLSSBOConfig:
     # sign flips - the scalar delta keeps its global role (resets, shrink
     # triggers), the profile supplies the directionality MMA gets from its
     # per-variable asymptotes.
-    # asy_max=1: the profile only CLAMPS (w_k <= 1, recovering at asy_grow
-    # after a clamp) - delta alone owns growth via tr_expand, so the box
-    # never exceeds the scalar trust region and the semantics stay
-    # consistent with every delta-based trigger.
-    per_variable_tr: bool = False
+    # This is a per-variable MOVE LIMIT vector, not a partition of the
+    # scalar region: with asy_max > 1 a variable whose accepted steps keep
+    # the same direction may reach BEYOND delta, exactly as MMA's
+    # asymptotes do (MMA has no enclosing scalar region to respect). The
+    # clamp-only variant (asy_max=1, semantically tidier since delta then
+    # bounds every step) was measured WORSE over 6 seeds - median 161 vs
+    # 130, best 99 vs 87 - so reach, not clamping, is what earns the gain:
+    # density variables running to 0/1 need sustained room.
+    per_variable_tr: bool = True
     asy_grow: float = 1.2
     asy_shrink: float = 0.7
     asy_min: float = 0.2
-    asy_max: float = 1.0
+    asy_max: float = 4.0
 
     # -- anchored model / sequential subproblem --
     anchor_center: bool = True         # exact f, grad interpolation at the center
