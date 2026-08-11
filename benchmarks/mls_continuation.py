@@ -17,6 +17,7 @@ Usage (inside the ``ggp`` conda environment)::
 from __future__ import annotations
 
 import argparse
+import tempfile
 import time
 from dataclasses import replace
 from pathlib import Path
@@ -90,12 +91,15 @@ def main() -> None:
                         help="TOTAL budget across all phases.")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--tr-init", type=float, default=None)
-    parser.add_argument("--asy-max", type=float, default=None,
+    parser.add_argument("--mv-max", type=float, default=None,
                         help="Upper bound of the per-variable width profile "
                              "(1.0 = clamp-only; >1 grants extra reach).")
+    parser.add_argument("--carry-profile", action="store_true",
+                        help="Carry the per-variable width profile across "
+                             "continuation phases instead of resetting it.")
     parser.add_argument("--pvtr", action="store_true",
-                        help="Per-variable trust region for any MLS_SBO "
-                             "config (MMA-asymptote width profile).")
+                        help="Per-variable scaled move limits for any "
+                             "MLS_SBO config.")
     parser.add_argument("--n-init", type=int, default=None,
                         help="LHS DOE size inside the initial trust region "
                              "(first phase only; later phases warm-start).")
@@ -103,13 +107,16 @@ def main() -> None:
     args = parser.parse_args()
 
     spec = load_problem(PRESET)
+    mv_state = str(Path(tempfile.gettempdir())
+                   / f"mvprofile_{args.config}_{args.tr_init}_{args.seed}.npy")
+    Path(mv_state).unlink(missing_ok=True)
     algo, options = solver_options(args.config, args.seed, args.tr_init)
     if args.pvtr:
         if options is None:
             raise SystemExit("--pvtr applies to MLS_SBO configs only")
         options = {**options, "per_variable_tr": True}
-        if args.asy_max is not None:
-            options["asy_max"] = args.asy_max
+        if args.mv_max is not None:
+            options["mv_max"] = args.mv_max
     t0 = time.time()
     x = None
     result = None
@@ -118,6 +125,8 @@ def main() -> None:
         phase_opts = spec.solver.options if options is None else dict(options)
         if options is not None and args.n_init and i == 0:
             phase_opts = {**phase_opts, "n_init_doe": args.n_init}
+        if options is not None and args.carry_profile:
+            phase_opts = {**phase_opts, "mv_state_path": mv_state}
         s = replace(spec, solver=replace(
             spec.solver, algorithm=algo, max_iter=iters,
             fem_solver="direct",

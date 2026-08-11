@@ -123,19 +123,23 @@ class MLSSBOConfig:
     # sign flips - the scalar delta keeps its global role (resets, shrink
     # triggers), the profile supplies the directionality MMA gets from its
     # per-variable asymptotes.
-    # This is a per-variable MOVE LIMIT vector, not a partition of the
-    # scalar region: with asy_max > 1 a variable whose accepted steps keep
-    # the same direction may reach BEYOND delta, exactly as MMA's
-    # asymptotes do (MMA has no enclosing scalar region to respect). The
-    # clamp-only variant (asy_max=1, semantically tidier since delta then
-    # bounds every step) was measured WORSE over 6 seeds - median 161 vs
-    # 130, best 99 vs 87 - so reach, not clamping, is what earns the gain:
-    # density variables running to 0/1 need sustained room.
+    # Per-variable SCALED BOUND on the step: half-width_k = delta * w_k,
+    # with w_k in [mv_min, mv_max] grown on a repeated step direction and
+    # clamped on a sign flip. It is a scaled move limit, NOT an asymptote:
+    # nothing here is a vertical barrier of a rational approximation, the
+    # profile only rescales the box edge per variable. With mv_max > 1 a
+    # consistently-moving variable reaches beyond delta; the clamp-only
+    # variant (mv_max=1, so delta bounds every step) measured WORSE over
+    # 6 seeds - median 161 vs 130, best 99 vs 87 - so reach, not clamping,
+    # is what earns the gain: densities running to 0/1 need sustained room.
+    # mv_state_path carries the profile ACROSS runs (continuation phases):
+    # loaded at start when the file exists, written at the end.
     per_variable_tr: bool = True
-    asy_grow: float = 1.2
-    asy_shrink: float = 0.7
-    asy_min: float = 0.2
-    asy_max: float = 4.0
+    mv_grow: float = 1.2
+    mv_shrink: float = 0.7
+    mv_min: float = 0.2
+    mv_max: float = 4.0
+    mv_state_path: Optional[str] = None
 
     # -- anchored model / sequential subproblem --
     anchor_center: bool = True         # exact f, grad interpolation at the center
@@ -1518,6 +1522,16 @@ class MLSSBOptimizer:
         stall = 0
         fails = 0
         w_tr = np.ones(d)              # per-variable width profile
+        if cfg.per_variable_tr and cfg.mv_state_path:
+            # carry the profile across continuation phases: the reach a
+            # variable earned while the homotopy was soft is not thrown
+            # away when it sharpens.
+            try:
+                saved = np.load(cfg.mv_state_path)
+                if saved.shape == (d,):
+                    w_tr = np.clip(saved.astype(float), cfg.mv_min, cfg.mv_max)
+            except Exception:
+                pass
         prev_dx = np.zeros(d)
         W = np.eye(d)
 
@@ -1653,10 +1667,10 @@ class MLSSBOptimizer:
                     # gets clamped - one jittery variable no longer
                     # throttles the other d-1.
                     osc = dx * prev_dx
-                    w_tr = np.where(osc > 0, w_tr * cfg.asy_grow,
-                                    np.where(osc < 0, w_tr * cfg.asy_shrink,
+                    w_tr = np.where(osc > 0, w_tr * cfg.mv_grow,
+                                    np.where(osc < 0, w_tr * cfg.mv_shrink,
                                              w_tr))
-                    w_tr = np.clip(w_tr, cfg.asy_min, cfg.asy_max)
+                    w_tr = np.clip(w_tr, cfg.mv_min, cfg.mv_max)
                     prev_dx = dx.copy()
                 if rho >= cfg.eta_expand and rel_step >= 0.8:
                     delta = min(delta * cfg.tr_expand, cfg.tr_max)
@@ -1694,6 +1708,12 @@ class MLSSBOptimizer:
                 "err=%.3f rho=%.2f resets=%d",
                 it, self.n_evals, rec["best_f"], h, delta, err, rho, resets,
             )
+
+        if cfg.per_variable_tr and cfg.mv_state_path:
+            try:
+                np.save(cfg.mv_state_path, w_tr)
+            except Exception:                                # pragma: no cover
+                pass
 
         ib = self._best_index()
         return MLSSBOResult(

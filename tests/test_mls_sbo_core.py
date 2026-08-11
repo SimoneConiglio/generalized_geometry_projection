@@ -492,6 +492,32 @@ def test_per_variable_tr_adapts_to_anisotropy():
     assert max(r.get("w_tr_ratio", 1.0) for r in records) > 1.2
 
 
+def test_move_limit_profile_carries_across_runs(tmp_path):
+    """mv_state_path must persist the width profile between runs, so a
+    continuation phase inherits the reach earned by the previous one."""
+    d = 5
+    a = np.array([100.0, 30.0, 10.0, 3.0, 1.0])
+
+    def bowl(x):
+        return float(np.sum(a * (x - 0.4) ** 2)), 2 * a * (x - 0.4), \
+            np.zeros(0), np.zeros((0, d))
+
+    state = str(tmp_path / "profile.npy")
+    cfg = dict(max_evals=50, batch_size=1, per_variable_tr=True,
+               seed=2, max_outer_iter=200, mv_state_path=state)
+    mls_sbo_minimize(bowl, np.full(d, 0.9), np.zeros(d), np.ones(d),
+                     MLSSBOConfig(**cfg))
+    saved = np.load(state)
+    assert saved.shape == (d,)
+    assert not np.allclose(saved, 1.0)          # profile actually adapted
+    # a second run starts from the saved profile
+    records = []
+    mls_sbo_minimize(bowl, np.full(d, 0.9), np.zeros(d), np.ones(d),
+                     MLSSBOConfig(**cfg), on_iteration=records.append)
+    assert records[0]["w_tr_ratio"] == pytest.approx(
+        float(saved.max() / saved.min()), rel=1e-9)
+
+
 def test_tunnel_proposal_is_aimed_by_the_archive():
     """With the archive holding the incumbent basin AND one distant sample
     whose gradient points toward a deeper region, the tunnel proposal must
