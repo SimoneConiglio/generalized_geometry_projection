@@ -236,6 +236,19 @@ The framework provides seven major algorithms:
    itself the cost: an interpolating step model does not need to be a
    lower bound, and paying for the certificate buys nothing here.
 
+   **Surrogate tunneling at resets** (``tunnel=True``): a reset spends
+   its evaluation on the argmin of the archive-fitted product surrogate
+   over a shell around the incumbent, deflated by the current basin
+   scale — an aimed valley escape at the same one-FEM-call price as the
+   blind random reset it replaces (aimedness unit-tested; double-well
+   escape verified in classical-shrink mode). On the cantilever under
+   continuation + hold-region it is NEUTRAL: 134/145/165 vs 126/144/144
+   without — the hold-region policy makes resets rare and late, and by
+   the time one fires the soft continuation phase has already committed
+   the basin. Mechanism validated, wrong trigger for this protocol; a
+   merit-plateau trigger (tunnel while the budget is still young) is the
+   untested lever.
+
    **Penalty continuation does NOT help** (measured on the geometric mass
    field ``rho_V``, the honest binarization metric — ``rho_E`` carries
    ``gammac`` and overstates grayness): ramping ``gammac`` 1→2→3 raises
