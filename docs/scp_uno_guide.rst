@@ -259,7 +259,24 @@ The framework provides seven major algorithms:
    scalar delta                126/144/144/201/221/1345       172     126
    per-variable, cap 1         99/159/161/162/253/716         162      99
    per-variable, cap 4         87/92/123/136/181/218          130      87
+   cap 4 + profile carried     85/89/107/140/147/173          123      85
    ==========================  ==========================  ======  ======
+
+   Carrying the profile across continuation phases
+   (``--carry-profile``, ``mv_state_path``) is the cheapest remaining
+   gain: better median, best AND worst (173 vs 218), and - the
+   qualitative jump - ALL SIX runs binarize (solid 0.10-0.31, gray
+   0.15-0.41) where the resetting variant managed 4 of 6 and the scalar
+   step essentially none. The reach a variable earns while the homotopy
+   is soft is exactly what it needs to finish the run at 0 or 1; throwing
+   it away at each phase boundary was undoing the mechanism.
+
+   Reach is NOT universally good: recast at ``mv_max=4`` (seeds 0-2,
+   @0.02) the weaker families do not improve - alphaBB 334 -> 403, OA
+   399 -> 385, product 229 -> 233 - because extra room only pays when
+   the model points in the right direction; a biased model with reach
+   simply travels further along a wrong step. The per-variable bound and
+   an accurate anchored model are one mechanism, not two.
 
    MMA at the same 200-eval protocol: 78.2. The cap matters and the
    tidier choice loses: capping the profile at 1 keeps ``delta`` a true
