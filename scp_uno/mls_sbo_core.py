@@ -123,11 +123,15 @@ class MLSSBOConfig:
     # sign flips - the scalar delta keeps its global role (resets, shrink
     # triggers), the profile supplies the directionality MMA gets from its
     # per-variable asymptotes.
+    # asy_max=1: the profile only CLAMPS (w_k <= 1, recovering at asy_grow
+    # after a clamp) - delta alone owns growth via tr_expand, so the box
+    # never exceeds the scalar trust region and the semantics stay
+    # consistent with every delta-based trigger.
     per_variable_tr: bool = False
     asy_grow: float = 1.2
     asy_shrink: float = 0.7
     asy_min: float = 0.2
-    asy_max: float = 4.0
+    asy_max: float = 1.0
 
     # -- anchored model / sequential subproblem --
     anchor_center: bool = True         # exact f, grad interpolation at the center

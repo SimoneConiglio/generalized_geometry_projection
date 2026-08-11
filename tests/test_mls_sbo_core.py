@@ -484,7 +484,7 @@ def test_per_variable_tr_adapts_to_anisotropy():
         on_iteration=records.append,
     )
     assert result.f_opt < 1e-3
-    assert max(r.get("w_tr_ratio", 1.0) for r in records) > 1.5
+    assert max(r.get("w_tr_ratio", 1.0) for r in records) > 1.2
 
 
 def test_tunnel_proposal_is_aimed_by_the_archive():

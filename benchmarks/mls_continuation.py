@@ -90,6 +90,9 @@ def main() -> None:
                         help="TOTAL budget across all phases.")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--tr-init", type=float, default=None)
+    parser.add_argument("--pvtr", action="store_true",
+                        help="Per-variable trust region for any MLS_SBO "
+                             "config (MMA-asymptote width profile).")
     parser.add_argument("--n-init", type=int, default=None,
                         help="LHS DOE size inside the initial trust region "
                              "(first phase only; later phases warm-start).")
@@ -98,6 +101,10 @@ def main() -> None:
 
     spec = load_problem(PRESET)
     algo, options = solver_options(args.config, args.seed, args.tr_init)
+    if args.pvtr:
+        if options is None:
+            raise SystemExit("--pvtr applies to MLS_SBO configs only")
+        options = {**options, "per_variable_tr": True}
     t0 = time.time()
     x = None
     result = None

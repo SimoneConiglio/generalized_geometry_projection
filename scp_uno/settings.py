@@ -287,7 +287,13 @@ class MLSSBOSettings(BaseOptimizerSettings):
     asy_grow: float = Field(1.2, description="w_k growth on repeated direction.")
     asy_shrink: float = Field(0.7, description="w_k clamp on sign flip.")
     asy_min: float = Field(0.2, description="Lower bound of the width profile.")
-    asy_max: float = Field(4.0, description="Upper bound of the width profile.")
+    asy_max: float = Field(
+        1.0,
+        description=(
+            "Upper bound of the width profile (1.0: the profile only "
+            "clamps; delta alone owns growth)."
+        ),
+    )
     alpha_mode: str = Field(
         "iso",
         description=(
