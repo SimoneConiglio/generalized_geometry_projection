@@ -261,6 +261,21 @@ class MLSSBOSettings(BaseOptimizerSettings):
     alpha_safety: float = Field(
         1.5, description="model='alpha': safety factor on the secant alpha bound."
     )
+    tunnel: bool = Field(
+        False,
+        description=(
+            "Surrogate tunneling at resets: spend the reset evaluation on "
+            "the argmin of the archive-fitted product surrogate over a "
+            "deflated shell around the incumbent (aimed valley escape) "
+            "instead of a blind random sample."
+        ),
+    )
+    tunnel_radius_factor: float = Field(
+        6.0, description="Tunnel search half-width as a multiple of tr_init."
+    )
+    tunnel_candidates: int = Field(
+        2048, description="Surrogate candidates scanned per tunnel proposal."
+    )
     alpha_mode: str = Field(
         "iso",
         description=(

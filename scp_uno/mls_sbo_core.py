@@ -110,6 +110,14 @@ class MLSSBOConfig:
     # the OA study showed solver exactness is not the binding resource.
     alpha_safety: float = 1.5
     alpha_mode: str = "iso"            # "iso" | "diag" (nonuniform shift)
+    # Surrogate tunneling (Levy-Montalvo in spirit): at a reset, instead of
+    # a blind random sample in the new region, scan the archive-fitted
+    # product surrogate over a shell around the incumbent (deflated by the
+    # current basin's radius) and spend the evaluation on ITS argmin - an
+    # aimed valley escape at the same one-FEM-call price as a blind reset.
+    tunnel: bool = False
+    tunnel_radius_factor: float = 6.0  # search half-width = factor * tr_init
+    tunnel_candidates: int = 2048
 
     # -- anchored model / sequential subproblem --
     anchor_center: bool = True         # exact f, grad interpolation at the center
@@ -919,8 +927,15 @@ class ProductHermiteSurrogate:
             dP[i] = -(Pil[:, None] * dwi).sum(axis=0)
         alpha = w * P / Nv                                   # (na,)
         dalpha = (dw * P[:, None] + w[:, None] * dP) / Nv[:, None]
+        # jammed windows drive N_i -> 0 and alpha -> huge; the common scale
+        # cancels in the normalization, so divide it out before summing to
+        # keep Ssum**2 finite.
+        sc = float(np.max(np.abs(alpha)))
+        if np.isfinite(sc) and sc > 0.0:
+            alpha = alpha / sc
+            dalpha = dalpha / sc
         Ssum = float(alpha.sum())
-        if Ssum <= 1e-300:
+        if not np.isfinite(Ssum) or Ssum <= 1e-300:
             i0 = int(np.argmin(np.sum(S_all * S_all, axis=1)))
             val = self.Y[i0] + S_all[i0] @ self.G[i0]
             return val, self.G[i0].copy()
@@ -1210,6 +1225,49 @@ class MLSSBOptimizer:
             dist = dist[dist > 1e-14]
         return float(np.min(dist)) if len(dist) else self.cfg.ls_min
 
+    def _tunnel_proposal(self, xstar: np.ndarray, delta: float) -> np.ndarray:
+        """Aimed escape point: argmin of the archive-fitted product surrogate
+        over a deflated shell around the incumbent ``xstar``.
+
+        The deflation (candidates closer than the current basin scale are
+        discarded) is what makes it tunneling rather than exploitation; the
+        surrogate is what makes it aimed rather than blind. Far from the
+        samples the product model degrades to nearest-plane fallback -
+        low-information but still descent-directed, and never worse
+        informed than the uniform random sample it replaces.
+        """
+        cfg = self.cfg
+        Xa = np.asarray(self.X)
+        n, d = Xa.shape
+        order = np.argsort(np.linalg.norm(Xa - xstar[None, :], axis=1))
+        keep = np.sort(order[: min(cfg.max_points, n)])
+        m = len(self.C[0])
+        Y = np.column_stack(
+            [np.asarray(self.F)[keep]]
+            + [np.array([self.C[i][c] for i in keep]) for c in range(m)]
+        ) if m else np.asarray(self.F)[keep][:, None]
+        G = np.stack([
+            np.column_stack([self.Gf[i]] + [self.Jc[i][c] for c in range(m)])
+            for i in keep
+        ])
+        surr = ProductHermiteSurrogate(Xa[keep], Y, G, h=max(delta, 1e-3),
+                                       delta=delta)
+        w = cfg.tunnel_radius_factor * cfg.tr_init
+        lo = np.maximum(0.0, xstar - w)
+        hi = np.minimum(1.0, xstar + w)
+        sampler = qmc.LatinHypercube(d=d, seed=int(self._rng.integers(2 ** 31)))
+        cands = lo + (hi - lo) * sampler.random(cfg.tunnel_candidates)
+        # deflate the current basin: keep candidates beyond its scale
+        far = np.max(np.abs(cands - xstar[None, :]), axis=1) >= cfg.tr_init
+        if np.any(far):
+            cands = cands[far]
+        V = surr.values(cands)                               # (q, m+1)
+        merit = V[:, 0]
+        if m:
+            merit = merit + cfg.penalty * np.sum(
+                np.maximum(0.0, V[:, 1:]), axis=1)
+        return cands[int(np.argmin(merit))]
+
     def _solve_oa_milp(self, oa: OATangentPlanes, center: np.ndarray,
                        lo: np.ndarray, hi: np.ndarray) -> Tuple[np.ndarray, str]:
         """Exact global minimum of the nearest-plane model over the box.
@@ -1469,9 +1527,15 @@ class MLSSBOptimizer:
                 stall = 0
                 fails = 0
                 if self.n_evals < cfg.max_evals:
-                    lo_r = np.maximum(0.0, center - delta)
-                    hi_r = np.minimum(1.0, center + delta)
-                    self._eval(lo_r + (hi_r - lo_r) * self._rng.random(d))
+                    if cfg.tunnel:
+                        # aimed valley escape on the archive surrogate
+                        i_t = self._eval(self._tunnel_proposal(center, delta))
+                        if self._merit(i_t) < self._merit(center_i):
+                            center, center_i = self.X[i_t].copy(), i_t
+                    else:
+                        lo_r = np.maximum(0.0, center - delta)
+                        hi_r = np.minimum(1.0, center + delta)
+                        self._eval(lo_r + (hi_r - lo_r) * self._rng.random(d))
 
             # length scale tracks the sample spacing inside the trust region
             d_min = self._min_dist_in_tr(center, delta)

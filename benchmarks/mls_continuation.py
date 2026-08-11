@@ -71,6 +71,8 @@ def solver_options(config: str, seed: int, tr_init=None) -> tuple[str, dict]:
         return "MLS_SBO", {**common, "model": "alpha"}
     if config == "alpha_diag":                 # nonuniform (diagonal) shift
         return "MLS_SBO", {**common, "model": "alpha", "alpha_mode": "diag"}
+    if config == "quadratic_tunnel":           # aimed valley escape at resets
+        return "MLS_SBO", {**common, "tunnel": True}
     raise SystemExit(f"unknown config {config}")
 
 
@@ -79,7 +81,7 @@ def main() -> None:
     parser.add_argument("--config",
                         choices=["quadratic", "wendland", "product",
                                  "product_loo", "oa", "alpha", "alpha_diag",
-                                 "mma"],
+                                 "quadratic_tunnel", "mma"],
                         default="quadratic")
     parser.add_argument("--max-evals", type=int, default=200,
                         help="TOTAL budget across all phases.")

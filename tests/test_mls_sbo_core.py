@@ -465,6 +465,65 @@ def test_alpha_diag_interpolates_and_underestimates():
         assert np.all(pieces <= Y[j][None, :] + 1e-8)
 
 
+def test_tunnel_proposal_is_aimed_by_the_archive():
+    """With the archive holding the incumbent basin AND one distant sample
+    whose gradient points toward a deeper region, the tunnel proposal must
+    land on the deep side (aimed), outside the deflation radius - not at a
+    uniform random point."""
+    from scp_uno.mls_sbo_core import MLSSBOptimizer
+
+    d = 3
+
+    def dummy(x):
+        return 1.0, np.zeros(d), np.zeros(0), np.zeros((0, d))
+
+    opt = MLSSBOptimizer(dummy, np.zeros(d), np.ones(d),
+                         MLSSBOConfig(seed=0, tr_init=0.1,
+                                      tunnel_radius_factor=6.0))
+    # incumbent basin near 0.8 (flat, mediocre), scout sample at 0.35
+    # with value already lower and gradient pointing toward 0.2
+    for x, f, g in [
+        (np.full(d, 0.80), 0.24, np.zeros(d)),
+        (np.full(d, 0.75), 0.25, np.full(d, 0.05)),
+        (np.full(d, 0.85), 0.25, np.full(d, -0.05)),
+        (np.full(d, 0.35), 0.15, np.full(d, 0.6)),
+    ]:
+        opt.X.append(x.copy())
+        opt.F.append(f)
+        opt.Gf.append(g.copy())
+        opt.C.append(np.zeros(0))
+        opt.Jc.append(np.zeros((0, d)))
+        opt.n_evals += 1
+    xstar = np.full(d, 0.80)
+    prop = opt._tunnel_proposal(xstar, 0.1)
+    assert float(np.max(np.abs(prop - xstar))) >= 0.1      # deflated
+    assert np.all(prop < 0.5)                              # deep side
+
+
+def test_tunneling_escapes_shallow_well():
+    """Separable double well: local minimum near 0.8, global near 0.2.
+    In classical-shrink mode (resets fire quickly) the tunneling run must
+    end strictly below the shallow-well value."""
+    d = 3
+
+    def well(x):
+        a, b = x - 0.2, x - 0.8
+        f = float(np.sum(8 * a * a * b * b + 0.1 * x))
+        g = 16 * a * b * (a + b) + 0.1
+        return f, g, np.zeros(0), np.zeros((0, d))
+
+    f_shallow = well(np.full(d, 0.8))[0]
+    common = dict(max_evals=120, batch_size=1, max_outer_iter=400,
+                  tr_init=0.1, n_resets=8, hold_region=False)
+    escaped = False
+    for seed in (3, 5):
+        r = mls_sbo_minimize(
+            well, np.full(d, 0.85), np.zeros(d), np.ones(d),
+            MLSSBOConfig(tunnel=True, seed=seed, **common))
+        escaped = escaped or r.f_opt < f_shallow - 1e-3
+    assert escaped
+
+
 def test_alpha_driver_converges_on_sphere():
     d = 4
 
