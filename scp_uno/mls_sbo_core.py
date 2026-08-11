@@ -118,6 +118,16 @@ class MLSSBOConfig:
     tunnel: bool = False
     tunnel_radius_factor: float = 6.0  # search half-width = factor * tr_init
     tunnel_candidates: int = 2048
+    # Per-variable trust region (MMA-asymptote style): box half-width_k =
+    # delta * w_k with w_k grown on repeated step directions and clamped on
+    # sign flips - the scalar delta keeps its global role (resets, shrink
+    # triggers), the profile supplies the directionality MMA gets from its
+    # per-variable asymptotes.
+    per_variable_tr: bool = False
+    asy_grow: float = 1.2
+    asy_shrink: float = 0.7
+    asy_min: float = 0.2
+    asy_max: float = 4.0
 
     # -- anchored model / sequential subproblem --
     anchor_center: bool = True         # exact f, grad interpolation at the center
@@ -1499,6 +1509,8 @@ class MLSSBOptimizer:
         center_i = 0
         stall = 0
         fails = 0
+        w_tr = np.ones(d)              # per-variable width profile
+        prev_dx = np.zeros(d)
         W = np.eye(d)
 
         resets = 0
@@ -1526,6 +1538,8 @@ class MLSSBOptimizer:
                             cfg.tr_min * 100.0)
                 stall = 0
                 fails = 0
+                w_tr = np.ones(d)
+                prev_dx = np.zeros(d)
                 if self.n_evals < cfg.max_evals:
                     if cfg.tunnel:
                         # aimed valley escape on the archive surrogate
@@ -1542,8 +1556,8 @@ class MLSSBOptimizer:
             h = float(np.clip(cfg.ls_factor * d_min, cfg.ls_min, cfg.ls_max))
             mls, cons_shift, anchored = self._fit_surrogate(
                 center, h, center_i, delta)
-            lo = np.maximum(0.0, center - delta)
-            hi = np.minimum(1.0, center + delta)
+            lo = np.maximum(0.0, center - delta * w_tr)
+            hi = np.minimum(1.0, center + delta * w_tr)
             best_i = self._best_index()
             if anchored is not None and cfg.batch_size == 1:
                 # sequential (MMA-regime) step: solved constrained subproblem
@@ -1618,11 +1632,25 @@ class MLSSBOptimizer:
             rho = actual / max(pred, 1e-14) if pred > 0 else (
                 np.inf if actual > 0 else -np.inf)
 
-            step = float(np.max(np.abs(self.X[cand_i] - center)))
+            dx = self.X[cand_i] - center
+            step = float(np.max(np.abs(dx)))
+            rel_step = float(np.max(np.abs(dx) / np.maximum(
+                delta * w_tr, 1e-300)))
             if actual > 0 and rho >= cfg.eta_accept:
                 center, center_i = self.X[cand_i].copy(), cand_i
                 fails = 0
-                if rho >= cfg.eta_expand and step >= 0.8 * delta:
+                if cfg.per_variable_tr:
+                    # MMA asymptote rule, per variable: a repeated step
+                    # direction earns room, a sign flip is oscillation and
+                    # gets clamped - one jittery variable no longer
+                    # throttles the other d-1.
+                    osc = dx * prev_dx
+                    w_tr = np.where(osc > 0, w_tr * cfg.asy_grow,
+                                    np.where(osc < 0, w_tr * cfg.asy_shrink,
+                                             w_tr))
+                    w_tr = np.clip(w_tr, cfg.asy_min, cfg.asy_max)
+                    prev_dx = dx.copy()
+                if rho >= cfg.eta_expand and rel_step >= 0.8:
                     delta = min(delta * cfg.tr_expand, cfg.tr_max)
             elif cfg.hold_region:
                 # Hold-region policy: the failed candidate stays in the
@@ -1637,12 +1665,13 @@ class MLSSBOptimizer:
                 # classical three-zone update
                 if actual <= 0 or rho < cfg.eta_shrink:
                     delta *= cfg.tr_shrink
-                elif rho >= cfg.eta_expand and step >= 0.8 * delta:
+                elif rho >= cfg.eta_expand and rel_step >= 0.8:
                     delta = min(delta * cfg.tr_expand, cfg.tr_max)
 
             stall = stall + 1 if actual <= cfg.ftol_abs else 0
             rec = {
                 "iter": it, "n_evals": self.n_evals, "delta": delta,
+                "w_tr_ratio": float(w_tr.max() / w_tr.min()),
                 "lengthscale": h, "min_dist": d_min, "pred_error": err,
                 "batch_indices": new_idx, "rho": float(rho),
                 "resets": resets, "subproblem": sub_tag,

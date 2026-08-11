@@ -465,6 +465,28 @@ def test_alpha_diag_interpolates_and_underestimates():
         assert np.all(pieces <= Y[j][None, :] + 1e-8)
 
 
+def test_per_variable_tr_adapts_to_anisotropy():
+    """On a strongly anisotropic bowl the width profile must spread (stiff
+    coordinates clamped, soft ones roomy) and the driver must still
+    converge."""
+    d = 5
+    a = np.array([100.0, 30.0, 10.0, 3.0, 1.0])
+
+    def bowl(x):
+        return float(np.sum(a * (x - 0.4) ** 2)), 2 * a * (x - 0.4), \
+            np.zeros(0), np.zeros((0, d))
+
+    records = []
+    result = mls_sbo_minimize(
+        bowl, np.full(d, 0.9), np.zeros(d), np.ones(d),
+        MLSSBOConfig(max_evals=80, batch_size=1, per_variable_tr=True,
+                     seed=2, max_outer_iter=300),
+        on_iteration=records.append,
+    )
+    assert result.f_opt < 1e-3
+    assert max(r.get("w_tr_ratio", 1.0) for r in records) > 1.5
+
+
 def test_tunnel_proposal_is_aimed_by_the_archive():
     """With the archive holding the incumbent basin AND one distant sample
     whose gradient points toward a deeper region, the tunnel proposal must
