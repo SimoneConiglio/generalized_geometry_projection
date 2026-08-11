@@ -90,6 +90,9 @@ def main() -> None:
                         help="TOTAL budget across all phases.")
     parser.add_argument("--seed", type=int, default=0)
     parser.add_argument("--tr-init", type=float, default=None)
+    parser.add_argument("--asy-max", type=float, default=None,
+                        help="Upper bound of the per-variable width profile "
+                             "(1.0 = clamp-only; >1 grants extra reach).")
     parser.add_argument("--pvtr", action="store_true",
                         help="Per-variable trust region for any MLS_SBO "
                              "config (MMA-asymptote width profile).")
@@ -105,6 +108,8 @@ def main() -> None:
         if options is None:
             raise SystemExit("--pvtr applies to MLS_SBO configs only")
         options = {**options, "per_variable_tr": True}
+        if args.asy_max is not None:
+            options["asy_max"] = args.asy_max
     t0 = time.time()
     x = None
     result = None
