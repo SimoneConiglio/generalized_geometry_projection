@@ -311,6 +311,45 @@ The framework provides seven major algorithms:
    the TR shape moved the best from 126 to 87). Spread widens (181 on
    seed 0): more freedom, stronger basin lottery.
 
+   **Why the interpolants lose: gradient dilution at the DECISION
+   point.** Diagnostic (d=40, 25-sample window clustered at the centre,
+   anisotropy 9.6, box delta=0.05, available drop in box 6.911):
+
+   =========  ==========  ==========  =============  =================
+   model      pred drop   actual      sign agree     grad angle error
+   =========  ==========  ==========  =============  =================
+   product         2.838       2.631         67.5%             4.2 deg
+   alphaBB         2.863       2.631         67.5%             4.6 deg
+   OA-planes       2.863       2.631         67.5%             4.6 deg
+   quadratic       6.911       6.911        100.0%             0.0 deg
+   =========  ==========  ==========  =============  =================
+
+   All three sample-based models find the SAME point and capture 38% of
+   the available improvement. The cause is not curvature and not the
+   subproblem solver: their gradient direction at that point is only
+   ~4 degrees off, but the box optimum is a CORNER, so every coordinate
+   moves a full half-width - and a 4-degree error in high dimension
+   flips the sign of a third of the coordinates. 32.5% of the variables
+   move the wrong way by the full step. The models are exact AT the
+   samples, but the step decision happens at the box boundary, far from
+   every sample (0.21 away here), where the value and slope are a BLEND
+   of neighbouring samples' planes - each belonging to a different
+   point. The anchored quadratic never blends: it extrapolates the
+   CENTRE's exact value and gradient plus curvature across the whole
+   box, so its sign pattern is the centre's, exactly.
+
+   This one measurement explains the whole ladder: why the exactly
+   solved OA MILP gains nothing (the exact minimum of a model with a
+   third of its signs wrong is still a step with a third of its signs
+   wrong); why alphaBB's curvature repair changes little (curvature is
+   not the defect); why the product model wins every accuracy metric
+   yet loses every optimization metric (its accuracy lives where the
+   samples are, the decision lives where they are not); and why reach
+   (mv_max>1) helps only the quadratic (it lengthens whichever step the
+   model proposes - a gift to a consistent one, a penalty to a diluted
+   one). Interpolation and step quality are optimized at different
+   points in space.
+
    **Penalty continuation does NOT help** (measured on the geometric mass
    field ``rho_V``, the honest binarization metric — ``rho_E`` carries
    ``gammac`` and overstates grayness): ramping ``gammac`` 1→2→3 raises
