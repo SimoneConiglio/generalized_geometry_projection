@@ -385,8 +385,23 @@ The framework provides seven major algorithms:
    was throttling, and the convexified envelope already commits by
    itself (it binarized 6/6 even before the move limits existed). Once
    the model stops over-promising, per-variable reach has little left
-   to buy. Best configuration: model="oa", oa_correction="adaptive",
-   oa_margin=0, tr_init=0.02, scalar trust region.
+   to buy.
+
+   Trust-region sweep on the convexified envelope (3 seeds unless
+   noted): 0.005 -> 120, 0.01 -> 97 (8 seeds:
+   84/90/91/94/100/105/111/180), 0.015 -> 103, 0.02 -> 95.4 (6),
+   0.03 -> 167, 0.05 -> 267. The optimum is FLAT between 0.01 and 0.02
+   and falls off sharply on both sides; 0.01 holds the best single run
+   of the study (84.4, matching the anchored quadratic's best while
+   keeping a far better median). Below 0.01 the budget expires before
+   the design can move - two of three runs at 0.005 finish with zero
+   solid material. Convexification does NOT extend the model's validity
+   radius: it improves how the envelope RANKS nearby points, but the
+   neighbourhood it can be trusted over is still set by curvature,
+   since the model is piecewise linear either way.
+
+   Best configuration: model="oa", oa_correction="adaptive",
+   oa_margin=0, tr_init in [0.01, 0.02], scalar trust region.
 
    Why it works where the intercept version failed: both make the
    envelope less optimistic, but the slope rotation keeps
