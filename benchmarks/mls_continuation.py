@@ -66,12 +66,17 @@ def solver_options(config: str, seed: int, tr_init=None) -> tuple[str, dict]:
     if config == "product_loo":                # global radius, LOO-selected
         return "MLS_SBO", {**common, "model": "product",
                            "radius": "global", "auto_support": True}
-    if config == "oa":                         # outer approximation (MILP)
+    if config == "oa":                         # plane upper envelope (LP)
         return "MLS_SBO", {**common, "model": "oa"}
-    if config == "alpha":                      # alphaBB underestimator
-        return "MLS_SBO", {**common, "model": "alpha"}
-    if config == "alpha_diag":                 # nonuniform (diagonal) shift
-        return "MLS_SBO", {**common, "model": "alpha", "alpha_mode": "diag"}
+    if config == "nearest_plane":              # Voronoi plane selection (MILP)
+        return "MLS_SBO", {**common, "model": "nearest_plane"}
+    if config == "lsupport":                   # quadratic support functions
+        return "MLS_SBO", {**common, "model": "lsupport"}
+    if config == "lsupport_diag":              # per-coordinate alpha profile
+        return "MLS_SBO", {**common, "model": "lsupport", "lip_mode": "diag"}
+    if config == "product_aniso":              # per-variable radii + LOO
+        return "MLS_SBO", {**common, "model": "product",
+                           "radius": "aniso", "auto_support": True}
     if config == "quadratic_tunnel":           # aimed valley escape at resets
         return "MLS_SBO", {**common, "tunnel": True}
     if config == "quadratic_pvtr":             # per-variable trust region
@@ -83,7 +88,8 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--config",
                         choices=["quadratic", "wendland", "product",
-                                 "product_loo", "oa", "alpha", "alpha_diag",
+                                 "product_loo", "product_aniso", "oa",
+                                 "nearest_plane", "lsupport", "lsupport_diag",
                                  "quadratic_tunnel", "quadratic_pvtr",
                                  "mma"],
                         default="quadratic")

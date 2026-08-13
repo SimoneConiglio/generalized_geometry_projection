@@ -249,17 +249,21 @@ class MLSSBOSettings(BaseOptimizerSettings):
             "interpolant, the measured best surrogate), 'tangent' (weighted "
             "sum of tangent hyperplanes) or 'planar' (center-frozen planar "
             "Hermite MLS) or 'oa' (outer approximation: nearest-plane model "
-            "whose subproblem is solved exactly as a MILP by HiGHS) or "
-            "'alpha' (alphaBB piecewise quadratic underestimator: max of "
-            "alpha-lowered tangent planes - continuous, curvature-aware, "
-            "interpolating)."
+            "'oa' (outer approximation: minimize the tangent-plane upper "
+            "envelope, an LP), 'nearest_plane' (Voronoi selection of one "
+            "plane, exact box minimum via MILP) or 'lsupport' (max of "
+            "quadratic support functions, the L-smooth lower bound)."
         ),
     )
     oa_time_limit: float = Field(
-        30.0, description="model='oa': time limit in seconds per MILP solve."
+        30.0,
+        description="model='nearest_plane': time limit per MILP solve (s).",
     )
-    alpha_safety: float = Field(
-        1.5, description="model='alpha': safety factor on the secant alpha bound."
+    lip_safety: float = Field(
+        1.5,
+        description=(
+            "model='lsupport': safety factor on the secant estimate of L/2."
+        ),
     )
     tunnel: bool = Field(
         False,
@@ -302,12 +306,12 @@ class MLSSBOSettings(BaseOptimizerSettings):
             "phases): loaded at start when present, written at the end."
         ),
     )
-    alpha_mode: str = Field(
+    lip_mode: str = Field(
         "iso",
         description=(
-            "model='alpha': 'iso' (one alpha per output) or 'diag' "
-            "(nonuniform shift - per-coordinate alpha_k from Hermite "
-            "gradient differences, scaled to the pairwise validity bound)."
+            "model='lsupport': 'iso' (one alpha per output) or 'diag' "
+            "(per-coordinate alpha_k from Hermite gradient differences, "
+            "scaled to the pairwise validity bound)."
         ),
     )
     weighting: str = Field(
@@ -338,9 +342,9 @@ class MLSSBOSettings(BaseOptimizerSettings):
     auto_support: bool = Field(
         False,
         description=(
-            "model='product', radius='global': self-compute the support "
-            "factor each iteration by gradient-enhanced leave-one-out (the "
-            "likelihood analogue for interpolants)."
+            "model='product': select BOTH hyperparameters each iteration by "
+            "gradient-enhanced leave-one-out - the radius rule (nn / aniso / "
+            "global) and its scalar multiplier."
         ),
     )
     min_sep_frac: float = Field(

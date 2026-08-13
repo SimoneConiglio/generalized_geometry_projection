@@ -101,15 +101,14 @@ class MLSSBOConfig:
     # budget safeguard.
     hold_region: bool = True
     region_patience: int = 8
-    # model="oa": outer approximation - nearest-plane model whose
-    # exploitation subproblem is solved EXACTLY as a MILP (HiGHS).
+    # model="nearest_plane": Voronoi selection of one tangent plane; its
+    # exact box minimum needs binaries, hence a MILP (HiGHS).
     oa_time_limit: float = 30.0        # seconds per MILP solve
-    # model="alpha": alphaBB piecewise quadratic underestimator
-    # (max of alpha-lowered tangent planes; continuous, curvature-aware,
-    # interpolating). Subproblem via the standard scan+SLSQP machinery -
-    # the OA study showed solver exactness is not the binding resource.
-    alpha_safety: float = 1.5
-    alpha_mode: str = "iso"            # "iso" | "diag" (nonuniform shift)
+    # model="lsupport": max of quadratic support functions (L-smooth lower
+    # bounds). lip_safety scales the secant estimate of L/2; lip_mode
+    # "iso" uses one alpha per output, "diag" a per-coordinate profile.
+    lip_safety: float = 1.5
+    lip_mode: str = "iso"              # "iso" | "diag"
     # Surrogate tunneling (Levy-Montalvo in spirit): at a reset, instead of
     # a blind random sample in the new region, scan the archive-fitted
     # product surrogate over a shell around the incumbent (deflated by the
@@ -191,6 +190,10 @@ class MLSSBOConfig:
     #   radius="global": rho_i = support_factor*h for all points; pairs
     #     with auto_support=True, which LOO-selects the factor per
     #     iteration (the likelihood analogue - more elegant, less cheap).
+    #   radius="aniso": per-variable radii rho_ik = nn_factor * d_nn(i) * s_k
+    #     with s_k read off the Hermite gradient differences (no extra fitted
+    #     parameters). auto_support=True hands BOTH the rule and its
+    #     multiplier to loo_select_hyper.
     radius: str = "nn"
     nn_factor: float = 2.5
     auto_support: bool = False
@@ -678,14 +681,61 @@ class TangentPlaneSurrogate:
         return np.einsum("qn,qnm->qm", lam, T)               # (q, m)
 
 
-class OATangentPlanes:
-    """Outer-approximation model: the tangent plane of the NEAREST sample.
+class OuterApproximation:
+    """Outer approximation proper: the UPPER ENVELOPE of the tangent planes.
 
-    ``value_and_slope`` makes it a drop-in surrogate for the ratio test;
-    the exploitation subproblem is NOT solved by scan+SLSQP but exactly, as
-    a mixed-integer linear program (:meth:`MLSSBOptimizer._solve_oa_milp`):
-    binaries select the active plane and Voronoi cells are polyhedra, so
-    "nearest" is expressible with big-M rows.
+    .. math:: \\hat f(x) = \\max_i [ f_i + g_i^T (x - x_i) ]
+
+    For a convex function every plane is a global underestimator, the max
+    of them is the tightest piecewise-linear underestimator available from
+    the data, and minimizing it over a box is a plain **LP** (epigraph
+    variable, one row per plane) - no binaries, no Voronoi cells. Each
+    constraint contributes its own linearizations as cuts, which is the
+    classical OA master problem (Duran & Grossmann; Kelley's cutting
+    plane for the unconstrained case).
+
+    The GGP compliance problem is NOT convex, so the envelope is not a
+    valid bound globally. The adaptation used here is locality: the model
+    is built only from the trust-region window and minimized only inside
+    the trust-region box, where the sampled planes still describe the
+    function - the trust region plays the role that convexity plays in
+    the classical method.
+    """
+
+    def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray) -> None:
+        self.X = np.atleast_2d(np.asarray(X, float))         # (n, d)
+        Y = np.asarray(Y, float)
+        self.Y = Y if Y.ndim == 2 else Y[:, None]            # (n, m)
+        G = np.asarray(G, float)
+        self.G = G if G.ndim == 3 else G[:, :, None]         # (n, d, m)
+
+    def _planes(self, x: np.ndarray) -> np.ndarray:
+        S = x[None, :] - self.X                              # (n, d)
+        return self.Y + np.einsum("nd,ndm->nm", S, self.G)   # (n, m)
+
+    def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
+        x = np.asarray(x, float)
+        P = self._planes(x)
+        act = np.argmax(P, axis=0)                           # (m,)
+        val = P[act, np.arange(len(act))]
+        grad = np.stack([self.G[a, :, k] for k, a in enumerate(act)], axis=1)
+        return val, grad
+
+    def values(self, Q: np.ndarray) -> np.ndarray:
+        Q = np.atleast_2d(np.asarray(Q, float))
+        return np.stack([self._planes(q).max(axis=0) for q in Q])
+
+
+class NearestPlaneModel:
+    """Piecewise-linear model that selects the tangent plane of the NEAREST
+    sample (a Voronoi partition of the window), NOT an outer approximation:
+    it takes no max/envelope and underestimates nothing.
+
+    Its exact minimum over a box is a mixed-integer program
+    (:meth:`MLSSBOptimizer._solve_nearest_plane_milp`) because "nearest"
+    needs binaries: Voronoi cells are polyhedra expressed with big-M rows.
+    Kept because that exactness is what proved the subproblem solver is
+    not the binding resource.
     """
 
     def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray) -> None:
@@ -709,17 +759,27 @@ class OATangentPlanes:
                          for q, i in zip(Q, near)])
 
 
-class AlphaUnderestimator(OATangentPlanes):
-    """alphaBB-style piecewise quadratic underestimator (Adjiman/Floudas).
+class QuadraticSupportModel(NearestPlaneModel):
+    """Max of QUADRATIC SUPPORT FUNCTIONS - the L-smooth lower bound.
 
-    ``U(x) = max_i [f_i + g_i^T (x - x_i) - alpha ||x - x_i||^2]``: each
-    tangent plane is lowered by a concave quadratic, and the pointwise MAX
-    over the window is taken. This repairs both defects the plain OA
-    nearest-plane model showed: it is CONTINUOUS (max, not nearest - no
-    Voronoi jumps) and CURVATURE-AWARE (the alpha term). With alpha at
-    least the pairwise secant bound ``(plane_i(x_j) - f_j)/|x_j - x_i|^2``
-    the max is also an exact value+gradient interpolant at every sample.
-    alpha is per-output, data-driven, times a safety factor.
+    .. math::
+
+        U(x) = \\max_i [ f_i + g_i^T (x-x_i) - \\sum_k \\alpha_k (x_k-x_{ik})^2 ]
+
+    For a function with Lipschitz-continuous gradient (constant ``L``) each
+    piece with ``alpha = L/2`` is a valid lower bound, so the max is the
+    tightest such bound from the data - the quadratic analogue of the
+    Shubert-Piyavskii/Lipschitz envelope, and an exact value+gradient
+    interpolant at every sample when ``alpha`` sits at the pairwise secant
+    bound ``(plane_i(x_j) - f_j)/|x_j - x_i|^2``.
+
+    This is NOT alphaBB. Adjiman & Floudas convexify an *explicit* function
+    by subtracting ``sum_k alpha_k (x_k - x_k^L)(x_k^U - x_k)`` with alpha
+    from interval-Hessian bounds; there is no explicit expression here, and
+    nothing is being convexified - the alphas are estimated from sampled
+    gradients, per output, times a safety factor. ``mode="diag"`` gives a
+    per-coordinate ``alpha_k`` (a directional Lipschitz profile) instead of
+    one isotropic value.
     """
 
     def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
@@ -858,8 +918,18 @@ class ProductHermiteSurrogate:
         # nearest other sample) - parameter-free spacing adaptivity at the
         # cost of one distance pass; "global" uses rho_i = support_factor*h
         # for all points (pairs with the LOO selector).
-        nX = len(self.X)
-        if radius == "nn" and nX > 1:
+        # Support radii, stored ALWAYS as (n, d) so the weight is an
+        # ellipsoidal bump: t_i(x)^2 = sum_k ((x_k - x_ik) / rho_ik)^2.
+        #   "global" rho_ik = support_factor * h            (1 hyperparameter)
+        #   "nn"     rho_ik = nn_factor * d_nn(i)           (1, spacing-adaptive)
+        #   "aniso"  rho_ik = nn_factor * d_nn(i) * s_k     (1 + d, but s_k is
+        #            READ OFF the Hermite data, not fitted: s_k ~ c_k^{-1/2}
+        #            with c_k the mean |dg_k|/|dx_k| over pairs, normalized to
+        #            geometric mean 1 - support shrinks where the function
+        #            varies fastest, so only the scalar multiplier is left to
+        #            select and loo_select_hyper can still do it by grid.)
+        nX, dX = self.X.shape
+        if radius in ("nn", "aniso") and nX > 1:
             D = np.linalg.norm(self.X[:, None, :] - self.X[None, :, :], axis=2)
             D[np.diag_indices(nX)] = np.inf
             base = D.min(axis=1)                             # (n,)
@@ -869,9 +939,12 @@ class ProductHermiteSurrogate:
                 # effective spacing floor - supports always reach where the
                 # subproblem searches, however dense the sampling.
                 base = np.maximum(base, float(delta))
-            self.rho = float(nn_factor) * base               # (n,)
+            rho = float(nn_factor) * base[:, None] * np.ones((1, dX))
+            if radius == "aniso":
+                rho = rho * self._direction_scales()[None, :]
+            self.rho = rho                                   # (n, d)
         else:
-            self.rho = np.full(nX, self.rmax)
+            self.rho = np.full((nX, dX), self.rmax)
         # Smoothstep argument: "r" (linear distance, default) keeps all the
         # cardinal conditions with a QUADRATIC node plateau; "d2" (squared
         # distance, the original sheet form) has a quartic plateau whose
@@ -885,22 +958,54 @@ class ProductHermiteSurrogate:
             w = self._W(self.X[i])[0]
             self.N[i] = max(np.prod(np.delete(1.0 - w, i)), 1e-300)
 
+    def _direction_scales(self) -> np.ndarray:
+        """Per-variable support scaling read off the Hermite data.
+
+        ``c_k = mean_{i,j} |g_jk - g_ik| / |x_jk - x_ik|`` measures how fast
+        coordinate ``k`` bends; the support is scaled by ``c_k^{-1/2}``
+        (normalized to geometric mean 1, clipped to [1/4, 4]) so it shrinks
+        where the function varies fastest. No extra fitted parameters.
+        """
+        X, G = self.X, self.G
+        n, d = X.shape
+        num = np.zeros(d)
+        cnt = np.zeros(d)
+        for i in range(n):
+            dX = X - X[i][None, :]                           # (n, d)
+            ok = np.abs(dX) > 1e-12
+            c = np.abs(G - G[i][None, :, :]).mean(axis=2) / np.maximum(
+                np.abs(dX), 1e-12)                           # (n, d)
+            num += np.where(ok, c, 0.0).sum(axis=0)
+            cnt += ok.sum(axis=0)
+        c_k = np.where(cnt > 0, num / np.maximum(cnt, 1), 1.0)
+        c_k = np.maximum(c_k, 1e-12)
+        s = 1.0 / np.sqrt(c_k)
+        s = s / float(np.exp(np.mean(np.log(np.maximum(s, 1e-300)))))
+        return np.clip(s, 0.25, 4.0)
+
     # ------------------------------------------------------------------ w
     def _W(self, x: np.ndarray):
-        """Smoothstep weights and their gradients at one point."""
+        """Smoothstep weights and their gradients at one point.
+
+        Ellipsoidal support: ``t_i = || (x - x_i) / rho_i ||`` with a
+        per-variable radius vector, so ``W_i = 2t^3 - 3t^2 + 1`` on
+        ``t < 1`` and identically zero (with zero slope) beyond.
+        """
         S = x[None, :] - self.X                              # (n, d)
-        dd = np.sum(S * S, axis=1)
+        U = S / self.rho                                     # (n, d)
         if self.w_arg == "r":
-            r = np.sqrt(dd)
-            t = np.clip(r / self.rho, 0.0, 1.0)
-            w = 2.0 * t ** 3 - 3.0 * t * t + 1.0
+            t = np.sqrt(np.sum(U * U, axis=1))
+            tc = np.clip(t, 0.0, 1.0)
+            w = 2.0 * tc ** 3 - 3.0 * tc * tc + 1.0
+            # dW/dx_k = W'(t) * u_k / (rho_k * t),  W'(t) = 6t^2 - 6t
             with np.errstate(invalid="ignore", divide="ignore"):
-                coef = np.where(r > 1e-30,
-                                (6.0 * t * t - 6.0 * t) / (self.rho * r), 0.0)
-            return w, coef[:, None] * S, S
-        t = np.clip(dd / (self.rho * self.rho), 0.0, 1.0)
-        w = 2.0 * t ** 3 - 3.0 * t * t + 1.0
-        dw = ((6.0 * t * t - 6.0 * t) / (self.rho * self.rho))[:, None] * (2.0 * S)
+                coef = np.where((t > 1e-30) & (t < 1.0),
+                                (6.0 * tc * tc - 6.0 * tc) / t, 0.0)
+            dw = coef[:, None] * U / self.rho
+            return w, dw, S
+        t2 = np.clip(np.sum(U * U, axis=1), 0.0, 1.0)
+        w = 2.0 * t2 ** 3 - 3.0 * t2 * t2 + 1.0
+        dw = (6.0 * t2 * t2 - 6.0 * t2)[:, None] * (2.0 * U / self.rho)
         return w, dw, S
 
     @staticmethod
@@ -936,7 +1041,7 @@ class ProductHermiteSurrogate:
             return val, self.G[i0].copy()
         w, dw = w_all[A], dw_all[A]
         S, Yv, Gv, Nv = S_all[A], self.Y[A], self.G[A], self.N[A]
-        rho = self.rho[A]
+        rho = self.rho[A]                                    # (na, d)
         na = len(A)
         u = 1.0 - w
         P = self._loo(u)                                     # (na,)
@@ -965,7 +1070,7 @@ class ProductHermiteSurrogate:
         ah = alpha / Ssum
         dah = (dalpha * Ssum - alpha[:, None] * dSsum[None, :]) / (Ssum * Ssum)
         # beta_ij and gradient
-        t = S / rho[:, None]                                 # (na, d)
+        t = S / rho                                          # (na, d)
         inside = np.abs(t) < 1.0
         g = np.where(inside, t * (t * t - 1.0) ** 2, 0.0)    # gamma(t)
         gp = np.where(inside, (t * t - 1.0) * (5.0 * t * t - 1.0), 0.0)
@@ -974,7 +1079,7 @@ class ProductHermiteSurrogate:
         # (the raw per-node normalizer 1/N_i amplifies between nodes when
         # the supports overlap; all node conditions are unchanged since
         # gamma(0)=0, gamma'(0)=1, alpha_hat_i(x_i)=1, grad alpha_hat=0).
-        rg = rho[:, None] * g                                # (na, d)
+        rg = rho * g                                         # (na, d)
         val = ah @ Yv + np.einsum("nj,njm->m", rg * ah[:, None], Gv)
         # dbeta_ij/dx_k = rho_i g_ij dah_ik + gamma'_ij delta_jk ah_i
         grad = dah.T @ Yv                                    # value part (d, m)
@@ -986,6 +1091,51 @@ class ProductHermiteSurrogate:
         """Batch values ``(q, m)`` (loop; used by the global subproblem scan)."""
         Xq = np.atleast_2d(np.asarray(Xq, float))
         return np.stack([self.value_and_slope(xq)[0] for xq in Xq])
+
+
+def loo_select_hyper(X: np.ndarray, Y: np.ndarray, G: np.ndarray, h: float,
+                     modes: Sequence[str] = ("nn", "aniso", "global"),
+                     factors: Sequence[float] = (1.0, 1.5, 2.0, 3.0, 4.5, 6.0),
+                     w_arg: str = "r") -> Tuple[str, float]:
+    """Select the product model's hyperparameters by gradient-enhanced LOO.
+
+    Searches BOTH the radius rule (isotropic per-point ``nn``, per-variable
+    ``aniso``, or a single ``global`` radius) and the scalar multiplier -
+    the only two free hyperparameters, since the anisotropy profile itself
+    is read off the Hermite data rather than fitted. Returns
+    ``(mode, factor)``; the factor multiplies ``h`` for ``global`` and the
+    nearest-neighbour distance otherwise.
+    """
+    X = np.atleast_2d(np.asarray(X, float))
+    Y = np.asarray(Y, float)
+    Y = Y if Y.ndim == 2 else Y[:, None]
+    G = np.asarray(G, float)
+    G = G if G.ndim == 3 else G[:, :, None]
+    n = len(X)
+    if n < 3:
+        return str(modes[0]), float(factors[0])
+    sf2 = np.maximum(np.var(Y, axis=0), 1e-30)
+    sg2 = np.maximum(np.mean(np.sum(G * G, axis=1), axis=0), 1e-30)
+    idx = np.arange(n)
+    scored = idx if n <= 20 else np.unique(np.linspace(0, n - 1, 20).astype(int))
+    best, best_err = (str(modes[0]), float(factors[0])), np.inf
+    for mode in modes:
+        for fac in factors:
+            err = 0.0
+            for i in scored:
+                keep = idx != i
+                kw = dict(h=h, w_arg=w_arg, radius=mode)
+                if mode == "global":
+                    kw["support_factor"] = float(fac)
+                else:
+                    kw["nn_factor"] = float(fac)
+                s = ProductHermiteSurrogate(X[keep], Y[keep], G[keep], **kw)
+                v, g = s.value_and_slope(X[i])
+                err += float(np.sum((v - Y[i]) ** 2 / sf2))
+                err += float(np.sum(np.sum((g - G[i]) ** 2, axis=0) / sg2))
+            if err < best_err:
+                best_err, best = err, (mode, float(fac))
+    return best
 
 
 def loo_select_support(X: np.ndarray, Y: np.ndarray, G: np.ndarray, h: float,
@@ -1157,18 +1307,28 @@ class MLSSBOptimizer:
 
         anchored = None
         if cfg.anchor_center and cfg.model == "oa":
-            anchored = OATangentPlanes(Xa[keep], Y, G)
-        elif cfg.anchor_center and cfg.model == "alpha":
-            anchored = AlphaUnderestimator(Xa[keep], Y, G,
-                                           safety=cfg.alpha_safety,
-                                           mode=cfg.alpha_mode)
+            anchored = OuterApproximation(Xa[keep], Y, G)
+        elif cfg.anchor_center and cfg.model == "nearest_plane":
+            anchored = NearestPlaneModel(Xa[keep], Y, G)
+        elif cfg.anchor_center and cfg.model == "lsupport":
+            anchored = QuadraticSupportModel(Xa[keep], Y, G,
+                                             safety=cfg.lip_safety,
+                                             mode=cfg.lip_mode)
         elif cfg.anchor_center and cfg.model == "product":
-            sfac = (loo_select_support(Xa[keep], Y, G, h)
-                    if (cfg.auto_support and cfg.radius == "global")
-                    else cfg.support_factor)
+            if cfg.auto_support:
+                # LOO picks BOTH hyperparameters: the radius rule (per-point
+                # isotropic / per-variable anisotropic / single global) and
+                # its scalar multiplier.
+                rmode, fac = loo_select_hyper(Xa[keep], Y, G, h)
+            else:
+                rmode, fac = cfg.radius, (cfg.support_factor
+                                          if cfg.radius == "global"
+                                          else cfg.nn_factor)
             anchored = ProductHermiteSurrogate(
-                Xa[keep], Y, G, h, support_factor=sfac,
-                radius=cfg.radius, nn_factor=cfg.nn_factor, delta=delta)
+                Xa[keep], Y, G, h,
+                support_factor=(fac if rmode == "global" else cfg.support_factor),
+                nn_factor=(fac if rmode != "global" else cfg.nn_factor),
+                radius=rmode, delta=delta)
         elif cfg.anchor_center and cfg.model == "tangent":
             # De-jam: enforce a minimum pairwise separation in the window
             # (keep the center and the incumbent best, then nearest-first).
@@ -1290,8 +1450,61 @@ class MLSSBOptimizer:
                 np.maximum(0.0, V[:, 1:]), axis=1)
         return cands[int(np.argmin(merit))]
 
-    def _solve_oa_milp(self, oa: OATangentPlanes, center: np.ndarray,
-                       lo: np.ndarray, hi: np.ndarray) -> Tuple[np.ndarray, str]:
+    def _solve_oa_lp(self, oa: OuterApproximation, lo: np.ndarray,
+                     hi: np.ndarray) -> Tuple[np.ndarray, str]:
+        """Exact minimum of the tangent-plane UPPER ENVELOPE over the box.
+
+        Pure LP - epigraph variable ``eta`` plus one row per objective
+        plane, and every constraint linearization as its own cut::
+
+            min  eta
+            s.t. g_i^T x - eta <= g_i^T x_i - f_i          (objective planes)
+                 g_ij^T x      <= g_ij^T x_i - c_ij        (constraint cuts)
+                 lo <= x <= hi
+
+        No binaries: taking the max needs an epigraph, not a selection.
+        """
+        from scipy.optimize import linprog
+
+        Xw, Y, G = oa.X, oa.Y, oa.G
+        n, d = Xw.shape
+        m = Y.shape[1] - 1
+        A = np.zeros((n * (1 + m), d + 1))
+        b = np.zeros(n * (1 + m))
+        for i in range(n):
+            A[i, :d] = G[i, :, 0]
+            A[i, d] = -1.0
+            b[i] = G[i, :, 0] @ Xw[i] - Y[i, 0]
+        r = n
+        for j in range(m):
+            for i in range(n):
+                A[r, :d] = G[i, :, 1 + j]
+                b[r] = G[i, :, 1 + j] @ Xw[i] - Y[i, 1 + j]
+                r += 1
+        c = np.zeros(d + 1)
+        c[d] = 1.0
+        bounds = [(float(lo[k]), float(hi[k])) for k in range(d)] + [(None, None)]
+        try:
+            res = linprog(c, A_ub=A, b_ub=b, bounds=bounds, method="highs")
+        except Exception:                                    # pragma: no cover
+            res = None
+        if res is None or not getattr(res, "success", False) or res.x is None:
+            # infeasible cut set (nonconvexity): drop the constraint cuts and
+            # minimize the objective envelope alone, then let the ratio test
+            # judge the point.
+            try:
+                res = linprog(c, A_ub=A[:n], b_ub=b[:n], bounds=bounds,
+                              method="highs")
+            except Exception:                                # pragma: no cover
+                res = None
+            if res is None or res.x is None:
+                return lo + (hi - lo) * self._rng.random(d), "oa-fallback"
+            return np.clip(res.x[:d], lo, hi), "oa-lp-relaxed"
+        return np.clip(res.x[:d], lo, hi), "oa-lp"
+
+    def _solve_nearest_plane_milp(self, oa: NearestPlaneModel,
+                                  center: np.ndarray, lo: np.ndarray,
+                                  hi: np.ndarray) -> Tuple[np.ndarray, str]:
         """Exact global minimum of the nearest-plane model over the box.
 
         MILP: continuous ``x`` (d), epigraph ``eta``, binaries ``z_i``
@@ -1584,7 +1797,9 @@ class MLSSBOptimizer:
             if anchored is not None and cfg.batch_size == 1:
                 # sequential (MMA-regime) step: solved constrained subproblem
                 if cfg.model == "oa":
-                    x_new, sub_tag = self._solve_oa_milp(
+                    x_new, sub_tag = self._solve_oa_lp(anchored, lo, hi)
+                elif cfg.model == "nearest_plane":
+                    x_new, sub_tag = self._solve_nearest_plane_milp(
                         anchored, center, lo, hi)
                 else:
                     x_new, sub_tag = self._solve_subproblem(

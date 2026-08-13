@@ -386,16 +386,16 @@ def test_product_shape_functions_full_hermite_interpolation_any_spacing():
         assert np.allclose(grad, G[i], atol=1e-7)
 
 
-def test_oa_milp_finds_nearest_plane_global_minimum():
-    """The MILP must return the exact global minimum of the nearest-plane
-    model over the box - verified against a dense brute-force grid."""
-    from scp_uno.mls_sbo_core import MLSSBOptimizer, OATangentPlanes
+def test_outer_approximation_lp_minimizes_the_plane_envelope():
+    """True OA: the LP must return the exact minimizer of max_i plane_i over
+    the box - verified against a dense brute-force grid."""
+    from scp_uno.mls_sbo_core import MLSSBOptimizer, OuterApproximation
 
-    rng = np.random.default_rng(4)
-    X = rng.random((5, 2))
-    Y = rng.standard_normal((5, 1))
-    G = rng.standard_normal((5, 2, 1))
-    oa = OATangentPlanes(X, Y, G)
+    rng = np.random.default_rng(7)
+    X = rng.random((6, 2))
+    Y = rng.standard_normal((6, 1))
+    G = rng.standard_normal((6, 2, 1))
+    oa = OuterApproximation(X, Y, G)
 
     def fobj(x):
         return 0.0, np.zeros(2), np.zeros(0), np.zeros((0, 2))
@@ -403,7 +403,37 @@ def test_oa_milp_finds_nearest_plane_global_minimum():
     opt = MLSSBOptimizer(fobj, np.zeros(2), np.ones(2),
                          MLSSBOConfig(max_evals=2, seed=0))
     lo, hi = np.zeros(2), np.ones(2)
-    x_star, tag = opt._solve_oa_milp(oa, np.full(2, 0.5), lo, hi)
+    x_star, tag = opt._solve_oa_lp(oa, lo, hi)
+    assert tag == "oa-lp"
+    gx, gy = np.meshgrid(np.linspace(0, 1, 301), np.linspace(0, 1, 301))
+    grid = np.column_stack([gx.ravel(), gy.ravel()])
+    brute = float(np.min(oa.values(grid)[:, 0]))
+    got = float(oa.value_and_slope(x_star)[0][0])
+    assert got <= brute + 1e-6
+    # the envelope is the MAX of the planes, and it underestimates nothing
+    # by construction: at every sample it equals or exceeds that sample.
+    for i in range(6):
+        assert float(oa.value_and_slope(X[i])[0][0]) >= Y[i, 0] - 1e-9
+
+
+def test_nearest_plane_milp_finds_global_minimum():
+    """The MILP must return the exact global minimum of the nearest-plane
+    model over the box - verified against a dense brute-force grid."""
+    from scp_uno.mls_sbo_core import MLSSBOptimizer, NearestPlaneModel
+
+    rng = np.random.default_rng(4)
+    X = rng.random((5, 2))
+    Y = rng.standard_normal((5, 1))
+    G = rng.standard_normal((5, 2, 1))
+    oa = NearestPlaneModel(X, Y, G)
+
+    def fobj(x):
+        return 0.0, np.zeros(2), np.zeros(0), np.zeros((0, 2))
+
+    opt = MLSSBOptimizer(fobj, np.zeros(2), np.ones(2),
+                         MLSSBOConfig(max_evals=2, seed=0))
+    lo, hi = np.zeros(2), np.ones(2)
+    x_star, tag = opt._solve_nearest_plane_milp(oa, np.full(2, 0.5), lo, hi)
     assert tag == "oa-milp"
     gx, gy = np.meshgrid(np.linspace(0, 1, 201), np.linspace(0, 1, 201))
     grid = np.column_stack([gx.ravel(), gy.ravel()])
@@ -412,7 +442,7 @@ def test_oa_milp_finds_nearest_plane_global_minimum():
     assert got <= brute + 1e-2 * max(1.0, abs(brute))
 
 
-def test_oa_driver_converges_on_sphere():
+def test_nearest_plane_driver_converges_on_sphere():
     d = 4
 
     def sphere(x):
@@ -421,23 +451,23 @@ def test_oa_driver_converges_on_sphere():
 
     result = mls_sbo_minimize(
         sphere, np.full(d, 0.8), np.zeros(d), np.ones(d),
-        MLSSBOConfig(max_evals=60, batch_size=1, model="oa", seed=1,
+        MLSSBOConfig(max_evals=60, batch_size=1, model="nearest_plane", seed=1,
                      max_outer_iter=200),
     )
     assert result.f_opt < 1e-2
 
 
-def test_alpha_underestimator_interpolates_and_underestimates():
+def test_quadratic_support_interpolates_and_underestimates():
     """With alpha at the secant bound, the max of alpha-lowered planes is an
     exact value+gradient interpolant at every sample, and each cross piece
     stays below the data at the samples."""
-    from scp_uno.mls_sbo_core import AlphaUnderestimator
+    from scp_uno.mls_sbo_core import QuadraticSupportModel
 
     rng = np.random.default_rng(11)
     X = rng.random((7, 3))
     Y = rng.standard_normal((7, 2))
     G = rng.standard_normal((7, 3, 2))
-    surr = AlphaUnderestimator(X, Y, G, safety=1.0 + 1e-9)
+    surr = QuadraticSupportModel(X, Y, G, safety=1.0 + 1e-9)
     for i in range(7):
         val, grad = surr.value_and_slope(X[i])
         assert np.allclose(val, Y[i], atol=1e-9)
@@ -448,16 +478,16 @@ def test_alpha_underestimator_interpolates_and_underestimates():
         assert np.all(pieces <= Y[j][None, :] + 1e-8)
 
 
-def test_alpha_diag_interpolates_and_underestimates():
+def test_quadratic_support_diag_interpolates():
     """The nonuniform (diagonal) shift must keep exact Hermite interpolation
     and cross-piece underestimation at the samples."""
-    from scp_uno.mls_sbo_core import AlphaUnderestimator
+    from scp_uno.mls_sbo_core import QuadraticSupportModel
 
     rng = np.random.default_rng(21)
     X = rng.random((7, 3))
     Y = rng.standard_normal((7, 2))
     G = rng.standard_normal((7, 3, 2))
-    surr = AlphaUnderestimator(X, Y, G, safety=1.0 + 1e-9, mode="diag")
+    surr = QuadraticSupportModel(X, Y, G, safety=1.0 + 1e-9, mode="diag")
     assert surr.alpha.shape == (3, 2)
     # directional: the alphas differ across coordinates
     assert not np.allclose(surr.alpha[0], surr.alpha[1])
@@ -577,7 +607,7 @@ def test_tunneling_escapes_shallow_well():
     assert escaped
 
 
-def test_alpha_driver_converges_on_sphere():
+def test_lsupport_driver_converges_on_sphere():
     d = 4
 
     def sphere(x):
@@ -586,10 +616,46 @@ def test_alpha_driver_converges_on_sphere():
 
     result = mls_sbo_minimize(
         sphere, np.full(d, 0.8), np.zeros(d), np.ones(d),
-        MLSSBOConfig(max_evals=60, batch_size=1, model="alpha", seed=1,
+        MLSSBOConfig(max_evals=60, batch_size=1, model="lsupport", seed=1,
                      max_outer_iter=200),
     )
     assert result.f_opt < 1e-3
+
+
+def test_product_anisotropic_radii_interpolate_and_differ_per_variable():
+    """radius='aniso': per-variable radii must keep exact Hermite
+    interpolation, and the profile must actually differ across coordinates
+    for a function that bends at different rates per coordinate."""
+    rng = np.random.default_rng(41)
+    d, n = 3, 8
+    a = np.array([50.0, 5.0, 0.5])                 # very different curvatures
+    X = rng.random((n, d))
+    Y = np.array([[float(np.sum(a * (x - 0.4) ** 2))] for x in X])
+    G = np.stack([(2 * a * (x - 0.4))[:, None] for x in X])
+    surr = ProductHermiteSurrogate(X, Y, G, h=0.3, radius="aniso")
+    assert surr.rho.shape == (n, d)
+    # stiff coordinate gets the smallest support, soft one the largest
+    assert surr.rho[0, 0] < surr.rho[0, 2]
+    for i in range(n):
+        val, grad = surr.value_and_slope(X[i])
+        assert np.allclose(val, Y[i], atol=1e-8)
+        assert np.allclose(grad, G[i], atol=1e-6)
+
+
+def test_loo_selects_radius_rule_and_multiplier():
+    """The LOO selector searches BOTH hyperparameters and returns a valid
+    (rule, multiplier) pair."""
+    from scp_uno.mls_sbo_core import loo_select_hyper
+
+    rng = np.random.default_rng(43)
+    d, n = 2, 12
+    a = np.array([40.0, 1.0])
+    X = rng.random((n, d))
+    Y = np.array([[float(np.sum(a * (x - 0.5) ** 2))] for x in X])
+    G = np.stack([(2 * a * (x - 0.5))[:, None] for x in X])
+    mode, fac = loo_select_hyper(X, Y, G, h=0.25)
+    assert mode in ("nn", "aniso", "global")
+    assert fac > 0.0
 
 
 def test_product_delta_coupling_preserves_interpolation():
