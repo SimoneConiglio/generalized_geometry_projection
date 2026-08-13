@@ -68,6 +68,11 @@ def solver_options(config: str, seed: int, tr_init=None) -> tuple[str, dict]:
                            "radius": "global", "auto_support": True}
     if config == "oa":                         # plane upper envelope (LP)
         return "MLS_SBO", {**common, "model": "oa"}
+    if config == "oa_secant":                  # underestimating envelope
+        return "MLS_SBO", {**common, "model": "oa", "oa_correction": "secant"}
+    if config == "oa_margin":                  # + strict convexity margin
+        return "MLS_SBO", {**common, "model": "oa", "oa_correction": "secant",
+                           "oa_margin": 0.02}
     if config == "nearest_plane":              # Voronoi plane selection (MILP)
         return "MLS_SBO", {**common, "model": "nearest_plane"}
     if config == "lsupport":                   # quadratic support functions
@@ -89,6 +94,7 @@ def main() -> None:
     parser.add_argument("--config",
                         choices=["quadratic", "wendland", "product",
                                  "product_loo", "product_aniso", "oa",
+                                 "oa_secant", "oa_margin",
                                  "nearest_plane", "lsupport", "lsupport_diag",
                                  "quadratic_tunnel", "quadratic_pvtr",
                                  "mma"],

@@ -101,6 +101,12 @@ class MLSSBOConfig:
     # budget safeguard.
     hold_region: bool = True
     region_patience: int = 8
+    # model="oa": tangent-plane upper envelope, minimized by LP.
+    #   oa_correction="secant" lowers every plane until it underestimates
+    #   each sample by at least oa_margin (a fraction of the window's value
+    #   spread), which convexifies the envelope into a true relaxation.
+    oa_correction: str = "none"        # "none" | "secant"
+    oa_margin: float = 0.0             # convexity margin, fraction of spread
     # model="nearest_plane": Voronoi selection of one tangent plane; its
     # exact box minimum needs binaries, hence a MILP (HiGHS).
     oa_time_limit: float = 30.0        # seconds per MILP solve
@@ -702,16 +708,43 @@ class OuterApproximation:
     the classical method.
     """
 
-    def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray) -> None:
+    def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
+                 correction: str = "none", margin: float = 0.0) -> None:
         self.X = np.atleast_2d(np.asarray(X, float))         # (n, d)
         Y = np.asarray(Y, float)
         self.Y = Y if Y.ndim == 2 else Y[:, None]            # (n, m)
         G = np.asarray(G, float)
         self.G = G if G.ndim == 3 else G[:, :, None]         # (n, d, m)
+        n, m = self.Y.shape
+        self.shift = np.zeros((n, m))
+        if correction == "secant" and n > 1:
+            # Convexification by lowering: a tangent plane of a NONCONVEX
+            # function overshoots its neighbours, so the raw envelope is not
+            # an underestimator and the LP can cut off the true optimum.
+            # Lower each plane until it sits at or below the SECANT through
+            # every other sample, plus a strict margin:
+            #
+            #   shift_i = max_j [ plane_i(x_j) - f_j ]_+ + margin
+            #
+            # so plane_i(x_j) <= f_j - margin for ALL j (the convexity margin
+            # the user sets). margin is a fraction of the window's value
+            # spread, so it is scale-free. The envelope then underestimates
+            # every sample, which makes the LP a relaxation - lower bounds,
+            # cutting-plane convergence, and steps that keep reaching past
+            # the incumbent at the price of a longer history.
+            D = self.X[None, :, :] - self.X[:, None, :]      # (i, j, d)
+            spread = np.ptp(self.Y, axis=0)                  # (m,)
+            for k in range(m):
+                raw = self.Y[:, k][:, None] + np.einsum(
+                    "ijd,id->ij", D, self.G[:, :, k])        # plane_i(x_j)
+                over = np.max(raw - self.Y[:, k][None, :], axis=1)
+                self.shift[:, k] = (np.maximum(over, 0.0)
+                                    + float(margin) * max(spread[k], 1e-12))
+        self.Y_eff = self.Y - self.shift                     # lowered offsets
 
     def _planes(self, x: np.ndarray) -> np.ndarray:
         S = x[None, :] - self.X                              # (n, d)
-        return self.Y + np.einsum("nd,ndm->nm", S, self.G)   # (n, m)
+        return self.Y_eff + np.einsum("nd,ndm->nm", S, self.G)
 
     def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         x = np.asarray(x, float)
@@ -1307,7 +1340,9 @@ class MLSSBOptimizer:
 
         anchored = None
         if cfg.anchor_center and cfg.model == "oa":
-            anchored = OuterApproximation(Xa[keep], Y, G)
+            anchored = OuterApproximation(Xa[keep], Y, G,
+                                          correction=cfg.oa_correction,
+                                          margin=cfg.oa_margin)
         elif cfg.anchor_center and cfg.model == "nearest_plane":
             anchored = NearestPlaneModel(Xa[keep], Y, G)
         elif cfg.anchor_center and cfg.model == "lsupport":
@@ -1466,7 +1501,7 @@ class MLSSBOptimizer:
         """
         from scipy.optimize import linprog
 
-        Xw, Y, G = oa.X, oa.Y, oa.G
+        Xw, Y, G = oa.X, oa.Y_eff, oa.G          # lowered offsets if corrected
         n, d = Xw.shape
         m = Y.shape[1] - 1
         A = np.zeros((n * (1 + m), d + 1))

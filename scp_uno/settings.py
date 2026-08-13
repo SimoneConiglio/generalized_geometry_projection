@@ -255,6 +255,21 @@ class MLSSBOSettings(BaseOptimizerSettings):
             "quadratic support functions, the L-smooth lower bound)."
         ),
     )
+    oa_correction: str = Field(
+        "none",
+        description=(
+            "model='oa': 'secant' lowers every tangent plane until it "
+            "underestimates each sample by at least oa_margin, convexifying "
+            "the envelope into a true relaxation; 'none' keeps raw tangents."
+        ),
+    )
+    oa_margin: float = Field(
+        0.0,
+        description=(
+            "model='oa', oa_correction='secant': required convexity margin, "
+            "as a fraction of the window's value spread."
+        ),
+    )
     oa_time_limit: float = Field(
         30.0,
         description="model='nearest_plane': time limit per MILP solve (s).",

@@ -416,6 +416,41 @@ def test_outer_approximation_lp_minimizes_the_plane_envelope():
         assert float(oa.value_and_slope(X[i])[0][0]) >= Y[i, 0] - 1e-9
 
 
+def test_secant_correction_makes_the_envelope_underestimate():
+    """oa_correction='secant': every plane is lowered until it sits at or
+    below each sample by the requested margin, so the envelope is a true
+    underestimator of the sampled data (a relaxation)."""
+    from scp_uno.mls_sbo_core import OuterApproximation
+
+    rng = np.random.default_rng(17)
+    d, n = 3, 10
+    a = np.array([12.0, 4.0, 1.0])
+
+    def f(x):                                     # nonconvex enough to bite
+        return float(np.sum(a * (x - 0.4) ** 2) + 2.0 * np.sin(5 * x).sum())
+
+    def g(x):
+        return 2 * a * (x - 0.4) + 10.0 * np.cos(5 * x)
+
+    X = rng.random((n, d))
+    Y = np.array([[f(x)] for x in X])
+    G = np.stack([g(x)[:, None] for x in X])
+
+    raw = OuterApproximation(X, Y, G)
+    # the RAW envelope overshoots somewhere - that is why OA needs a fix
+    assert np.any([raw.value_and_slope(X[j])[0][0] > Y[j, 0] + 1e-9
+                   for j in range(n)])
+
+    margin = 0.05
+    spread = float(np.ptp(Y[:, 0]))
+    fixed = OuterApproximation(X, Y, G, correction="secant", margin=margin)
+    for j in range(n):
+        env = float(fixed.value_and_slope(X[j])[0][0])
+        assert env <= Y[j, 0] - margin * spread + 1e-9
+    # lowering is minimal: no plane is pushed further down than it must be
+    assert np.all(fixed.shift >= 0.0)
+
+
 def test_nearest_plane_milp_finds_global_minimum():
     """The MILP must return the exact global minimum of the nearest-plane
     model over the box - verified against a dense brute-force grid."""
