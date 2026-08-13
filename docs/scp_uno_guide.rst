@@ -393,6 +393,26 @@ The framework provides seven major algorithms:
    run, 86.7), so a margin can help an individual trajectory; it loses
    on the median. Default: 0.0.
 
+   **Why the margin transfers badly from the discrete case.** In
+   gemseo-bilevel-outer-approximation the master variables are one-hot
+   CATEGORICAL: every candidate is a vertex of the hypercube, and the
+   master is a MILP. There the convexity margin is nearly free and
+   genuinely useful - it guarantees the cut at an evaluated vertex makes
+   that vertex strictly worse than its achieved value, which is what
+   prevents the master from proposing the same point again and gives
+   finite termination; and the pessimism it introduces BETWEEN samples
+   costs nothing, because no point between vertices is ever feasible.
+   Here the master is an LP over a continuous box: its optimum lives in
+   exactly the region the margin distorts. Lowering the planes strictly
+   below the secants biases the minimizer toward wherever the model was
+   corrected least - the flattest part of the window - which is why the
+   margin degrades the median and erodes binarization monotonically.
+   The anti-cycling role the margin plays in the discrete method is
+   already covered here by the trust region and the ratio test, so the
+   continuous setting pays the margin's cost without needing its
+   benefit. The SLOPE ROTATION itself transfers perfectly; only the
+   strict margin on top of it does not.
+
    The naive secant correction (``oa_correction="secant"``: lower each plane by
    ``max_j [plane_i(x_j) - f_j]_+ + margin`` so the envelope underestimates
    every sample, making the LP a true relaxation) is theoretically the
