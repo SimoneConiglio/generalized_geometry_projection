@@ -362,7 +362,26 @@ The framework provides seven major algorithms:
    centre-exact value and gradient, the property section "gradient
    dilution" identifies as decisive.
 
-   The secant correction (``oa_correction="secant"``: lower each plane by
+   **The GEMSEO bilevel-OA adaptive convexification is the winner**
+   (``oa_correction="adaptive"``, the rule implemented in
+   gemseo-bilevel-outer-approximation): correct each plane's SLOPE by
+   least squares - ``(dX dX^T) delta = [g_k.dX_j - df_j + min_dfk]_+``,
+   ``g_k^corr = g_k - dX^T delta`` - so it predicts ``f_j - min_dfk`` at
+   the other samples while STILL passing exactly through its own. Six
+   seeds @0.02: 91/92/95/96/140/183, median 95.4, best 90.9 - against
+   raw OA's 379 and the anchored quadratic's 123, and within 22% of
+   MMA's 78.2 at the median. Every run binarizes (solid 0.08-0.33).
+   This is the best non-quadratic model in the study and the best
+   MEDIAN of any model here.
+
+   Why it works where the intercept version failed: both make the
+   envelope less optimistic, but the slope rotation keeps
+   ``plane_k(x_k) = f_k``. Anchoring is preserved and only the
+   overshoot between samples is removed. A convexity margin of 0.02
+   measured no better (93/98/155, one run losing binarization), so the
+   margin is available but not needed here.
+
+   The naive secant correction (``oa_correction="secant"``: lower each plane by
    ``max_j [plane_i(x_j) - f_j]_+ + margin`` so the envelope underestimates
    every sample, making the LP a true relaxation) is theoretically the
    right repair for a nonconvex envelope - and it measured WORSE:

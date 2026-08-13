@@ -256,7 +256,7 @@ class MLSSBOSettings(BaseOptimizerSettings):
         ),
     )
     oa_correction: str = Field(
-        "none",
+        "adaptive",
         description=(
             "model='oa': 'adaptive' is the GEMSEO bilevel-OA convexification "
             "(least-squares slope rotation so each plane predicts f_j - "

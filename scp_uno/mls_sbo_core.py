@@ -117,7 +117,7 @@ class MLSSBOConfig:
     #   other sample while still passing through its own (value anchoring
     #   kept). "secant" is the naive intercept lowering, kept for the
     #   record; "curvature" adds an MMA-style quadratic term.
-    oa_correction: str = "none"   # "none"|"adaptive"|"secant"|"curvature"
+    oa_correction: str = "adaptive"   # "none"|"adaptive"|"secant"|"curvature"
     oa_bilateral: bool = False    # correct planes that undershoot too
     oa_margin: float = 0.0             # convexity margin, fraction of spread
     oa_raa0: float = 1e-5              # absolute floor (MMA's raa0)
