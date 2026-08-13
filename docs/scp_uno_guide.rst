@@ -377,9 +377,21 @@ The framework provides seven major algorithms:
    Why it works where the intercept version failed: both make the
    envelope less optimistic, but the slope rotation keeps
    ``plane_k(x_k) = f_k``. Anchoring is preserved and only the
-   overshoot between samples is removed. A convexity margin of 0.02
-   measured no better (93/98/155, one run losing binarization), so the
-   margin is available but not needed here.
+   overshoot between samples is removed.
+
+   The convexity margin ``oa_margin`` was swept and is monotonically
+   harmful at the median here: 0.00 -> 95.4 (6 seeds), 0.02 -> 98 (3),
+   0.05 -> 163 (6: 87/137/153/173/186/902), 0.10 -> 272 (3). It also
+   erodes binarization - solid 0.08-0.33 everywhere at margin 0, versus
+   two zero-solid runs at 0.05 and two of three at 0.10. The one-sided
+   least-squares rotation already removes the overshoot that matters;
+   forcing the planes strictly BELOW the secants makes the envelope
+   pessimistic between samples, and the LP then prefers the flat gray
+   interior over committing to 0/1 - the same failure the intercept
+   shift produced, reached from the other direction. The effect is not
+   uniform per seed (margin 0.05 produced the study's single best OA
+   run, 86.7), so a margin can help an individual trajectory; it loses
+   on the median. Default: 0.0.
 
    The naive secant correction (``oa_correction="secant"``: lower each plane by
    ``max_j [plane_i(x_j) - f_j]_+ + margin`` so the envelope underestimates
