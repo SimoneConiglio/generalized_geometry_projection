@@ -76,9 +76,15 @@ def solver_options(config: str, seed: int, tr_init=None) -> tuple[str, dict]:
     if config == "oa_adaptive":                # GEMSEO bilevel-OA rule
         return "MLS_SBO", {**common, "model": "oa",
                            "oa_correction": "adaptive", "oa_margin": 0.0}
-    if config == "oa_adaptive_margin":         # + convexity margin
+    if config == "oa_adaptive_margin":         # + convexity margin 0.02
         return "MLS_SBO", {**common, "model": "oa",
                            "oa_correction": "adaptive", "oa_margin": 0.02}
+    if config == "oa_margin05":                # + convexity margin 0.05
+        return "MLS_SBO", {**common, "model": "oa",
+                           "oa_correction": "adaptive", "oa_margin": 0.05}
+    if config == "oa_margin10":                # + convexity margin 0.10
+        return "MLS_SBO", {**common, "model": "oa",
+                           "oa_correction": "adaptive", "oa_margin": 0.10}
     if config == "nearest_plane":              # Voronoi plane selection (MILP)
         return "MLS_SBO", {**common, "model": "nearest_plane"}
     if config == "lsupport":                   # quadratic support functions
@@ -101,7 +107,8 @@ def main() -> None:
                         choices=["quadratic", "wendland", "product",
                                  "product_loo", "product_aniso", "oa",
                                  "oa_secant", "oa_margin", "oa_adaptive",
-                                 "oa_adaptive_margin",
+                                 "oa_adaptive_margin", "oa_margin05",
+                                 "oa_margin10",
                                  "nearest_plane", "lsupport", "lsupport_diag",
                                  "quadratic_tunnel", "quadratic_pvtr",
                                  "mma"],
