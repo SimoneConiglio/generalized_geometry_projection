@@ -416,6 +416,42 @@ def test_outer_approximation_lp_minimizes_the_plane_envelope():
         assert float(oa.value_and_slope(X[i])[0][0]) >= Y[i, 0] - 1e-9
 
 
+def test_adaptive_convexification_rotates_slopes_and_keeps_the_anchor():
+    """GEMSEO bilevel-OA rule: correct the SLOPE by least squares so each
+    plane predicts f_j - margin at the other samples while still passing
+    exactly through its own - value anchoring preserved, overshoot cut."""
+    from scp_uno.mls_sbo_core import OuterApproximation
+
+    rng = np.random.default_rng(23)
+    d, n = 4, 12
+    a = np.array([9.0, 3.0, 1.0, 5.0])
+
+    def f(x):
+        return float(np.sum((x - 0.4) ** 2 * a) + 1.5 * np.sin(6 * x).sum())
+
+    def g(x):
+        return 2 * (x - 0.4) * a + 9.0 * np.cos(6 * x)
+
+    X = rng.random((n, d))
+    Y = np.array([[f(x)] for x in X])
+    G = np.stack([g(x)[:, None] for x in X])
+
+    def overshoot(oa):
+        return max(float(oa._planes(X[j])[i, 0]) - Y[j, 0]
+                   for i in range(n) for j in range(n) if i != j)
+
+    raw = OuterApproximation(X, Y, G)
+    fixed = OuterApproximation(X, Y, G, correction="adaptive", margin=0.02)
+    # value anchoring is EXACT: each plane still reproduces its own sample
+    for i in range(n):
+        assert abs(float(fixed._planes(X[i])[i, 0]) - Y[i, 0]) < 1e-9
+    # and the plane's overshoot on the others is substantially reduced
+    assert overshoot(fixed) < 0.5 * overshoot(raw)
+    # the correction is a rotation, not a shift
+    assert np.allclose(fixed.shift, 0.0)
+    assert not np.allclose(fixed.G_eff, G)
+
+
 def test_secant_correction_makes_the_envelope_underestimate():
     """oa_correction='secant': every plane is lowered until it sits at or
     below each sample by the requested margin, so the envelope is a true

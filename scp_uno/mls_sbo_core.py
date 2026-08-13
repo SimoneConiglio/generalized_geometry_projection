@@ -105,8 +105,26 @@ class MLSSBOConfig:
     #   oa_correction="secant" lowers every plane until it underestimates
     #   each sample by at least oa_margin (a fraction of the window's value
     #   spread), which convexifies the envelope into a true relaxation.
-    oa_correction: str = "none"        # "none" | "secant"
+    #   oa_correction="adaptive" instead applies GEMSEO-MMA's rule -
+    #   curvature rho*(oa_rel*|g| + oa_raa0) per coordinate, with rho
+    #   raised when the model proved optimistic at the last candidate and
+    #   relaxed when it was conservative (GCMMA's conservativeness test,
+    #   spread across iterations). The quadratic vanishes at the sample,
+    #   so anchoring survives; the model is piecewise quadratic, so its
+    #   subproblem goes through scan+SLSQP rather than the LP.
+    #   oa_correction="adaptive" is the GEMSEO bilevel-OA rule: rotate each
+    #   plane's SLOPE by least squares so it predicts f_j - margin at every
+    #   other sample while still passing through its own (value anchoring
+    #   kept). "secant" is the naive intercept lowering, kept for the
+    #   record; "curvature" adds an MMA-style quadratic term.
+    oa_correction: str = "none"   # "none"|"adaptive"|"secant"|"curvature"
+    oa_bilateral: bool = False    # correct planes that undershoot too
     oa_margin: float = 0.0             # convexity margin, fraction of spread
+    oa_raa0: float = 1e-5              # absolute floor (MMA's raa0)
+    oa_rel: float = 1e-3               # relative term (MMA's 0.001 factor)
+    oa_rho_grow: float = 1.2           # MMA's asyincr, on non-conservative
+    oa_rho_shrink: float = 0.7         # MMA's asydecr, on conservative
+    oa_rho_max: float = 1e4
     # model="nearest_plane": Voronoi selection of one tangent plane; its
     # exact box minimum needs binaries, hence a MILP (HiGHS).
     oa_time_limit: float = 30.0        # seconds per MILP solve
@@ -709,15 +727,70 @@ class OuterApproximation:
     """
 
     def __init__(self, X: np.ndarray, Y: np.ndarray, G: np.ndarray,
-                 correction: str = "none", margin: float = 0.0) -> None:
+                 correction: str = "none", margin: float = 0.0,
+                 rho: float = 1.0, raa0: float = 1e-5,
+                 rel: float = 1e-3, bilateral: bool = False) -> None:
         self.X = np.atleast_2d(np.asarray(X, float))         # (n, d)
         Y = np.asarray(Y, float)
         self.Y = Y if Y.ndim == 2 else Y[:, None]            # (n, m)
         G = np.asarray(G, float)
         self.G = G if G.ndim == 3 else G[:, :, None]         # (n, d, m)
         n, m = self.Y.shape
+        d = self.X.shape[1]
         self.shift = np.zeros((n, m))
-        if correction == "secant" and n > 1:
+        self.curv = np.zeros((n, d, m))
+        self.G_eff = self.G.copy()
+        if correction == "adaptive" and n > 1:
+            # GEMSEO bilevel-OA adaptive convexification (Coniglio; see
+            # gemseo_bilevel_outer_approximation ...
+            # outer_approximation_optimizer._update_sensitivities_wt_secant_method).
+            # The plane is corrected on its SLOPE, by least squares, not on
+            # its intercept: for sample k, with dX_j = x_j - x_k and
+            # df_j = f_j - f_k,
+            #
+            #   rhs_j = [ g_k . dX_j - df_j + min_dfk ]_+     (overshoot)
+            #   (dX dX^T) delta = rhs,   g_k^corr = g_k - dX^T delta
+            #
+            # so the corrected plane predicts f_j - min_dfk at every other
+            # sample - at or below the secant, by the convexity margin -
+            # while STILL passing exactly through (x_k, f_k). Value
+            # anchoring is preserved, which the intercept shift destroyed.
+            # rhs is clipped at zero (one-sided): planes are only rotated
+            # where they overshoot, unless bilateral adaptation is asked.
+            spread = np.ptp(self.Y, axis=0)
+            for k in range(m):
+                min_dfk = float(margin) * max(spread[k], 1e-12)
+                for i in range(n):
+                    dX = self.X - self.X[i][None, :]          # (n, d)
+                    df = self.Y[:, k] - self.Y[i, k]          # (n,)
+                    rhs = dX @ self.G[i, :, k] - df + min_dfk
+                    if not bilateral:
+                        rhs = np.maximum(rhs, 0.0)
+                    A = dX @ dX.T                             # (n, n)
+                    delta = np.linalg.lstsq(A, rhs, rcond=None)[0]
+                    self.G_eff[i, :, k] = self.G[i, :, k] - dX.T @ delta
+        elif correction == "curvature":
+            # GEMSEO-MMA's convexification rule, transposed to the plane
+            # envelope. MMA builds p0 = max(g,0), q0 = max(-g,0) and then
+            # adds  pq0 = rel * (p0 + q0) + raa0 / (xmax - xmin), i.e. a
+            # term proportional to |g| plus a small absolute floor - and
+            # adapts it across iterations. Here the same coefficient
+            # becomes the curvature of a quadratic lowering:
+            #
+            #   plane_i(x) = f_i + g_i^T s - sum_j a_ij s_j^2,
+            #   a_ij = rho * ( rel * |g_ij| + raa0 )      (s = x - x_i)
+            #
+            # Two properties matter, and both were missing from the plain
+            # secant shift. The quadratic VANISHES at x_i, so the plane
+            # still reproduces its own sample exactly - the anchoring that
+            # made the raw envelope decisive survives. And rho is ADAPTIVE:
+            # the driver raises it when the model was found optimistic at
+            # the evaluated candidate and relaxes it when it was
+            # conservative, which is the GCMMA conservativeness loop
+            # spread across iterations instead of an inner loop (one true
+            # evaluation per iteration is the whole point here).
+            self.curv = rho * (rel * np.abs(self.G) + raa0)   # (n, d, m)
+        elif correction == "secant" and n > 1:
             # Convexification by lowering: a tangent plane of a NONCONVEX
             # function overshoots its neighbours, so the raw envelope is not
             # an underestimator and the LP can cut off the true optimum.
@@ -744,14 +817,21 @@ class OuterApproximation:
 
     def _planes(self, x: np.ndarray) -> np.ndarray:
         S = x[None, :] - self.X                              # (n, d)
-        return self.Y_eff + np.einsum("nd,ndm->nm", S, self.G)
+        P = self.Y_eff + np.einsum("nd,ndm->nm", S, self.G_eff)
+        if self.curv.any():
+            P = P - np.einsum("nd,ndm->nm", S * S, self.curv)
+        return P
 
     def value_and_slope(self, x: np.ndarray) -> Tuple[np.ndarray, np.ndarray]:
         x = np.asarray(x, float)
         P = self._planes(x)
         act = np.argmax(P, axis=0)                           # (m,)
         val = P[act, np.arange(len(act))]
-        grad = np.stack([self.G[a, :, k] for k, a in enumerate(act)], axis=1)
+        S = x[None, :] - self.X
+        grad = np.stack([
+            self.G_eff[a, :, k] - 2.0 * self.curv[a, :, k] * S[a]
+            for k, a in enumerate(act)
+        ], axis=1)
         return val, grad
 
     def values(self, Q: np.ndarray) -> np.ndarray:
@@ -1279,6 +1359,7 @@ class MLSSBOptimizer:
         self.C: List[np.ndarray] = []
         self.Jc: List[np.ndarray] = []
         self.n_evals = 0
+        self._oa_rho = 1.0             # adaptive convexification factor
 
     # ------------------------------------------------------------- sampling
     def _eval(self, xi: np.ndarray) -> int:
@@ -1342,7 +1423,10 @@ class MLSSBOptimizer:
         if cfg.anchor_center and cfg.model == "oa":
             anchored = OuterApproximation(Xa[keep], Y, G,
                                           correction=cfg.oa_correction,
-                                          margin=cfg.oa_margin)
+                                          margin=cfg.oa_margin,
+                                          rho=self._oa_rho,
+                                          raa0=cfg.oa_raa0, rel=cfg.oa_rel,
+                                          bilateral=cfg.oa_bilateral)
         elif cfg.anchor_center and cfg.model == "nearest_plane":
             anchored = NearestPlaneModel(Xa[keep], Y, G)
         elif cfg.anchor_center and cfg.model == "lsupport":
@@ -1501,7 +1585,7 @@ class MLSSBOptimizer:
         """
         from scipy.optimize import linprog
 
-        Xw, Y, G = oa.X, oa.Y_eff, oa.G          # lowered offsets if corrected
+        Xw, Y, G = oa.X, oa.Y_eff, oa.G_eff      # corrected offsets/slopes
         n, d = Xw.shape
         m = Y.shape[1] - 1
         A = np.zeros((n * (1 + m), d + 1))
@@ -1831,7 +1915,9 @@ class MLSSBOptimizer:
             best_i = self._best_index()
             if anchored is not None and cfg.batch_size == 1:
                 # sequential (MMA-regime) step: solved constrained subproblem
-                if cfg.model == "oa":
+                if cfg.model == "oa" and cfg.oa_correction != "curvature":
+                    # piecewise LINEAR envelope (raw, shifted or
+                    # slope-corrected) -> exact LP
                     x_new, sub_tag = self._solve_oa_lp(anchored, lo, hi)
                 elif cfg.model == "nearest_plane":
                     x_new, sub_tag = self._solve_nearest_plane_milp(
@@ -1903,6 +1989,19 @@ class MLSSBOptimizer:
                                               self.X[cand_i], anchored)
             rho = actual / max(pred, 1e-14) if pred > 0 else (
                 np.inf if actual > 0 else -np.inf)
+
+            if cfg.model == "oa" and cfg.oa_correction == "curvature":
+                # GCMMA conservativeness test at the point just evaluated:
+                # the model is conservative when it did NOT promise more
+                # than the truth delivered, on every output.
+                mv = anchored.value_and_slope(self.X[cand_i])[0]
+                truth = np.concatenate([[self.F[cand_i]], self.C[cand_i]])
+                tol = 1e-12 * max(1.0, abs(float(truth[0])))
+                if np.any(mv < truth - tol):
+                    self._oa_rho = min(self._oa_rho * cfg.oa_rho_grow,
+                                       cfg.oa_rho_max)
+                else:
+                    self._oa_rho = max(self._oa_rho * cfg.oa_rho_shrink, 1.0)
 
             dx = self.X[cand_i] - center
             step = float(np.max(np.abs(dx)))

@@ -258,11 +258,33 @@ class MLSSBOSettings(BaseOptimizerSettings):
     oa_correction: str = Field(
         "none",
         description=(
-            "model='oa': 'secant' lowers every tangent plane until it "
-            "underestimates each sample by at least oa_margin, convexifying "
-            "the envelope into a true relaxation; 'none' keeps raw tangents."
+            "model='oa': 'adaptive' is the GEMSEO bilevel-OA convexification "
+            "(least-squares slope rotation so each plane predicts f_j - "
+            "margin at the other samples, keeping its own value exact); "
+            "'secant' lowers intercepts; 'curvature' adds an MMA-style "
+            "quadratic; 'none' keeps raw tangents."
         ),
     )
+    oa_bilateral: bool = Field(
+        False,
+        description=(
+            "model='oa', adaptive: also rotate planes that UNDERshoot "
+            "(bilateral adaptation) instead of only those that overshoot."
+        ),
+    )
+    oa_raa0: float = Field(
+        1e-5, description="model='oa', adaptive: absolute floor (MMA raa0)."
+    )
+    oa_rel: float = Field(
+        1e-3, description="model='oa', adaptive: relative term (MMA 0.001*|g|)."
+    )
+    oa_rho_grow: float = Field(
+        1.2, description="Convexification growth when the model was optimistic."
+    )
+    oa_rho_shrink: float = Field(
+        0.7, description="Convexification relaxation when it was conservative."
+    )
+    oa_rho_max: float = Field(1e4, description="Cap on the convexification factor.")
     oa_margin: float = Field(
         0.0,
         description=(
