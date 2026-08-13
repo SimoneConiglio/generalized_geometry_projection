@@ -350,6 +350,41 @@ The framework provides seven major algorithms:
    one). Interpolation and step quality are optimized at different
    points in space.
 
+   **Outer approximation, correctly defined, and its secant repair.**
+   ``model="oa"`` minimizes the tangent-plane UPPER ENVELOPE
+   ``max_i [f_i + g_i^T(x-x_i)]`` over the box - an LP, not a MILP.
+   Six seeds @0.02: 90/96/279/479/608/663, median 379. Its signature is
+   unusual: EVERY run binarizes hard (gray 0.10-0.13, solid 0.29-0.35),
+   including the failures - the envelope is decisive, and the lottery is
+   whether it is decisive about the right structure. The reason it is
+   decisive is that near the incumbent the highest plane is usually the
+   incumbent's OWN plane, so the envelope is implicitly anchored:
+   centre-exact value and gradient, the property section "gradient
+   dilution" identifies as decisive.
+
+   The secant correction (``oa_correction="secant"``: lower each plane by
+   ``max_j [plane_i(x_j) - f_j]_+ + margin`` so the envelope underestimates
+   every sample, making the LP a true relaxation) is theoretically the
+   right repair for a nonconvex envelope - and it measured WORSE:
+   225/361/417/475/738/8998 (median 446) at margin 0, and 284/329/519 at
+   margin 0.02, versus 379 raw. It also destroys binarization completely
+   (solid 0.000 in 9 of 9 runs, gray 0.24-0.59) where raw OA binarized
+   6/6. Mechanism: the correction lowers the incumbent's own plane too
+   (by at least the margin), so the envelope no longer reproduces the
+   incumbent's value - exactly the anchoring that made raw OA decisive.
+   The model is then dominated by whichever plane was least corrected,
+   which is the flattest region of the window, i.e. gray interior. The
+   relaxation's asymptotic argument is sound, but at a 200-evaluation
+   budget the anchoring loss dominates.
+
+   **Anisotropic product radii work** (``radius="aniso"``: per-variable
+   rho_ik = nn_factor * d_nn(i) * s_k with the profile s_k ~ c_k^{-1/2}
+   read off the Hermite gradient differences, so anisotropy costs no
+   extra fitted parameters; ``auto_support=True`` LOO-selects the radius
+   RULE and its multiplier). Six seeds: 117/128/143/164/190/280, median
+   154 against 233 for isotropic radii, binarization 4/6 against 1/3 -
+   the best interpolant configuration measured.
+
    **Penalty continuation does NOT help** (measured on the geometric mass
    field ``rho_V``, the honest binarization metric — ``rho_E`` carries
    ``gammac`` and overstates grayness): ramping ``gammac`` 1→2→3 raises
