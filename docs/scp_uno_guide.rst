@@ -374,6 +374,20 @@ The framework provides seven major algorithms:
    This is the best non-quadratic model in the study and the best
    MEDIAN of any model here.
 
+   Adding the per-variable move limits and the carried width profile -
+   the two devices that lifted the quadratic from 172 to 123 - does NOT
+   compound with it: 91/95/98/100/109/155, median 99.2 against 95.4
+   without, at the same step size (and 0.05 is worse still: 129, 960).
+   The tail does tighten (worst 155 vs 183) and the spread narrows, but
+   the median does not move. The two mechanisms are not additive
+   because they were fixing the same defect from opposite ends: the
+   move limits let the quadratic COMMIT variables that a scalar radius
+   was throttling, and the convexified envelope already commits by
+   itself (it binarized 6/6 even before the move limits existed). Once
+   the model stops over-promising, per-variable reach has little left
+   to buy. Best configuration: model="oa", oa_correction="adaptive",
+   oa_margin=0, tr_init=0.02, scalar trust region.
+
    Why it works where the intercept version failed: both make the
    envelope less optimistic, but the slope rotation keeps
    ``plane_k(x_k) = f_k``. Anchoring is preserved and only the
