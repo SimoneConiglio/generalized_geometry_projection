@@ -126,6 +126,11 @@ def main() -> None:
     parser.add_argument("--pvtr", action="store_true",
                         help="Per-variable scaled move limits for any "
                              "MLS_SBO config.")
+    parser.add_argument("--deterministic-start", action="store_true",
+                        help="Start from x0 only (n_init_doe=1) in EVERY "
+                             "phase, so the run carries no random DOE - the "
+                             "apples-to-apples setting against MMA, which "
+                             "is deterministic from x0.")
     parser.add_argument("--n-init", type=int, default=None,
                         help="LHS DOE size inside the initial trust region "
                              "(first phase only; later phases warm-start).")
@@ -151,6 +156,8 @@ def main() -> None:
         phase_opts = spec.solver.options if options is None else dict(options)
         if options is not None and args.n_init and i == 0:
             phase_opts = {**phase_opts, "n_init_doe": args.n_init}
+        if options is not None and args.deterministic_start:
+            phase_opts = {**phase_opts, "n_init_doe": 1}
         if options is not None and args.carry_profile:
             phase_opts = {**phase_opts, "mv_state_path": mv_state}
         s = replace(spec, solver=replace(
