@@ -400,8 +400,39 @@ The framework provides seven major algorithms:
    neighbourhood it can be trusted over is still set by curvature,
    since the model is piecewise linear either way.
 
+   **Apples-to-apples with MMA** (``--deterministic-start``:
+   ``n_init_doe=1`` in every phase, so the driver starts from x0 alone,
+   exactly the information MMA gets - every other number in this guide
+   gives the surrogate a random LHS DOE inside the initial trust region
+   that MMA never receives, so its seed spread is partly a sampling
+   lottery MMA does not play):
+
+   ===========================================  =========  ===========
+   configuration (x0 only, 200 evals)           compliance deterministic
+   ===========================================  =========  ===========
+   MMA                                               78.2  yes
+   oa + adaptive convexification @0.02               90.7  yes
+   quadratic + pvtr + carried profile @0.05         120.6  no
+   oa + adaptive convexification @0.01              223.8  yes
+   product_aniso @0.02                              209.0  no
+   ===========================================  =========  ===========
+
+   The OA configuration is EXACTLY deterministic: with no DOE and an LP
+   subproblem there is no random draw anywhere, and seeds 0 and 1
+   return bit-identical results (90.744 twice at 0.02, 223.762 twice at
+   0.01). Its fair single-run number against MMA's 78.2 is therefore
+   90.7 - a 16% gap, with no averaging or best-of-N involved.
+
+   The step-size ranking INVERTS without the DOE: 0.02 gives 90.7 while
+   0.01 gives 223.8 (and 0.015 gives 323.4). With a random DOE the
+   0.01-0.02 plateau was flat; from x0 alone the first steps are the
+   only information the model has, and too small a radius leaves the
+   envelope built from a cluster of nearly-collinear planes. Sampling
+   and step size are not separable knobs.
+
    Best configuration: model="oa", oa_correction="adaptive",
-   oa_margin=0, tr_init in [0.01, 0.02], scalar trust region.
+   oa_margin=0, tr_init=0.02, scalar trust region - 90.7 deterministic
+   from x0, median 95.4 over six DOE seeds.
 
    Why it works where the intercept version failed: both make the
    envelope less optimistic, but the slope rotation keeps
