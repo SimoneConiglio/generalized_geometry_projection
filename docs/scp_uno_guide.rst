@@ -430,9 +430,35 @@ The framework provides seven major algorithms:
    envelope built from a cluster of nearly-collinear planes. Sampling
    and step size are not separable knobs.
 
+   **Initial DOE size around x0** (LHS inside the initial trust region,
+   x0 always evaluated first - MMA's starting guess). Sweep on the
+   convexified envelope @0.02:
+
+   ==========  ==========================================  ======  =====
+   DOE points  seeds                                       median   best
+   ==========  ==========================================  ======  =====
+   1 (x0 only)  90.7 (deterministic, no seed)                90.7   90.7
+   2 (default)  91/92/95/96/140/183                          95.4   90.9
+   5            83/140/198                                  140     83.5
+   10           79/88/93/100/120/136/256/368 (8 seeds)      109.7   78.8
+   20           82/101/108/146/243/1012 (6 seeds)           127     81.7
+   ==========  ==========================================  ======  =====
+
+   The best single run of the whole study came from a 10-point DOE:
+   **78.78 against MMA's 78.21** - a 0.7% difference, with a properly
+   binarized design (gray 0.161, solid 0.311). But at eight seeds the
+   DOE-10 MEDIAN (109.7) is WORSE than the 2-point default (95.4): a
+   DOE raises the ceiling and the floor moves the wrong way, because in
+   d=108 ten LHS points cannot describe the trust region - they can
+   only spend 5% of the budget and hope the spread of cut directions
+   helps. Three seeds had made DOE 10 look like a clear winner (88.1);
+   eight seeds show that was sampling luck, the same trap that made raw
+   OA look strong at three seeds.
+
    Best configuration: model="oa", oa_correction="adaptive",
-   oa_margin=0, tr_init=0.02, scalar trust region - 90.7 deterministic
-   from x0, median 95.4 over six DOE seeds.
+   oa_margin=0, tr_init=0.02, scalar trust region, default 2-point DOE
+   - 90.7 deterministic from x0 alone, median 95.4 over six DOE seeds,
+   best 78.8 with a 10-point DOE. MMA: 78.2.
 
    Why it works where the intercept version failed: both make the
    envelope less optimistic, but the slope rotation keeps
