@@ -455,8 +455,37 @@ The framework provides seven major algorithms:
    eight seeds show that was sampling luck, the same trap that made raw
    OA look strong at three seeds.
 
-   Best configuration: model="oa", oa_correction="adaptive",
-   oa_margin=0, tr_init=0.02, scalar trust region, default 2-point DOE
+   **The DOE is not a universal improvement** - every family was re-run
+   with the same 10-point LHS DOE around x0 (3 seeds, each at its own
+   best step size), against its 2-point-DOE baseline:
+
+   ====================  ===================  ==========  ==========
+   family                DOE 10 (3 seeds)     median      DOE 2 med.
+   ====================  ===================  ==========  ==========
+   oa + adaptive          79 / 88 / 93              88.1        95.4
+   quadratic + pvtr       80 / 145 / 239           144.5       123
+   quadratic plain        173 / 182 / 875          182.2       144
+   product_aniso          132 / 155 / 308          155.3       154
+   nearest_plane          233 / 276 / 345          275.8       385
+   product isotropic      219 / 245 / 506          245.3       233
+   lsupport               251 / 350 / 366          350.4       334
+   ====================  ===================  ==========  ==========
+
+   Only the two PLANE-ENVELOPE models improve (oa 95.4 -> 88.1,
+   nearest_plane 385 -> 276). Every anchored or blended model degrades,
+   the plain quadratic worst (144 -> 182, one seed at 875). The
+   binarization column tells the mechanism: the quadratic finishes all
+   three runs with ZERO solid material at gray 0.52-0.54, i.e. it never
+   reaches a committed design, while oa keeps solid 0.31-0.34.
+
+   The split is budget versus cut geometry. A DOE buys an envelope
+   something it cannot generate any other way - independent cut
+   directions, without which its planes are nearly collinear - so ten
+   points are worth their cost. An anchored model already gets its
+   curvature from its own trajectory; the DOE only takes 10 of phase
+   0's 70 evaluations away from walking, and on this problem those
+   evaluations are what carry the design to binarization. DOE size is a
+   per-model choice, not a protocol-wide one.
    - 90.7 deterministic from x0 alone, median 95.4 over six DOE seeds,
    best 78.8 with a 10-point DOE. MMA: 78.2.
 
