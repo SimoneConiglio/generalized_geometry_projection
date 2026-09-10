@@ -27,6 +27,7 @@ class GeometrySpec:
     ``box``                Parametric axis-aligned box (2-D or 3-D)
     ``fenics_rectangle``   FEniCS built-in quadrilateral rectangle
     ``fenics_box``         FEniCS built-in hexahedral box
+    ``cadjoint``           cadjoint SDF scene, meshed to a trimmed HEX8 grid
     ``step``               STEP CAD file (requires ``gmsh`` or ``cadquery``)
     ``stl``                STL surface mesh (requires ``meshio``)
     ``brep``               OpenCASCADE BREP file

@@ -215,6 +215,42 @@ The :mod:`ggp.geometry.io.registry` module holds a global dictionary mapping geo
 
 The reader can then be referenced in any YAML file as ``type: my_mesh_format``.
 
+**CAD design domains via cadjoint.** The built-in ``cadjoint`` reader
+(:mod:`ggp.geometry.io.cadjoint_reader`) is a worked example of the pattern: it
+meshes a `cadjoint <https://github.com/andrinr/cadjoint>`_ signed distance field
+into a *trimmed* structured HEX8 grid, so the design domain can be any solid a
+CAD scene describes rather than an axis-aligned box. Lattice cells whose centre
+falls outside the solid are dropped, so they cost no degrees of freedom:
+
+.. code-block:: python
+
+    from cadjoint.sdf import Box, difference
+    from ggp.geometry.io import get_reader
+    from ggp.problem.spec import GeometrySpec
+
+    bracket = difference(Box(size=[60, 60, 10]), Box(size=[30, 30, 12]))
+    domain = get_reader("cadjoint").read(GeometrySpec(
+        type="cadjoint",
+        params={"sdf": bracket, "Lx": 60, "Ly": 60, "Lz": 10,
+                "nx": 24, "ny": 24, "nz": 4},
+    ))
+
+cadjoint's geometry core needs only ``jax``, ``numpy`` and ``optax`` — not its
+``fem`` extra, and not FEniCS. It is not published on PyPI, so install it from
+source and pin a commit (its README warns the API is unstable)::
+
+    git clone https://github.com/andrinr/cadjoint && pip install -e cadjoint
+
+.. warning::
+
+   Boundary-vertex **snapping is off by default** and should stay off.
+   :class:`~ggp.discretisation.fem.FEMDiscretiser` assembles a single reference
+   element stiffness matrix ``ke_ref`` from the mesh's first cell and reuses it
+   for every element, which is only valid while all cells are congruent.
+   Unsnapped they are — every cell is the same lattice box. Snapping projects
+   boundary vertices onto the surface, giving a better surface but a different
+   shape per boundary cell, which silently invalidates ``ke_ref``.
+
 3. Self-Registering Projection Mappers
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
