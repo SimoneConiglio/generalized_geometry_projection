@@ -241,6 +241,22 @@ source and pin a commit (its README warns the API is unstable)::
 
     git clone https://github.com/andrinr/cadjoint && pip install -e cadjoint
 
+.. note::
+
+   **Python version.** cadjoint declares ``requires-python = ">=3.9"`` but
+   imports :class:`enum.StrEnum`, which is 3.11+. ``environment.yml`` pins the
+   ``ggp`` environment to Python 3.10, and that pin is load-bearing:
+   ``dolfin-adjoint`` 2019.1.0 fails against the 3.11 build of ``dolfin``
+   (``TypeError: __class__ assignment: 'Mesh' object layout differs``), so the
+   environment cannot simply be moved to 3.11.
+
+   ``StrEnum`` is cadjoint's only 3.11-ism on this reader's import path, so
+   either of these works — both verified against the full test suite: backport
+   it on 3.10 (``class StrEnum(str, Enum)``, three lines, worth proposing
+   upstream), or run cadjoint in its own 3.11 environment and hand the reader
+   the resulting arrays. The reader's :class:`ImportError` says as much when it
+   hits this.
+
 .. warning::
 
    Boundary-vertex **snapping is off by default** and should stay off.

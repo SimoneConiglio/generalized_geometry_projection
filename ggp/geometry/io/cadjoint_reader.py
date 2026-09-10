@@ -27,13 +27,27 @@ snapping on only if you also replace that single-``ke_ref`` assumption.
 
 Requirements
 ------------
-The geometry core needs ``jax``, ``numpy`` and ``optax`` only — not the ``fem``
-extra, and not FEniCS.  cadjoint is not on PyPI; install it from source::
+The geometry core needs ``jax``, ``numpy`` and ``optax`` only — not cadjoint's
+``fem`` extra, and not FEniCS.  cadjoint is not on PyPI; install it from source
+and pin a commit, since its README warns the API is unstable::
 
     git clone https://github.com/andrinr/cadjoint
     pip install -e cadjoint
 
-cadjoint's own README warns that its API is not stable, so pin a commit.
+**Python version.** cadjoint declares ``requires-python = ">=3.9"`` but imports
+:class:`enum.StrEnum`, which is 3.11+.  ``environment.yml`` pins the ``ggp``
+environment to Python 3.10, and that pin is load-bearing: ``dolfin-adjoint``
+2019.1.0 fails against the 3.11 build of ``dolfin`` (``TypeError: __class__
+assignment: 'Mesh' object layout differs``), so the environment cannot simply be
+moved to 3.11.
+
+``StrEnum`` is cadjoint's only 3.11-ism on this reader's import path, so either
+of these works, both verified against the full test suite:
+
+* Make ``enum.StrEnum`` available on 3.10 — a three-line backport
+  (``class StrEnum(str, Enum)``) is enough, and is worth proposing upstream.
+* Run cadjoint in its own Python 3.11 environment and hand this reader the
+  resulting arrays.
 
 Example
 -------
@@ -54,6 +68,7 @@ Example
 from __future__ import annotations
 
 import runpy
+import sys
 from typing import Any, Callable, Dict, List
 
 import numpy as np
@@ -124,6 +139,32 @@ def _as_batched_sdf(source: Any) -> Callable[[Any], Any]:
         return jax.vmap(lambda point: jnp.asarray(source(point)).reshape(()))(pts)
 
     return evaluate
+
+
+def _import_failure_hint(exc: ImportError) -> str:
+    """Explain a failed ``import cadjoint`` rather than re-raising it bare.
+
+    On Python 3.10 the failure is almost always :class:`enum.StrEnum`, which
+    cadjoint imports despite declaring ``requires-python = ">=3.9"``.  That is
+    worth naming, because the obvious fix — moving the environment to 3.11 —
+    breaks ``dolfin-adjoint`` instead.
+    """
+    hint = (
+        f"The 'cadjoint' geometry backend is not importable ({exc}). "
+        "Install it from source: "
+        "git clone https://github.com/andrinr/cadjoint && pip install -e cadjoint"
+    )
+    if sys.version_info < (3, 11) and "StrEnum" in str(exc):
+        hint += (
+            f". Note this environment runs Python "
+            f"{sys.version_info.major}.{sys.version_info.minor}: cadjoint imports "
+            "enum.StrEnum, which is 3.11+, even though it declares support for "
+            "3.9. Moving the ggp environment to 3.11 is not the fix — "
+            "dolfin-adjoint 2019.1.0 breaks against the 3.11 build of dolfin. "
+            "Backport StrEnum (class StrEnum(str, Enum)) or run cadjoint in a "
+            "separate 3.11 environment; see the module docstring."
+        )
+    return hint
 
 
 def _sdf_from_path(path: Any) -> Any:
@@ -229,7 +270,10 @@ class CadjointReader(GeometryReader):
     """
 
     def read(self, spec: Any) -> DomainRepresentation:
-        from cadjoint.fem.hexmesh import GridSpec, sdf_to_hex_mesh
+        try:
+            from cadjoint.fem.hexmesh import GridSpec, sdf_to_hex_mesh
+        except ImportError as exc:
+            raise ImportError(_import_failure_hint(exc)) from exc
 
         p = dict(getattr(spec, "params", None) or {})
 

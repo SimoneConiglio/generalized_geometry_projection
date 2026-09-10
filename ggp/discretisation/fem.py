@@ -77,8 +77,24 @@ class FEMDiscretiser:
 
         zero_vec = df.Constant((0.0, 0.0, 0.0)) if domain.dim == 3 else df.Constant((0.0, 0.0))
         dof_coords = V_u.tabulate_dof_coordinates()
-        Lx = domain.metadata.get("Lx", 60.0)
-        Ly = domain.metadata.get("Ly", 30.0)
+
+        # Named regions key off the mesh's own bounding box rather than an origin
+        # assumed at 0 and an extent read from metadata.  For the built-in
+        # rectangle/box readers the two coincide exactly.  For a trimmed CAD
+        # domain (see ggp.geometry.io.cadjoint_reader) the solid need not reach
+        # the edge of the sampling volume, and keying off metadata would select
+        # a face that has no nodes on it.
+        coords = mesh.coordinates()
+        lo = coords.min(axis=0)
+        hi = coords.max(axis=0)
+        # Loose enough to survive round-off in a computed coordinate, far tighter
+        # than the gap to the neighbouring node.
+        tol = 1e-6 * float(np.max(hi - lo))
+        mid_y = 0.5 * float(lo[1] + hi[1])
+        extent = ", ".join(
+            f"{axis}\u2208[{lo[i]:g}, {hi[i]:g}]"
+            for i, axis in enumerate("xyz"[: domain.dim])
+        )
 
         # DOF sub-maps (component → DOF indices)
         sub_dofs = {i: V_u.sub(i).dofmap().dofs() for i in range(domain.dim)}
@@ -87,12 +103,14 @@ class FEMDiscretiser:
         point_fixed_dofs: List[int] = []
 
         def _on_left(x, on_bound):
-            return on_bound and df.near(x[0], 0.0)
+            return on_bound and df.near(x[0], lo[0], tol)
 
         def _on_top(x, on_bound):
-            return on_bound and df.near(x[1], Ly)
+            return on_bound and df.near(x[1], hi[1], tol)
 
         for bc in spec.boundary_conditions:
+            before_bcs, before_points = len(bcs), len(point_fixed_dofs)
+
             if bc.region == "left":
                 if bc.type == "fixed":
                     bcs.append(df.DirichletBC(V_u, zero_vec, _on_left))
@@ -107,7 +125,7 @@ class FEMDiscretiser:
             elif bc.region == "bottom_right_corner":
                 # DirichletBC on quad meshes often misses a single corner DOF.
                 # Apply directly by finding the corner DOF via coordinates.
-                target = np.array([Lx, 0.0])
+                target = np.array([hi[0], lo[1]])
                 dists = np.linalg.norm(dof_coords[:, :2] - target, axis=1)
                 corner_nodes = np.where(dists < 1e-8)[0]
                 if bc.components:
@@ -115,6 +133,22 @@ class FEMDiscretiser:
                         comp_dofs = sub_dofs[comp]
                         matched = np.intersect1d(corner_nodes, comp_dofs)
                         point_fixed_dofs.extend(matched.tolist())
+
+            # A boundary condition that constrains nothing leaves the stiffness
+            # matrix singular, and DOLFIN reports it only as a warning on stderr.
+            # Fail here instead: on a trimmed CAD domain the usual cause is a
+            # region the geometry does not actually reach, and on any domain an
+            # unrecognised region name lands in the same place.
+            constrained = sum(
+                len(applied.get_boundary_values()) for applied in bcs[before_bcs:]
+            ) + (len(point_fixed_dofs) - before_points)
+            if constrained == 0:
+                raise ValueError(
+                    f"Boundary condition region '{bc.region}' (type '{bc.type}') "
+                    f"constrained no degrees of freedom, which leaves the model "
+                    f"singular. The mesh spans {extent}. Check the region name, "
+                    f"and that the geometry actually reaches that face."
+                )
 
         analysis.bcs_applied = bcs
         analysis.point_fixed_dofs = sorted(set(point_fixed_dofs))
@@ -126,33 +160,31 @@ class FEMDiscretiser:
         for ld in spec.loads:
             if ld.region == "mid_right" and ld.type == "point":
                 if domain.dim == 3:
-                    Lz = domain.metadata.get("Lz", 30.0)
-                    target = np.array([Lx, Ly / 2.0, Lz / 2.0])
+                    target = np.array([hi[0], mid_y, 0.5 * float(lo[2] + hi[2])])
                 else:
-                    target = np.array([Lx, Ly / 2.0])
-                tip_dof = _closest_dof_on_face(dof_coords, y_dofs, face_coord=Lx, face_axis=0, target=target)
+                    target = np.array([hi[0], mid_y])
+                tip_dof = _closest_dof_on_face(dof_coords, y_dofs, face_coord=hi[0], face_axis=0, target=target)
                 f_vec[tip_dof] = ld.value[1]
 
             elif ld.region == "mid_right" and ld.type == "patch":
                 # Total force spread uniformly over the face nodes within width/2 of
                 # the mid-right point — removes the point-load stress singularity
                 # (standard in stress-constrained benchmarks, e.g. Le et al. 2010).
-                on_face = np.abs(dof_coords[y_dofs, 0] - Lx) < 1e-6
-                near_mid = np.abs(dof_coords[y_dofs, 1] - Ly / 2.0) <= ld.width / 2.0 + 1e-9
+                on_face = np.abs(dof_coords[y_dofs, 0] - hi[0]) < max(1e-6, tol)
+                near_mid = np.abs(dof_coords[y_dofs, 1] - mid_y) <= ld.width / 2.0 + 1e-9
                 patch = np.asarray(y_dofs)[on_face & near_mid]
                 if len(patch) == 0:      # degenerate width -> fall back to the point load
                     patch = np.array([_closest_dof_on_face(
-                        dof_coords, y_dofs, face_coord=Lx, face_axis=0,
-                        target=np.array([Lx, Ly / 2.0]))])
+                        dof_coords, y_dofs, face_coord=hi[0], face_axis=0,
+                        target=np.array([hi[0], mid_y]))])
                 f_vec[patch] = ld.value[1] / len(patch)
 
             elif ld.region == "top_left_corner" and ld.type == "point":
                 if domain.dim == 3:
-                    Lz = domain.metadata.get("Lz", 30.0)
-                    target = np.array([0.0, Ly, Lz / 2.0])
+                    target = np.array([lo[0], hi[1], 0.5 * float(lo[2] + hi[2])])
                 else:
-                    target = np.array([0.0, Ly])
-                tip_dof = _closest_dof_on_face(dof_coords, y_dofs, face_coord=0.0, face_axis=0, target=target)
+                    target = np.array([lo[0], hi[1]])
+                tip_dof = _closest_dof_on_face(dof_coords, y_dofs, face_coord=lo[0], face_axis=0, target=target)
                 f_vec[tip_dof] = ld.value[1]
 
         analysis.load_vector = f_vec

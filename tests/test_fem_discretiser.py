@@ -172,3 +172,66 @@ class TestFEMDiscretiserLoads:
         # metadata comes from the geometry reader
         assert "Lx" in domain.metadata
         assert "Ly" in domain.metadata
+
+
+# ── Region resolution and unconstrained-model detection ──────────────────────
+
+class TestBoundaryConditionValidation:
+    """A BC that constrains nothing leaves the model singular.
+
+    DOLFIN only warns about this on stderr ("Found no facets matching domain for
+    boundary condition") and then happily assembles a singular stiffness matrix.
+    The discretiser turns it into an error instead — the same guard that catches
+    a region a trimmed CAD domain never reaches.
+    """
+
+    def test_unreachable_region_raises(self):
+        spec = _rect_spec({"region": "nowhere", "type": "fixed"})
+        with pytest.raises(ValueError, match="constrained no degrees of freedom"):
+            _discretise(spec)
+
+    def test_error_names_the_region_and_the_mesh_extent(self):
+        spec = _rect_spec({"region": "nowhere", "type": "fixed"}, Lx=3.0, Ly=5.0)
+        with pytest.raises(ValueError) as excinfo:
+            _discretise(spec)
+        message = str(excinfo.value)
+        assert "'nowhere'" in message
+        assert "x∈[0, 3]" in message and "y∈[0, 5]" in message
+
+    def test_a_symmetry_bc_that_matches_is_accepted(self):
+        """The guard counts symmetry constraints too, not just full fixings."""
+        spec = _rect_spec({"region": "left", "type": "symmetry", "components": [0]})
+        analysis, _ = _discretise(spec)
+        assert sum(len(bc.get_boundary_values()) for bc in analysis.bcs_applied) > 0
+
+
+class TestRegionsFollowTheMeshBounds:
+    """Named regions resolve against the mesh's bounding box, not metadata.
+
+    For the built-in readers the two coincide, so these are regression tests:
+    the switch to mesh-derived bounds must not move any existing region.
+    """
+
+    def test_left_selects_the_minimum_x_face(self):
+        spec = _rect_spec({"region": "left", "type": "fixed"}, Lx=4.0, Ly=2.0, nx=4, ny=2)
+        analysis, _ = _discretise(spec)
+        V_u = analysis.function_spaces["u"]
+        coords = V_u.tabulate_dof_coordinates()
+        fixed = list(analysis.bcs_applied[0].get_boundary_values().keys())
+        np.testing.assert_allclose(coords[fixed][:, 0], 0.0, atol=1e-12)
+
+    def test_top_selects_the_maximum_y_face(self):
+        spec = _rect_spec({"region": "top", "type": "fixed"}, Lx=4.0, Ly=2.0, nx=4, ny=2)
+        analysis, _ = _discretise(spec)
+        coords = analysis.function_spaces["u"].tabulate_dof_coordinates()
+        fixed = list(analysis.bcs_applied[0].get_boundary_values().keys())
+        np.testing.assert_allclose(coords[fixed][:, 1], 2.0, atol=1e-12)
+
+    def test_mid_right_load_lands_on_the_maximum_x_face(self):
+        spec = _rect_spec({"region": "left", "type": "fixed"}, Lx=4.0, Ly=2.0, nx=4, ny=2)
+        analysis, _ = _discretise(spec)
+        coords = analysis.function_spaces["u"].tabulate_dof_coordinates()
+        loaded = np.flatnonzero(analysis.load_vector)
+        assert loaded.size > 0
+        np.testing.assert_allclose(coords[loaded][:, 0], 4.0, atol=1e-12)
+        np.testing.assert_allclose(coords[loaded][:, 1], 1.0, atol=1e-12)

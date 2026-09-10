@@ -252,3 +252,118 @@ def test_adapter_reuses_a_broadcasting_source_without_retrying():
         np.testing.assert_allclose(np.asarray(evaluate(points)), -1.0)
     # Single points keep working through the same adapter.
     assert float(evaluate(np.zeros(3))) == pytest.approx(-1.0)
+
+
+# ── FEniCS interop (needs dolfin as well as cadjoint) ─────────────────────────
+
+@pytest.fixture(scope="module")
+def coarse_bracket():
+    """A 4x4x1-cell L-bracket — small enough to assemble element-by-element."""
+    return get_reader("cadjoint").read(
+        _l_bracket_spec(nx=8, ny=8, nz=2)
+    )
+
+
+def test_dolfin_mesh_matches_the_arrays(coarse_bracket):
+    pytest.importorskip("dolfin", reason="FEniCS is optional for the reader itself")
+    mesh = coarse_bracket.metadata["dolfin_mesh"]
+    assert mesh.num_vertices() == coarse_bracket.vertices.shape[0]
+    assert mesh.num_cells() == coarse_bracket.cells.shape[0]
+
+
+def test_dolfin_mesh_volume_matches_the_cad_solid(coarse_bracket):
+    """A wrong corner permutation still builds a mesh — but not the right volume."""
+    df = pytest.importorskip("dolfin", reason="FEniCS is optional for the reader itself")
+    mesh = coarse_bracket.metadata["dolfin_mesh"]
+    volume = float(df.assemble(df.Constant(1.0) * df.dx(domain=mesh)))
+    # Three quadrants of a 60 x 60 x 10 slab.
+    assert volume == pytest.approx(0.75 * 60 * 60 * 10, rel=1e-12)
+
+
+def test_every_cell_shares_one_reference_stiffness_matrix(coarse_bracket):
+    """FEMDiscretiser assembles ke_ref once, from the mesh's first cell only."""
+    df = pytest.importorskip("dolfin", reason="FEniCS is optional for the reader itself")
+    import ufl
+
+    mesh = coarse_bracket.metadata["dolfin_mesh"]
+    assert mesh.hmin() == pytest.approx(mesh.hmax(), rel=1e-12)
+
+    V_u = df.VectorFunctionSpace(mesh, "CG", 1)
+    mu, lmbda = 1.0 / 2.6, 0.3 / (1.3 * (1.0 - 2.0 * 0.3))
+
+    def eps(u):
+        return 0.5 * (ufl.nabla_grad(u) + ufl.nabla_grad(u).T)
+
+    def sig(u):
+        return lmbda * ufl.tr(eps(u)) * ufl.Identity(3) + 2.0 * mu * eps(u)
+
+    a = ufl.inner(sig(df.TrialFunction(V_u)), eps(df.TestFunction(V_u))) * df.dx
+    kes = [np.asarray(df.assemble_local(a, cell)) for cell in list(df.cells(mesh))[:40]]
+
+    ke_ref = kes[0]
+    assert ke_ref.shape == (24, 24)
+    assert max(np.abs(ke - ke_ref).max() for ke in kes) < 1e-12
+    # A correct 3-D element stiffness has exactly six rigid-body modes.
+    eigenvalues = np.linalg.eigvalsh(ke_ref)
+    assert int((eigenvalues < 1e-9).sum()) == 6
+
+
+def test_boundary_conditions_reach_a_domain_offset_from_the_origin():
+    """A CAD solid need not touch the sampling box, and 'left' must still bind.
+
+    Region predicates keyed off an assumed origin at 0 selected nothing here,
+    which DOLFIN reports only as a warning before assembling a singular system.
+    """
+    pytest.importorskip("dolfin", reason="FEniCS is optional for the reader itself")
+    import jax.numpy as jnp
+
+    from ggp.discretisation.fem import FEMDiscretiser
+    from ggp.problem.spec import BoundaryCondition, FormulationSpec, Load, ProblemSpec
+
+    def offset_slab(p):
+        p = jnp.asarray(p)
+        lo, hi = jnp.asarray([10.0, 0.0, 0.0]), jnp.asarray([50.0, 60.0, 10.0])
+        centre, half = 0.5 * (lo + hi), 0.5 * (hi - lo)
+        q = jnp.abs(p - centre) - half
+        return (jnp.linalg.norm(jnp.maximum(q, 0.0), axis=-1)
+                + jnp.minimum(jnp.max(q, axis=-1), 0.0))
+
+    domain = get_reader("cadjoint").read(
+        GeometrySpec(type="cadjoint", params={
+            "sdf": offset_slab, "Lx": 60.0, "Ly": 60.0, "Lz": 10.0,
+            "nx": 12, "ny": 12, "nz": 2})
+    )
+    assert domain.vertices[:, 0].min() == pytest.approx(10.0)
+
+    spec = ProblemSpec(
+        geometries=[GeometrySpec(type="cadjoint")],
+        boundary_conditions=[BoundaryCondition(region="left", type="fixed")],
+        loads=[Load(region="mid_right", type="point", value=[0.0, -1.0, 0.0])],
+        formulation=FormulationSpec(),
+    )
+    analysis = FEMDiscretiser().discretise(domain, spec)
+
+    coords = analysis.function_spaces["u"].tabulate_dof_coordinates()
+    fixed = list(analysis.bcs_applied[0].get_boundary_values().keys())
+    assert len(fixed) > 0
+    # The constrained face is the solid's own minimum-x face, not x = 0.
+    np.testing.assert_allclose(coords[fixed][:, 0], 10.0, atol=1e-9)
+    # ...and the load lands on its maximum-x face, not the sampling box's.
+    loaded = np.flatnonzero(analysis.load_vector)
+    np.testing.assert_allclose(coords[loaded][:, 0], 50.0, atol=1e-9)
+
+
+def test_import_failure_hint_names_the_python_version_cause():
+    """On 3.10 the failure is enum.StrEnum, and the obvious fix is the wrong one."""
+    import sys as _sys
+
+    from ggp.geometry.io.cadjoint_reader import _import_failure_hint
+
+    hint = _import_failure_hint(ImportError("cannot import name 'StrEnum' from 'enum'"))
+    assert "pip install -e cadjoint" in hint
+    if _sys.version_info < (3, 11):
+        assert "3.11+" in hint and "dolfin-adjoint" in hint
+
+    # An unrelated failure gets the plain install hint, not the version story.
+    plain = _import_failure_hint(ImportError("No module named 'cadjoint'"))
+    assert "dolfin-adjoint" not in plain
