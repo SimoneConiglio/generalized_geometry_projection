@@ -347,7 +347,23 @@ def run_box_subdivision(spec, args) -> dict:
 
     compliance, x_best, index = history.best()
     return {
-        "method": f"box_subdivision[{args.subdivide}x{args.n_components}, k={args.n_subdivisions}]",
+        "method": (
+            f"box[{args.subdivide} of {args.n_components} bars, "
+            f"k={args.n_subdivisions}, {args.formulation}, "
+            f"{args.sub_max_iter} it/box]"
+        ),
+        "settings": {
+            "subdivide": args.subdivide,
+            "n_components": args.n_components,
+            "n_subdivisions": args.n_subdivisions,
+            "formulation": args.formulation,
+            "sub_problem_max_iter": args.sub_max_iter,
+            "sub_problem_algo": args.sub_algo,
+            "master_max_iter": args.master_max_iter,
+            "n_parallel_points": args.n_parallel_points,
+            "trust_region_radius": args.trust_region_radius,
+            "convexity_margin": args.convexity,
+        },
         "compliance": compliance,
         "evaluations": len(history),
         "unique_designs": history.unique,
@@ -390,7 +406,8 @@ def run_baseline(spec) -> dict:
 
     compliance, x_best, index = history.best()
     return {
-        "method": f"mma[{options['max_iter']} iterations]",
+        "method": f"MMA, {options['max_iter']} iterations",
+        "settings": {"max_iter": options["max_iter"], "algo": options["algo_name"]},
         "compliance": compliance,
         "evaluations": len(history),
         "unique_designs": history.unique,
