@@ -27,7 +27,7 @@ are.
 
 Every number above reproduced exactly on a repeat run.
 
-![best feasible compliance against the designs analysed](sc2d_box_subdivision_convergence.png)
+![best feasible compliance against the designs analysed](../docs/_static/sc2d_box_subdivision_convergence.png)
 
 The deep box run traces the plain MMA run exactly over its first box — that box
 holds the preset's starting design — and then spends 960 further designs on
