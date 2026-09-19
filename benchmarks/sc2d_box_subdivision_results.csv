@@ -1,0 +1,7 @@
+run,best_compliance,distinct_designs,fe_solves,boxes_solved,time_s,n_subdivided_variables,n_boxes
+"MMA, 320 iterations",4.321077,320,640,,143.9,,
+"box[centers of 4 bars, k=4, normalized, 320 it/box]",4.327767,1280,1280,4,547.1,8,65536
+"box[centers of 4 bars, k=4, constraint, 160 it/box]",4.407169,640,644,4,516.6,8,65536
+"box[centers of 4 bars, k=4, normalized, 80 it/box]",5.167246,1120,1120,14,542.0,8,65536
+"MMA, 80 iterations",5.175455,80,160,,38.4,,
+"box[layout of 18 bars, k=2, normalized, 80 it/box]",5.971537,1476,1476,19,1045.0,54,1.80144e+16

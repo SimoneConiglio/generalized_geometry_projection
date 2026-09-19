@@ -467,9 +467,15 @@ def summarize(out_dir: Path) -> str:
         compliance = np.asarray(record["history"])
         volume = np.asarray(record["volume_history"])
         best = np.minimum.accumulate(np.where(volume <= 1e-6, compliance, np.inf))
-        axes.plot(np.arange(1, best.size + 1), best, label=record["method"])
+        # The traces are recorded per FE solve, and a run spends a fixed number
+        # of solves per design it analyses: two for plain MMA, which re-solves
+        # for the gradient, one for a box run, whose chain caches. Dividing by
+        # that ratio puts every trace on the axis the runs share.
+        per_design = len(record["history"]) / record.get("unique_designs", len(record["history"]))
+        designs = np.arange(1, best.size + 1) / per_design
+        axes.plot(designs, best, label=record["method"])
 
-    axes.set_xlabel("FE solves")
+    axes.set_xlabel("distinct designs analysed")
     axes.set_ylabel("best feasible compliance")
     axes.set_yscale("log")
     axes.grid(True, which="both", alpha=0.3)
