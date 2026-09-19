@@ -331,6 +331,7 @@ def run_box_subdivision(spec, args) -> dict:
         "compliance",
         design_space,
         n_subdivisions={SPLIT: args.n_subdivisions},
+        formulation=args.formulation,
         settings=settings,
     )
     # A box may hold no design meeting the volume constraint; declaring it at the
@@ -471,6 +472,12 @@ def main() -> None:
     parser.add_argument("--n-components", type=int, default=4,
                         help="how many components have their variables subdivided")
     parser.add_argument("--n-subdivisions", type=int, default=4)
+    parser.add_argument("--formulation", choices=("normalized", "constraint"),
+                        default="normalized",
+                        help="how a sub-problem is confined to its box: rewritten in "
+                             "the normalized variables of the box, or bounded by a "
+                             "constraint, which starts it from the current design "
+                             "projected into the box rather than from the box centre")
     parser.add_argument("--trust-region-radius", type=int, default=2)
     parser.add_argument("--n-parallel-points", type=int, default=2)
     parser.add_argument("--master-max-iter", type=int, default=12)
