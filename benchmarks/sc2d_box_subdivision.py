@@ -286,6 +286,7 @@ def split_indices(slots: str, n_components: int, num_components: int) -> np.ndar
 def run_box_subdivision(spec, args) -> dict:
     """Solve SC 2D with the box-subdivision outer approximation."""
     from gemseo_box_subdivision import BoxSubdivisionScenario
+    from gemseo_box_subdivision.diagnostics import read_margin_report
     from gemseo_box_subdivision.settings import BoxSubdivisionSettings
     from gemseo_box_subdivision.settings import SweptBoxSubdivisionSettings
 
@@ -345,6 +346,11 @@ def run_box_subdivision(spec, args) -> dict:
     scenario.execute()
     elapsed = time.time() - start
 
+    # What the master made of the boxes it solved: how many were admitted, how
+    # many cut on feasibility, and the spread of the objective over them, which
+    # is the scale the swept convexity reads.
+    report = read_margin_report(scenario.formulation.optimization_problem)
+
     compliance, x_best, index = history.best()
     return {
         "method": (
@@ -372,6 +378,10 @@ def run_box_subdivision(spec, args) -> dict:
         "x_best": x_best.tolist(),
         "n_subdivided_variables": int(indices.size),
         "n_boxes": float(args.n_subdivisions) ** int(indices.size),
+        "boxes_solved": report.n_solved,
+        "boxes_admitted": report.n_feasible,
+        "objective_spread_over_boxes": report.spread,
+        "margin_report": report.describe(),
         "history": history.compliance,
         "volume_history": history.volume,
     }
@@ -544,6 +554,7 @@ def main() -> None:
     if "n_boxes" in result:
         print(f"  Subdivided variables     : {result['n_subdivided_variables']}")
         print(f"  Boxes                    : {result['n_boxes']:.3g}")
+        print(f"  Master                   : {result['margin_report']}")
     print(f"  Written to               : {args.out}/{tag}.json|png")
 
 
