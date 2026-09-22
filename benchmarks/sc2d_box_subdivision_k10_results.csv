@@ -1,0 +1,13 @@
+run,best_compliance,distinct_designs,designs_to_best,boxes_solved,objective_spread_over_boxes,time_s
+"box[layout of 18 bars, k=10, normalized, 320 it/box]",4.318804,3520,1920,11,0.1707,898
+"box[layout of 18 bars, k=10, normalized, 320 it/box]",4.318804,8320,1920,26,0.1707,2162
+"MMA, 3520 iterations",4.321044,385,384,,,184
+"MMA, 320 iterations",4.321077,320,320,,,144
+"random boxes[layout of 18 bars, k=10, 11 boxes from the initial one, 320 it/box, seed 1]",4.356851,3520,320,11,,1620
+"random boxes[layout of 18 bars, k=10, 11 boxes from the initial one, 320 it/box, seed 2]",4.356851,3520,320,11,,1672
+"random boxes[layout of 18 bars, k=10, 11 boxes from the initial one, 320 it/box, seed 3]",4.356851,3520,320,11,,1597
+"random boxes[layout of 18 bars, k=10, 11 boxes, 320 it/box, seed 3]",4.358296,3520,3520,11,,1691
+"random boxes[layout of 18 bars, k=10, 11 boxes, 320 it/box, seed 1]",4.380099,3520,1600,11,,1735
+"random boxes[layout of 18 bars, k=10, 11 boxes, 320 it/box, seed 2]",4.414181,3520,958,11,,1741
+"box[layout of 18 bars, k=10, constraint, 160 it/box]",4.422666,4960,3038,31,0.435,14556
+"box[layout of 18 bars, k=10, normalized, 160 it/box]",4.472956,4960,2080,31,0.6652,1303
