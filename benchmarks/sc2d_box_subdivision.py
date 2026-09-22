@@ -449,13 +449,23 @@ def run_random_boxes(spec, args) -> dict:
     k = args.n_subdivisions
     generator = np.random.default_rng(args.seed)
 
+    # The master's first box is the one holding the starting design, so a draw
+    # that never contains it is a control of two things at once. Offering that
+    # box as the first one leaves only the choosing to compare.
+    draws = [
+        np.clip((x_init[indices] * k).astype(int), 0, k - 1)
+    ] if args.include_initial_box else []
+    draws += [
+        generator.integers(0, k, size=indices.size)
+        for _ in range(args.random_boxes - len(draws))
+    ]
+
     options = dict(spec.solver.options)
     options["max_iter"] = args.sub_max_iter
     options["algo_name"] = args.sub_algo
 
     start = time.time()
-    for _ in range(args.random_boxes):
-        box = generator.integers(0, k, size=indices.size)
+    for box in draws:
         lower_bound = box / k
         upper_bound = (box + 1) / k
 
@@ -491,14 +501,16 @@ def run_random_boxes(spec, args) -> dict:
     return {
         "method": (
             f"random boxes[{args.subdivide} of {args.n_components} bars, "
-            f"k={k}, {args.random_boxes} boxes, {args.sub_max_iter} it/box, "
-            f"seed {args.seed}]"
+            f"k={k}, {args.random_boxes} boxes"
+            f"{' from the initial one' if args.include_initial_box else ''}, "
+            f"{args.sub_max_iter} it/box, seed {args.seed}]"
         ),
         "settings": {
             "subdivide": args.subdivide,
             "n_components": args.n_components,
             "n_subdivisions": k,
             "random_boxes": args.random_boxes,
+            "include_initial_box": args.include_initial_box,
             "sub_problem_max_iter": args.sub_max_iter,
             "sub_problem_algo": args.sub_algo,
             "seed": args.seed,
@@ -609,6 +621,9 @@ def main() -> None:
                         help="solve this many boxes drawn at random instead of "
                              "letting the master choose them, the control of a box run")
     parser.add_argument("--seed", type=int, default=0, help="the seed of --random-boxes")
+    parser.add_argument("--include-initial-box", action="store_true",
+                        help="make the box holding the preset's starting design the "
+                             "first of the draw, as it is the master's first box")
     parser.add_argument("--out", type=Path, default=Path("benchmarks/box_subdivision"))
     parser.add_argument("--tag", default=None)
     args = parser.parse_args()
