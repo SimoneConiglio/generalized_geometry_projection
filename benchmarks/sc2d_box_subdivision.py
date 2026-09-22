@@ -429,6 +429,92 @@ def run_baseline(spec) -> dict:
     }
 
 
+def run_random_boxes(spec, args) -> dict:
+    """Solve the same boxes, drawn at random instead of chosen by the master.
+
+    This is the control the box runs need. A box run is a sequence of local
+    solves, each confined to a box and started at its centre, and *that* much is
+    an ordinary multi-start; what the method adds is the master choosing which
+    box comes next, from the cuts of the boxes already solved. Drawing the boxes
+    uniformly at random, at the same count and the same budget each, isolates
+    what the choosing is worth.
+    """
+    from gemseo import create_scenario
+
+    geometry, physics, x_init, _ = build_disciplines(spec)
+    history = _History(geometry, physics)
+
+    indices = split_indices(args.subdivide, args.n_components, spec.formulation.num_components)
+    scatter = _Scatter(indices, x_init.size, x_init)
+    k = args.n_subdivisions
+    generator = np.random.default_rng(args.seed)
+
+    options = dict(spec.solver.options)
+    options["max_iter"] = args.sub_max_iter
+    options["algo_name"] = args.sub_algo
+
+    start = time.time()
+    for _ in range(args.random_boxes):
+        box = generator.integers(0, k, size=indices.size)
+        lower_bound = box / k
+        upper_bound = (box + 1) / k
+
+        design_space = create_design_space()
+        design_space.add_variable(
+            SPLIT,
+            size=indices.size,
+            lower_bound=lower_bound,
+            upper_bound=upper_bound,
+            value=(lower_bound + upper_bound) / 2.0,   # the centre of the box
+        )
+        design_space.add_variable(
+            FREE,
+            size=x_init.size - indices.size,
+            lower_bound=0.0,
+            upper_bound=1.0,
+            value=x_init[scatter.free_indices],
+        )
+        scenario = create_scenario(
+            [scatter, geometry, physics],
+            objective_name="compliance",
+            design_space=design_space,
+            formulation_name="MDF",
+        )
+        scenario.add_constraint(
+            "volume", constraint_type="ineq", positive=False, value=0.0
+        )
+        scenario.execute(**options)
+
+    elapsed = time.time() - start
+
+    compliance, x_best, index = history.best()
+    return {
+        "method": (
+            f"random boxes[{args.subdivide} of {args.n_components} bars, "
+            f"k={k}, {args.random_boxes} boxes, {args.sub_max_iter} it/box, "
+            f"seed {args.seed}]"
+        ),
+        "settings": {
+            "subdivide": args.subdivide,
+            "n_components": args.n_components,
+            "n_subdivisions": k,
+            "random_boxes": args.random_boxes,
+            "sub_problem_max_iter": args.sub_max_iter,
+            "sub_problem_algo": args.sub_algo,
+            "seed": args.seed,
+        },
+        "compliance": compliance,
+        "evaluations": len(history),
+        "unique_designs": history.unique,
+        "evaluations_to_best": index + 1,
+        "time_s": elapsed,
+        "x_best": x_best.tolist(),
+        "n_subdivided_variables": int(indices.size),
+        "history": history.compliance,
+        "volume_history": history.volume,
+    }
+
+
 # --------------------------------------------------------------------------- #
 # Reporting
 # --------------------------------------------------------------------------- #
@@ -519,6 +605,10 @@ def main() -> None:
     parser.add_argument("--convexity", type=float, default=None,
                         help="convexity margin; omitted, the master sweeps a ladder")
     parser.add_argument("--max-iter", type=int, default=None, help="baseline MMA iterations")
+    parser.add_argument("--random-boxes", type=int, default=0,
+                        help="solve this many boxes drawn at random instead of "
+                             "letting the master choose them, the control of a box run")
+    parser.add_argument("--seed", type=int, default=0, help="the seed of --random-boxes")
     parser.add_argument("--out", type=Path, default=Path("benchmarks/box_subdivision"))
     parser.add_argument("--tag", default=None)
     args = parser.parse_args()
@@ -537,7 +627,12 @@ def main() -> None:
         args.max_iter = args.max_iter or 5
 
     spec = load_spec(max_iter=args.max_iter)
-    result = run_baseline(spec) if args.baseline else run_box_subdivision(spec, args)
+    if args.baseline:
+        result = run_baseline(spec)
+    elif args.random_boxes:
+        result = run_random_boxes(spec, args)
+    else:
+        result = run_box_subdivision(spec, args)
 
     tag = args.tag or ("baseline" if args.baseline else
                        f"{args.subdivide}_{args.n_components}c_k{args.n_subdivisions}")
@@ -551,6 +646,8 @@ def main() -> None:
     print(f"  Distinct designs         : {result['unique_designs']}")
     print(f"  ... to reach the best    : {result['evaluations_to_best']}")
     print(f"  Time (s)                 : {result['time_s']:.1f}")
+    if "n_subdivided_variables" in result and "n_boxes" not in result:
+        print(f"  Subdivided variables     : {result['n_subdivided_variables']}")
     if "n_boxes" in result:
         print(f"  Subdivided variables     : {result['n_subdivided_variables']}")
         print(f"  Boxes                    : {result['n_boxes']:.3g}")
