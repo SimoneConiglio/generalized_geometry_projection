@@ -38,6 +38,9 @@ all = ["ggp-topo[fenics,gemseo,cad,dev]"]
 [project.scripts]
 ggp = "ggp.cli.main:cli"
 
+[project.entry-points.gemseo_plugins]
+scp-uno = "scp_uno"
+
 [project.urls]
 Homepage = "https://github.com/SimoneConiglio/generalized_geometry_projection"
 Documentation = "https://simoneconiglio.github.io/generalized_geometry_projection/"

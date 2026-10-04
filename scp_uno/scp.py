@@ -216,9 +216,8 @@ class SequentialConvexProgramming(SequentialProgramming):
             uno = UnoOpt()
             inner_options = {
                 "preset": self._settings.inner_preset,
-                "solver": algo_name,
                 "max_iter": self._settings.inner_max_iter,
-                "hessian": "identity",
+                "hessian_model": "identity",
             }
             result = uno.execute(subproblem, **inner_options)
         else:

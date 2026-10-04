@@ -1,42 +1,61 @@
-# Copyright (c) 2026 Charlie Vanaret
+# Copyright (c) 2026 Simone Coniglio
 # Licensed under the MIT license. See LICENSE file in the project directory for details.
-"""Uno optimization library wrapper for GEMSEO."""
+"""GEMSEO optimization library wrapping the Uno solver (``unopy``, Uno >= 2.x).
+
+Uno is a modular solver for nonlinearly constrained optimization: a *preset*
+fixes the combination of ingredients (``ipopt``: primal-dual interior point +
+filter line search; ``filtersqp``: SQP + filter trust region; ``funnelsqp``:
+SQP + funnel; ``filterslp``: SLP + filter trust region). Since GGP only
+provides first derivatives, the Lagrangian Hessian is approximated by the
+``hessian_model`` option (``LBFGS`` by default; ``identity`` and ``zero`` are
+also available).
+
+Usage (once ``scp_uno`` is registered as a GEMSEO plugin, see pyproject.toml)::
+
+    scenario.execute(algo_name="UNO", max_iter=300, preset="filtersqp",
+                     uno_options={"TR_radius": 0.05})
+
+Every function evaluation goes through the GEMSEO database, so ``max_iter``
+bounds the number of FE analyses (Uno's trial points included), exactly as for
+the other GEMSEO optimizers. Python exceptions raised inside unopy callbacks
+are swallowed by Uno, so GEMSEO's stopping exceptions (e.g. max_iter reached)
+are captured, Uno is stopped through its termination callback and the
+exception is re-raised once Uno has returned.
+"""
 
 from __future__ import annotations
 
 import logging
-import sys
-import os
+import math
 from typing import TYPE_CHECKING, Any, ClassVar
 
 import numpy as np
+from gemseo.algos.design_space_utils import get_value_and_bounds
 from gemseo.algos.opt.base_optimization_library import BaseOptimizationLibrary
 from gemseo.algos.opt.base_optimization_library import OptimizationAlgorithmDescription
-from gemseo.algos.optimization_result import OptimizationResult
 
 from scp_uno.settings import UnoSettings
 
-# Ensure unopy can be imported
-sys.path.append(os.path.join(os.getcwd(), "Uno/build"))
 try:
     import unopy
-except ImportError:
-    pass
+except ImportError:  # pragma: no cover - optional dependency
+    unopy = None
 
 if TYPE_CHECKING:
     from gemseo.algos.optimization_problem import OptimizationProblem
 
 LOGGER = logging.getLogger(__name__)
 
+
 class UnoOpt(BaseOptimizationLibrary[UnoSettings]):
-    """GEMSEO wrapper for the Uno optimization solver."""
+    """GEMSEO wrapper for the Uno solver."""
 
     ALGORITHM_INFOS: ClassVar[dict[str, Any]] = {
         "UNO": OptimizationAlgorithmDescription(
             algorithm_name="UNO",
             internal_algorithm_name="UNO",
             library_name="UNO",
-            description="The Uno solver for nonlinearly constrained optimization",
+            description="Uno: unified nonlinear optimization (SQP / interior point)",
             Settings=UnoSettings,
             require_gradient=True,
             handle_inequality_constraints=True,
@@ -44,102 +63,114 @@ class UnoOpt(BaseOptimizationLibrary[UnoSettings]):
         )
     }
 
-    def __init__(self):
-        super().__init__("UNO")
+    def __init__(self, algo_name: str = "UNO"):
+        super().__init__(algo_name)
 
-    def _run(
-        self,
-        problem: OptimizationProblem,
-        **options: Any,
-    ) -> tuple[str, int]:
-        """Run the Uno solver on a GEMSEO problem."""
-        
-        preset = self._settings.preset
-        solver_name = self._settings.solver
-        max_iter = self._settings.max_iter
-        hessian = self._settings.hessian
+    def _run(self, problem: OptimizationProblem, **options: Any) -> tuple[str, int]:
+        if unopy is None:
+            raise ImportError("The UNO algorithm requires the 'unopy' package.")
+        settings = self._settings
+        x_0, lb, ub = get_value_and_bounds(
+            problem.design_space, settings.normalize_design_space
+        )
+        n = x_0.size
+        constraints = list(problem.constraints)
+        sizes = [np.atleast_1d(c.evaluate(x_0)).size for c in constraints]
+        m = int(sum(sizes))
 
-        x0 = problem.design_space.get_current_value()
-        lb = problem.design_space.get_lower_bounds()
-        ub = problem.design_space.get_upper_bounds()
-        num_vars = len(x0)
+        # Python exceptions raised in callbacks do not cross the C++ boundary,
+        # so the first one is stored and Uno is told to stop.
+        stop: list[BaseException] = []
 
-        def obj_func(x):
-            try:
-                res = problem.objective.evaluate(np.array(x))
-                if isinstance(res, (list, np.ndarray)):
-                    res = float(res[0])
-                else:
-                    res = float(res)
-                if np.isnan(res) or np.isinf(res): return 1e10
-                return res
-            except Exception:
-                return 1e10
+        def guarded(func, fallback):
+            def wrapper(*args):
+                if stop:
+                    return fallback(*args)
+                try:
+                    return func(*args)
+                except BaseException as error:  # noqa: BLE001
+                    stop.append(error)
+                    return fallback(*args)
 
-        def obj_grad(x, out):
-            try:
-                grad = problem.objective.jac(np.array(x))
-                out[:] = grad.flatten()
-            except Exception:
-                out[:] = 0.0
+            return wrapper
 
-        num_cons = 0
-        con_lbs, con_ubs = [], []
-        for constraint in problem.constraints:
-            val = constraint.evaluate(x0)
-            size = val.size
-            num_cons += size
-            if constraint.f_type == "ineq":
-                con_lbs.extend([-1e10] * size)
-                con_ubs.extend([0.0] * size)
-            else:
-                con_lbs.extend([0.0] * size)
-                con_ubs.extend([0.0] * size)
+        # unopy passes views of Uno's internal buffers, which Uno later
+        # overwrites: copy them before they reach the GEMSEO database.
+        # Uno has no automatic NLP scaling: constant factors are applied here.
+        f_scale = settings.objective_scale
+        c_scale = settings.constraint_scale
 
-        def all_cons_func(x, out):
-            idx = 0
-            for constraint in problem.constraints:
-                val = constraint.evaluate(np.array(x))
-                if isinstance(val, (list, np.ndarray)): val = np.array(val).flatten()
-                else: val = np.array([val])
-                out[idx : idx + len(val)] = val.tolist()
-                idx += len(val)
+        def objective(x):
+            value = problem.objective.evaluate(np.array(x))
+            return f_scale * float(np.real(value).ravel()[0])
 
-        def all_jac_func(x, out):
-            idx_row = 0
-            for constraint in problem.constraints:
-                jac = constraint.jac(np.array(x))
-                if jac.ndim == 1: jac = jac.reshape(1, -1)
-                size_con = jac.shape[0]
-                out[idx_row * num_vars : (idx_row + size_con) * num_vars] = jac.flatten()
-                idx_row += size_con
+        def objective_gradient(x, out):
+            out[:] = f_scale * np.asarray(problem.objective.jac(np.array(x))).ravel()
 
-        model = unopy.Model("GEMSEO_SUBPROBLEM", num_vars, unopy.ZERO_BASED_INDEXING)
-        model.set_variables_lower_bounds(lb.tolist())
-        model.set_variables_upper_bounds(ub.tolist())
-        model.set_objective(unopy.MINIMIZE if problem.minimize_objective else unopy.MAXIMIZE, obj_func, obj_grad)
-        if num_cons > 0:
-            nnz = num_cons * num_vars
-            row_indices = np.repeat(np.arange(num_cons), num_vars).tolist()
-            col_indices = np.tile(np.arange(num_vars), num_cons).tolist()
-            model.set_constraints(num_cons, all_cons_func, con_lbs, con_ubs, nnz, row_indices, col_indices, all_jac_func)
-        model.set_initial_primal_iterate(x0.tolist())
+        def constraint_values(x, out):
+            x = np.array(x)
+            out[:] = c_scale * np.concatenate(
+                [np.atleast_1d(c.evaluate(x)).ravel() for c in constraints]
+            )
 
-        uno_solver = unopy.UnoSolver()
-        uno_solver.set_preset(preset)
-        uno_solver.set_option("subproblem_solver", solver_name)
-        uno_solver.set_option("hessian_model", hessian)
-        uno_solver.set_option("max_iterations", max_iter)
-        uno_solver.set_option("logger", self._settings.logger)
-        result_unopy = uno_solver.optimize(model)
-        
-        x_opt = np.clip(np.array(result_unopy.primal_solution)[:num_vars], lb, ub)
-        LOGGER.info(f"   Inner Uno: status={result_unopy.optimization_status}, f_opt={result_unopy.solution_objective:.4e}")
-        problem.design_space.set_current_value(x_opt)
-        return "Uno finished", int(result_unopy.optimization_status)
+        def constraint_jacobian(x, out):
+            # dense, row-major (matches the sparsity pattern declared below)
+            x = np.array(x)
+            out[:] = c_scale * np.concatenate(
+                [np.atleast_2d(c.jac(x)).reshape(-1, n).ravel() for c in constraints]
+            )
 
-    def _get_result(self, problem, message, status):
-        from gemseo.algos.optimization_result import OptimizationResult
-        x_opt = problem.design_space.get_current_value()
-        f_opt = problem.objective.evaluate(x_opt)
-        return OptimizationResult(x_0=x_opt, x_opt=x_opt, f_opt=f_opt, optimizer_name=self.algo_name, message=message, status=status, n_obj_call=problem.objective.n_calls, is_feasible=True)
+        def no_value(*args):
+            return math.inf
+
+        def no_fill(x, out):
+            out[:] = 0.0
+
+        model = unopy.Model(unopy.PROBLEM_NONLINEAR, n, unopy.ZERO_BASED_INDEXING)
+        model.set_variables_lower_bounds(
+            [v if np.isfinite(v) else -math.inf for v in lb]
+        )
+        model.set_variables_upper_bounds(
+            [v if np.isfinite(v) else math.inf for v in ub]
+        )
+        model.set_objective(
+            unopy.MINIMIZE,
+            guarded(objective, no_value),
+            guarded(objective_gradient, no_fill),
+        )
+        if m:
+            c_lb, c_ub = [], []
+            for constraint, size in zip(constraints, sizes):
+                c_lb += [0.0 if constraint.f_type == "eq" else -math.inf] * size
+                c_ub += [0.0] * size
+            model.set_constraints(
+                m,
+                guarded(constraint_values, no_fill),
+                c_lb,
+                c_ub,
+                m * n,
+                np.repeat(np.arange(m), n).tolist(),
+                np.tile(np.arange(n), m).tolist(),
+                guarded(constraint_jacobian, no_fill),
+            )
+        model.set_initial_primal_iterate(x_0.tolist())
+
+        solver = unopy.UnoSolver()
+        solver.set_preset(settings.preset)
+        solver.set_option("hessian_model", settings.hessian_model)
+        solver.set_option("quasi_newton_memory_size", settings.quasi_newton_memory_size)
+        solver.set_option("max_iterations", settings.max_uno_iterations)
+        solver.set_option("logger", settings.logger)
+        for key, value in settings.uno_options.items():
+            solver.set_option(key, value)
+        solver.set_termination_callback(lambda *args: bool(stop))
+
+        result = solver.optimize(model)
+        message = (
+            f"Uno ({settings.preset}): {result.optimization_status.name}, "
+            f"{result.solution_status.name}, {result.number_iterations} iterations"
+        )
+        LOGGER.info(message)
+        if stop:
+            raise stop[0]
+        return message, int(result.optimization_status.value)

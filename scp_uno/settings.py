@@ -3,6 +3,9 @@
 """Settings for the SCP framework."""
 
 from __future__ import annotations
+
+import math
+from typing import Any
 from gemseo.algos.opt.base_optimization_library import BaseOptimizerSettings
 from pydantic import Field
 
@@ -53,10 +56,29 @@ class SCPSettings(BaseOptimizerSettings):
 
 class UnoSettings(BaseOptimizerSettings):
     """Settings for the Uno solver wrapper."""
-    preset: str = Field("filtersmma", description="Uno configuration preset.")
-    solver: str = Field("MMA", description="Uno subproblem solver.")
-    hessian: str = Field("identity", description="Hessian model.")
-    max_iter: int = Field(500, description="Max iterations.")
-    logger: str = Field("INFO", description="Uno logging level.")
-    kkt_tol_abs: float = Field(1e-6, description="Absolute KKT tolerance.")
-    kkt_tol_rel: float = Field(1e-6, description="Relative KKT tolerance.")
+    preset: str = Field(
+        "filtersqp",
+        description="Uno preset: 'ipopt', 'filtersqp', 'funnelsqp' or 'filterslp'.",
+    )
+    hessian_model: str = Field(
+        "LBFGS", description="Lagrangian Hessian model: 'LBFGS', 'identity' or 'zero'."
+    )
+    quasi_newton_memory_size: int = Field(6, description="L-BFGS memory size.")
+    max_uno_iterations: int = Field(
+        10000,
+        description="Uno's own iteration cap (GEMSEO's max_iter bounds the evaluations).",
+    )
+    logger: str = Field("SILENT", description="Uno logging level (SILENT, INFO, DEBUG).")
+    objective_scale: float = Field(1.0, description="Factor applied to the objective.")
+    constraint_scale: float = Field(
+        1.0,
+        description="Factor applied to all constraints (e.g. 0.01 for a response in %).",
+    )
+    uno_options: dict[str, Any] = Field(
+        default_factory=dict,
+        description="Extra Uno options passed verbatim, e.g. {'TR_radius': 0.05}.",
+    )
+    # GEMSEO's KKT stopping test is disabled (inf): Uno checks KKT itself, and the
+    # GEMSEO test resets the evaluation counter, which would disable max_iter.
+    kkt_tol_abs: float = Field(math.inf, description="Absolute KKT tolerance.")
+    kkt_tol_rel: float = Field(math.inf, description="Relative KKT tolerance.")
