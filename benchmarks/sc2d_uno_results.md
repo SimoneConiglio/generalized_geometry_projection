@@ -8,9 +8,11 @@ constraint scaled by 0.01 (the response is in percent); `_trR`: initial
 trust-region radius R in the normalised design space; `fix`: radius never
 enlarged (`TR_increase_factor = 1`), i.e. an MMA-like move limit.
 
-In `docs/_static/sc2d_uno_convergence.png` the curves are the best *strictly feasible* C
-(volume <= 1e-4): the SQP iterates follow the active volume constraint from
-slightly outside, so their curves drop in steps when an iterate lands inside.
+`docs/_static/sc2d_uno_convergence.png` shows C and the volume constraint at
+every FE analysis (rejected trial points included). Gradients are analytic
+(adjoint): one FE solve per evaluation. The SQP iterates approach the active
+volume constraint from slightly outside (violations ~1e-3..1e-2 %-points),
+MMA from inside.
 
 Regenerate with `python -m benchmarks.sc2d_uno --report`.
 

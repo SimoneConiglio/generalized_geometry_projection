@@ -112,15 +112,6 @@ def run_config(name, options, max_iter):
     }
 
 
-def _best_feasible(row):
-    """Running best feasible compliance along the evaluation history."""
-    f = np.asarray(row["f_hist"])
-    v = np.asarray(row["v_hist"])
-    n = min(len(f), len(v))
-    c = np.where(v[:n] <= 1e-4, np.expm1(f[:n]), np.inf)
-    return np.minimum.accumulate(c)
-
-
 def report(tag=""):
     """Merge every ``sc2d_uno_results_*.json`` into a Markdown table and a figure."""
     rows = {}
@@ -141,9 +132,11 @@ def report(tag=""):
         "trust-region radius R in the normalised design space; `fix`: radius never",
         "enlarged (`TR_increase_factor = 1`), i.e. an MMA-like move limit.",
         "",
-        "In `docs/_static/sc2d_uno_convergence.png` the curves are the best *strictly feasible* C",
-        "(volume <= 1e-4): the SQP iterates follow the active volume constraint from",
-        "slightly outside, so their curves drop in steps when an iterate lands inside.",
+        "`docs/_static/sc2d_uno_convergence.png` shows C and the volume constraint at",
+        "every FE analysis (rejected trial points included). Gradients are analytic",
+        "(adjoint): one FE solve per evaluation. The SQP iterates approach the active",
+        "volume constraint from slightly outside (violations ~1e-3..1e-2 %-points),",
+        "MMA from inside.",
         "",
         "Regenerate with `python -m benchmarks.sc2d_uno --report`.",
         "",
@@ -162,18 +155,27 @@ def report(tag=""):
 
     shown = ["mma", "filtersqp", "filtersqp_cs", "filtersqp_cs_tr0.01",
              "filtersqp_cs_tr0.01fix", "filtersqp_cs_tr0.005fix", "ipopt_cs"]
-    fig, ax = plt.subplots(figsize=(7, 4.5))
+    fig, (ax, axv) = plt.subplots(2, 1, figsize=(7.5, 7), sharex=True,
+                                  gridspec_kw={"height_ratios": [2, 1]})
     for name in shown:
         row = next((r for r in rows if r["config"] == name and r["n_evals"] <= 320), None)
-        if row is not None:
-            ax.semilogy(_best_feasible(row), label=f"{name} (C={row['compliance']:.1f})",
-                        lw=2.2 if name == "mma" else 1.4)
-    ax.set_xlabel("FE analyses")
-    ax.set_ylabel("best feasible compliance C")
+        if row is None:
+            continue
+        f, v = np.asarray(row["f_hist"]), np.asarray(row["v_hist"])
+        n = min(len(f), len(v))
+        kw = {"lw": 2.2 if name == "mma" else 1.2, "label": f"{name} (C={row['compliance']:.1f})"}
+        line, = ax.semilogy(np.expm1(f[:n]), **kw)
+        axv.plot(v[:n], color=line.get_color(), lw=kw["lw"])
+    ax.set_ylabel("compliance C at each evaluation")
     ax.set_ylim(70, 2000)
     ax.grid(True, which="both", alpha=0.3)
     ax.legend(fontsize=8)
     ax.set_title("Short cantilever: Uno presets vs MMA (objective log(C+1))")
+    axv.set_yscale("symlog", linthresh=1e-3)
+    axv.axhline(0.0, color="k", lw=0.8)
+    axv.set_ylabel("volume constraint (%-points)")
+    axv.set_xlabel("FE analyses (every trial point, rejected ones included)")
+    axv.grid(True, which="both", alpha=0.3)
     fig.tight_layout()
     fig.savefig(OUT.parent / "docs" / "_static" / f"sc2d_uno_convergence{tag}.png", dpi=130)
 
