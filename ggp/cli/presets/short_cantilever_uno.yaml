@@ -1,0 +1,60 @@
+# Short Cantilever Benchmark -- Uno filter-SQP variant
+# Same problem as short_cantilever.yaml (objective log(C+1), volume <= 40%), solved
+# with Uno (unopy) instead of MMA. Tuned in benchmarks/sc2d_uno.py:
+# C = 74.50 vs 74.25 for the MMA preset at 320 FE analyses, ~4x less wall time.
+# Standard GGP topology optimisation benchmark with a cantilever beam
+# fixed on the left edge and a point load at the mid-right.
+# 18 free bars, GP characteristic function, 2:1 domain.
+# Parameters match the Matlab GGP_main.m reference implementation.
+
+geometries:
+  - type: fenics_rectangle
+    role: design
+    params:
+      Lx: 60.0
+      Ly: 30.0
+      nx: 60
+      ny: 30
+
+boundary_conditions:
+  - region: left
+    type: fixed
+
+loads:
+  - region: mid_right
+    type: point
+    value: [0.0, -1.0]
+
+formulation:
+  mode: Free
+  num_components: 18
+  method: GP
+  r_gp: 0.5
+  Ngp: 2
+
+objective:
+  name: compliance
+
+constraints:
+  - name: volume
+    type: ineq
+    bound: 0.0
+
+solver:
+  algorithm: UNO
+  max_iter: 320
+  fem_solver: amjax
+  options:
+    # Uno preset: SQP + filter trust region, L-BFGS Hessian (GGP has no exact Hessian).
+    preset: filtersqp
+    # The volume response is in percent (|grad| ~ 200 vs ~ 30 for log(C+1)):
+    # bring it to O(1), otherwise the filter is driven by feasibility only (C ~ 360).
+    constraint_scale: 0.01
+    uno_options:
+      # MMA-like move limit: radius 0.005 in the normalised [0, 1] design space,
+      # never enlarged (TR_increase_factor = 1). Uno's default radius (10) lets the
+      # bars jump across the domain and ends in a poor basin (C ~ 100).
+      TR_radius: 0.005
+      TR_increase_factor: 1.0
+
+volfrac: 0.4

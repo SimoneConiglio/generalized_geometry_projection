@@ -13,7 +13,8 @@ Run inside the conda ``ggp`` environment::
 
     python benchmarks/sc2d_uno.py                      # all configurations
     python benchmarks/sc2d_uno.py --configs mma filtersqp_tr0.05
-    python benchmarks/sc2d_uno.py --max-iter 600 --list
+    python benchmarks/sc2d_uno.py --max-iter 640 --configs filtersqp_cs_tr0.01fix
+    python benchmarks/sc2d_uno.py --report             # merge results -> .md + .png
 """
 from __future__ import annotations
 
@@ -111,6 +112,55 @@ def run_config(name, options, max_iter):
     }
 
 
+def _best_feasible(row):
+    """Running best feasible compliance along the evaluation history."""
+    f = np.asarray(row["f_hist"])
+    v = np.asarray(row["v_hist"])
+    n = min(len(f), len(v))
+    c = np.where(v[:n] <= 1e-4, np.expm1(f[:n]), np.inf)
+    return np.minimum.accumulate(c)
+
+
+def report(tag=""):
+    """Merge every ``sc2d_uno_results_*.json`` into a Markdown table and a figure."""
+    rows = {}
+    for path in sorted(OUT.glob("sc2d_uno_results_*.json")):
+        for row in json.load(open(path)):
+            key = (row["config"], row["n_evals"])
+            rows[key] = row
+    rows = sorted(rows.values(), key=lambda r: (r["n_evals"], r["compliance"]))
+    ref = next((r["compliance"] for r in rows if r["config"] == "mma"), None)
+    lines = ["| Config | Evals | Compliance C | vs MMA | Volume con. | Time (s) | Uno options |",
+             "|---|---|---|---|---|---|---|"]
+    for r in rows:
+        gap = f"{100 * (r['compliance'] / ref - 1):+.2f}%" if ref else "-"
+        lines.append(
+            f"| {r['config']} | {r['n_evals']} | {r['compliance']:.2f} | {gap} | "
+            f"{r['volume_con']:+.1e} | {r['time_s']:.0f} | `{r['options']}` |")
+    (OUT / f"sc2d_uno_results{tag}.md").write_text("\n".join(lines) + "\n")
+
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    shown = ["mma", "filtersqp", "filtersqp_cs", "filtersqp_cs_tr0.01",
+             "filtersqp_cs_tr0.01fix", "filtersqp_cs_tr0.005fix", "ipopt_cs"]
+    fig, ax = plt.subplots(figsize=(7, 4.5))
+    for name in shown:
+        row = next((r for r in rows if r["config"] == name and r["n_evals"] <= 320), None)
+        if row is not None:
+            ax.semilogy(_best_feasible(row), label=f"{name} (C={row['compliance']:.1f})",
+                        lw=2.2 if name == "mma" else 1.4)
+    ax.set_xlabel("FE analyses")
+    ax.set_ylabel("best feasible compliance C")
+    ax.set_ylim(70, 2000)
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(fontsize=8)
+    ax.set_title("Short cantilever: Uno presets vs MMA (objective log(C+1))")
+    fig.tight_layout()
+    fig.savefig(OUT / f"sc2d_uno_convergence{tag}.png", dpi=130)
+
+
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("--configs", nargs="*", default=list(CONFIGS))
@@ -118,7 +168,12 @@ def main():
                         help="Budget of FE analyses (GEMSEO max_iter), same for all.")
     parser.add_argument("--tag", default="", help="Suffix of the output files.")
     parser.add_argument("--list", action="store_true")
+    parser.add_argument("--report", action="store_true",
+                        help="Only merge the saved results into a table and a figure.")
     args = parser.parse_args()
+    if args.report:
+        report()
+        return
     if args.list:
         for k, v in CONFIGS.items():
             print(f"{k:24s} {v}")
