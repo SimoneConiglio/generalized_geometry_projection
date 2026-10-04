@@ -7,8 +7,8 @@ fixes the combination of ingredients (``ipopt``: primal-dual interior point +
 filter line search; ``filtersqp``: SQP + filter trust region; ``funnelsqp``:
 SQP + funnel; ``filterslp``: SLP + filter trust region). Since GGP only
 provides first derivatives, the Lagrangian Hessian is approximated by the
-``hessian_model`` option (``LBFGS`` by default; ``identity`` and ``zero`` are
-also available).
+``hessian_model`` option (``LBFGS`` by default, ``zero`` for ``filterslp``;
+``identity`` is also available).
 
 Usage (once ``scp_uno`` is registered as a GEMSEO plugin, see pyproject.toml)::
 
@@ -157,7 +157,10 @@ class UnoOpt(BaseOptimizationLibrary[UnoSettings]):
 
         solver = unopy.UnoSolver()
         solver.set_preset(settings.preset)
-        solver.set_option("hessian_model", settings.hessian_model)
+        hessian_model = settings.hessian_model
+        if hessian_model is None:
+            hessian_model = "zero" if settings.preset == "filterslp" else "LBFGS"
+        solver.set_option("hessian_model", hessian_model)
         solver.set_option("quasi_newton_memory_size", settings.quasi_newton_memory_size)
         solver.set_option("max_iterations", settings.max_uno_iterations)
         solver.set_option("logger", settings.logger)

@@ -50,6 +50,9 @@ CONFIGS["filtersqp_cs_id"] = {"preset": "filtersqp", **CS, "hessian_model": "ide
 CONFIGS["ipopt_cs_mu0.01"] = {"preset": "ipopt", **CS,
                               "uno_options": {"barrier_initial_parameter": 0.01}}
 CONFIGS["ipopt_cs_m20"] = {"preset": "ipopt", **CS, "quasi_newton_memory_size": 20}
+# 5. constraint scale around the O(1) choice
+CONFIGS["filtersqp_cs0.1"] = {"preset": "filtersqp", "constraint_scale": 0.1}
+CONFIGS["filtersqp_cs0.001"] = {"preset": "filtersqp", "constraint_scale": 0.001}
 
 
 def run_config(name, options, max_iter):

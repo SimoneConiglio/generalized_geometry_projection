@@ -60,8 +60,12 @@ class UnoSettings(BaseOptimizerSettings):
         "filtersqp",
         description="Uno preset: 'ipopt', 'filtersqp', 'funnelsqp' or 'filterslp'.",
     )
-    hessian_model: str = Field(
-        "LBFGS", description="Lagrangian Hessian model: 'LBFGS', 'identity' or 'zero'."
+    hessian_model: str | None = Field(
+        None,
+        description=(
+            "Lagrangian Hessian model: 'LBFGS', 'identity' or 'zero'. None: 'zero' for "
+            "the SLP preset 'filterslp', 'LBFGS' otherwise (no exact Hessian in GGP)."
+        ),
     )
     quasi_newton_memory_size: int = Field(6, description="L-BFGS memory size.")
     max_uno_iterations: int = Field(
