@@ -323,17 +323,38 @@ def report():
         "",
         "Regenerate with `python -m benchmarks.lbracket_density_uno --report`.",
         "",
-        "| n = m | Jacobian nnz | Preset | Status | Iter. | Volume | max g | Wall (s) "
-        "| Uno (s) | uno s/it | FE+sens (s) | FE s/jac |",
-        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+        "| n = m | Jacobian nnz | Preset | Uno options | Status | Iter. | Volume | max g "
+        "| Wall (s) | Uno (s) | uno s/it | FE+sens (s) | FE s/jac |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|---|",
     ]
     for r in rows:
         it = max(r["iterations"], 1)
         lines.append(
-            f"| {r['n']} | {r['n'] ** 2:.1e} | {r['preset']} | {r['status']} | "
+            f"| {r['n']} | {r['n'] ** 2:.1e} | {r['preset']} | "
+            f"{json.dumps(r['options']) if r['options'] else '-'} | {r['status']} | "
             f"{r['iterations']} | {r['volume']:.4f} | {r['max_g']:+.1e} | "
             f"{r['wall_s']:.0f} | {r['uno_s']:.0f} | {r['uno_s'] / it:.3f} | "
             f"{r['fe_s']:.0f} | {r['fe_s'] / max(r['n_jacobian_evals'], 1):.3f} |")
+    lines += [
+        "",
+        "## Findings (n = m = 300, 1 200, 2 700)",
+        "",
+        "* All presets reach feasible KKT points with the same truss-like topology up to",
+        "  n = m = 1 200; at 2 700 `ipopt` and `filterslp` still converge (59 and 38 min).",
+        "* Uno's own cost per iteration grows ~n^2 for `filtersqp`/`funnelsqp` (BQPD",
+        "  warm-started active-set QP) and ~n^3 for `ipopt` (factorization of a KKT system",
+        "  filled in by the dense m x n Jacobian) and `filterslp`: 19-22 s/it at n = 2 700,",
+        "  i.e. Uno, not the FE model, dominates the run time from n ~ 1 000 on.",
+        "* `filtersqp` with Uno's default trust region (radius 10) jumps to a hugely",
+        "  infeasible point at n = 2 700 and its feasibility-restoration QP (BQPD) did not",
+        "  return in > 1 h. A capped radius (0.05, as for the GGP cantilever) avoids it:",
+        "  4.5 s/it, but it needs > 300 iterations (V = 0.4035, max g = 8e-5 at the cap).",
+        "* The optimal volume grows with refinement (0.30 -> 0.41): the re-entrant corner",
+        "  stress is singular, so a finer mesh needs more material around it.",
+        "* Extrapolating, n = m ~ 10^4 costs ~2-20 min per iteration and ~1 GB per dense",
+        "  Jacobian copy: local constraints without aggregation are out of reach for these",
+        "  dense-Jacobian NLP methods beyond a few thousand elements.",
+    ]
     (OUT / "lbracket_density_uno_results.md").write_text("\n".join(lines) + "\n")
 
     static = OUT.parent / "docs" / "_static"
