@@ -21,7 +21,9 @@ no GEMSEO -- GEMSEO's database would store every dense Jacobian. Uno (``unopy``)
 called directly so that its own time can be separated from the FE + sensitivity time.
 
     python -m benchmarks.lbracket_density_uno --check-gradient --nelx 20
-    python -m benchmarks.lbracket_density_uno --nelx 20 40 60 --presets filtersqp ipopt
+    python -m benchmarks.lbracket_density_uno --nelx 20 40 60 --presets filtersqp ipopt \\
+        --objective-scale n
+    python -m benchmarks.lbracket_density_uno --report
 """
 from __future__ import annotations
 
@@ -298,6 +300,86 @@ def run_uno(prob: LBracketDensity, preset: str, max_iter: int, options=None,
     }
 
 
+def report():
+    """Merge every ``lbracket_density_uno_*.json``: Markdown table + scaling/design figures."""
+    import matplotlib
+    matplotlib.use("Agg")
+    import matplotlib.pyplot as plt
+
+    rows = {}
+    for path in sorted(OUT.glob("lbracket_density_uno_*.json")):
+        for r in json.load(open(path)):
+            rows[(r["preset"], r["nelx"])] = r
+    rows = sorted(rows.values(), key=lambda r: (r["nelx"], r["preset"]))
+    lines = [
+        "# Uno on the density-based L-bracket with local stress constraints",
+        "",
+        "Mass minimization, one relaxed von Mises constraint per element (no aggregation):",
+        "n design variables = m constraints, dense m x n Jacobian. Start: full material.",
+        "`uno s/it` is Uno's own time per iteration (FE + sensitivity callbacks excluded);",
+        "`FE s/jac` is the cost of one dense adjoint Jacobian (n back-substitutions).",
+        "SQP/IPM presets minimize n*V (the O(1/n) volume gradient otherwise makes the",
+        "identity-initialised L-BFGS step O(1/n)); `filterslp` minimizes V.",
+        "",
+        "Regenerate with `python -m benchmarks.lbracket_density_uno --report`.",
+        "",
+        "| n = m | Jacobian nnz | Preset | Status | Iter. | Volume | max g | Wall (s) "
+        "| Uno (s) | uno s/it | FE+sens (s) | FE s/jac |",
+        "|---|---|---|---|---|---|---|---|---|---|---|---|",
+    ]
+    for r in rows:
+        it = max(r["iterations"], 1)
+        lines.append(
+            f"| {r['n']} | {r['n'] ** 2:.1e} | {r['preset']} | {r['status']} | "
+            f"{r['iterations']} | {r['volume']:.4f} | {r['max_g']:+.1e} | "
+            f"{r['wall_s']:.0f} | {r['uno_s']:.0f} | {r['uno_s'] / it:.3f} | "
+            f"{r['fe_s']:.0f} | {r['fe_s'] / max(r['n_jacobian_evals'], 1):.3f} |")
+    (OUT / "lbracket_density_uno_results.md").write_text("\n".join(lines) + "\n")
+
+    static = OUT.parent / "docs" / "_static"
+    fig, ax = plt.subplots(figsize=(6.5, 4.5))
+    presets = sorted({r["preset"] for r in rows})
+    for preset in presets:
+        rs = [r for r in rows if r["preset"] == preset]
+        n = np.array([r["n"] for r in rs])
+        ax.loglog(n, [r["uno_s"] / max(r["iterations"], 1) for r in rs], "o-", label=preset)
+    rs = [r for r in rows if r["preset"] == presets[0]]
+    n = np.array([r["n"] for r in rs])
+    ax.loglog(n, [r["fe_s"] / max(r["n_jacobian_evals"], 1) for r in rs], "k--",
+              label="FE + dense adjoint Jacobian")
+    nn = np.array([n.min(), n.max()], dtype=float)
+    for k, ls in ((2, ":"), (3, "-.")):
+        ax.loglog(nn, 0.05 * (nn / nn[0]) ** k, color="gray", ls=ls, lw=0.8, label=f"~ n^{k}")
+    ax.set_xlabel("n design variables (= m local stress constraints)")
+    ax.set_ylabel("seconds per iteration / per Jacobian")
+    ax.grid(True, which="both", alpha=0.3)
+    ax.legend(fontsize=8)
+    ax.set_title("Uno on local stress constraints: cost per iteration")
+    fig.tight_layout()
+    fig.savefig(static / "lbracket_density_uno_scaling.png", dpi=130)
+
+    nelxs = sorted({r["nelx"] for r in rows})
+    fig, axes = plt.subplots(len(presets), len(nelxs), squeeze=False,
+                             figsize=(2.6 * len(nelxs), 2.6 * len(presets)))
+    for i, preset in enumerate(presets):
+        for j, nelx in enumerate(nelxs):
+            ax = axes[i][j]
+            ax.set_xticks([]); ax.set_yticks([])
+            r = next((r for r in rows if r["preset"] == preset and r["nelx"] == nelx), None)
+            if r is None:
+                ax.axis("off")
+                continue
+            prob = LBracketDensity(nelx)
+            img = np.full((nelx, nelx), np.nan)
+            rho = prob.H @ np.asarray(r["x"])
+            img[prob.cells[:, 1], prob.cells[:, 0]] = rho
+            ax.imshow(img, origin="lower", cmap="gray_r", vmin=0, vmax=1)
+            ax.set_title(f"{preset} n={r['n']}\nV={r['volume']:.3f} {r['status'][:9]}",
+                         fontsize=7)
+    fig.tight_layout()
+    fig.savefig(static / "lbracket_density_uno_designs.png", dpi=130)
+
+
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--nelx", type=int, nargs="+", default=[20])
@@ -312,7 +394,12 @@ def main():
     ap.add_argument("--tag", default="")
     ap.add_argument("--logger", default="SILENT")
     ap.add_argument("--check-gradient", action="store_true")
+    ap.add_argument("--report", action="store_true",
+                    help="Only merge the saved results into a table and figures.")
     args = ap.parse_args()
+    if args.report:
+        report()
+        return
     if args.check_gradient:
         for nelx in args.nelx:
             check_gradient(nelx)
