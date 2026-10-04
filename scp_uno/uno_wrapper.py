@@ -33,6 +33,7 @@ import numpy as np
 from gemseo.algos.design_space_utils import get_value_and_bounds
 from gemseo.algos.opt.base_optimization_library import BaseOptimizationLibrary
 from gemseo.algos.opt.base_optimization_library import OptimizationAlgorithmDescription
+from gemseo.algos.stop_criteria import TerminationCriterion
 
 from scp_uno.settings import UnoSettings
 
@@ -78,8 +79,11 @@ class UnoOpt(BaseOptimizationLibrary[UnoSettings]):
         sizes = [np.atleast_1d(c.evaluate(x_0)).size for c in constraints]
         m = int(sum(sizes))
 
-        # Python exceptions raised in callbacks do not cross the C++ boundary,
-        # so the first one is stored and Uno is told to stop.
+        # Python exceptions raised in callbacks do not cross the C++ boundary.
+        # A GEMSEO stopping criterion (or an interruption) is stored and Uno is
+        # told to stop; any other error (e.g. a singular FE system at a trial
+        # point) is reported to Uno as a non-finite value, so that the trial
+        # point is rejected and the step reduced.
         stop: list[BaseException] = []
 
         def guarded(func, fallback):
@@ -88,9 +92,11 @@ class UnoOpt(BaseOptimizationLibrary[UnoSettings]):
                     return fallback(*args)
                 try:
                     return func(*args)
-                except BaseException as error:  # noqa: BLE001
+                except (TerminationCriterion, KeyboardInterrupt) as error:
                     stop.append(error)
-                    return fallback(*args)
+                except Exception as error:  # noqa: BLE001
+                    LOGGER.warning("Uno: evaluation failed (%s), step rejected.", error)
+                return fallback(*args)
 
             return wrapper
 
@@ -124,7 +130,7 @@ class UnoOpt(BaseOptimizationLibrary[UnoSettings]):
             return math.inf
 
         def no_fill(x, out):
-            out[:] = 0.0
+            out[:] = math.inf
 
         model = unopy.Model(unopy.PROBLEM_NONLINEAR, n, unopy.ZERO_BASED_INDEXING)
         model.set_variables_lower_bounds(
