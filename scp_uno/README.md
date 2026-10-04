@@ -32,6 +32,18 @@ The framework supports multiple engines for solving the convex subproblems:
 *   **Scipy (SLSQP)**: Reliable Sequential Least Squares Programming.
 *   **Uno**: High-performance C++ engine for nonlinearly constrained optimization (via `unopy`).
 
+## Uno as a stand-alone optimizer (`algo_name="UNO"`)
+
+`uno_wrapper.UnoOpt` exposes Uno's own algorithms (public `unopy`, Uno >= 2.x) as the
+GEMSEO library `UNO` (registered through the `gemseo_plugins` entry point):
+presets `ipopt`, `filtersqp`, `funnelsqp` and `filterslp`, with an L-BFGS Hessian
+(zero Hessian for `filterslp`), constant objective/constraint scaling and any Uno option
+through `uno_options`. On the short cantilever (objective log(C+1)) the tuned filter SQP
+(`ggp optimize --preset short_cantilever_uno`) reaches C = 74.50 vs 74.26 for MMA at
+320 FE analyses; the two settings that matter are scaling the volume constraint to O(1)
+and capping the trust region like an MMA move limit. See
+`benchmarks/sc2d_uno_results.md`.
+
 ## Results: Validation on GGP Benchmark
 
 The framework was validated on a standard GGP (Generalized Geometry Projection) Topology Optimization problem (Short Cantilever) targeting a volume fraction of 40%.

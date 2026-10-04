@@ -126,11 +126,28 @@ def report(tag=""):
     rows = {}
     for path in sorted(OUT.glob("sc2d_uno_results_*.json")):
         for row in json.load(open(path)):
-            key = (row["config"], row["n_evals"])
+            key = (row["config"], row["n_evals"] > 320)   # 320 budget vs longer runs
             rows[key] = row
     rows = sorted(rows.values(), key=lambda r: (r["n_evals"], r["compliance"]))
     ref = next((r["compliance"] for r in rows if r["config"] == "mma"), None)
-    lines = ["| Config | Evals | Compliance C | vs MMA | Volume con. | Time (s) | Uno options |",
+    lines = [
+        "# Uno solvers on the Short Cantilever 2D",
+        "",
+        "Objective log(C+1), volume <= 40 %, 18 GP bars (108 variables), direct FE solver,",
+        "same budget of FE analyses for every run (GEMSEO `max_iter`). C is the final",
+        "compliance; *vs MMA* is relative to the preset MMA run. All Uno runs use an",
+        "L-BFGS Hessian (`filterslp`: zero Hessian) unless stated. `_cs`: volume",
+        "constraint scaled by 0.01 (the response is in percent); `_trR`: initial",
+        "trust-region radius R in the normalised design space; `fix`: radius never",
+        "enlarged (`TR_increase_factor = 1`), i.e. an MMA-like move limit.",
+        "",
+        "In `docs/_static/sc2d_uno_convergence.png` the curves are the best *strictly feasible* C",
+        "(volume <= 1e-4): the SQP iterates follow the active volume constraint from",
+        "slightly outside, so their curves drop in steps when an iterate lands inside.",
+        "",
+        "Regenerate with `python -m benchmarks.sc2d_uno --report`.",
+        "",
+        "| Config | Evals | Compliance C | vs MMA | Volume con. | Time (s) | Uno options |",
              "|---|---|---|---|---|---|---|"]
     for r in rows:
         gap = f"{100 * (r['compliance'] / ref - 1):+.2f}%" if ref else "-"
@@ -158,7 +175,7 @@ def report(tag=""):
     ax.legend(fontsize=8)
     ax.set_title("Short cantilever: Uno presets vs MMA (objective log(C+1))")
     fig.tight_layout()
-    fig.savefig(OUT / f"sc2d_uno_convergence{tag}.png", dpi=130)
+    fig.savefig(OUT.parent / "docs" / "_static" / f"sc2d_uno_convergence{tag}.png", dpi=130)
 
 
 def main():
