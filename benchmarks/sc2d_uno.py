@@ -44,6 +44,11 @@ CONFIGS.update({f"{p}_cs": {"preset": p, **CS} for p in PRESETS})
 for p in ["filtersqp", "funnelsqp", "filterslp"]:
     for r in [0.1, 0.02]:
         CONFIGS[f"{p}_cs_tr{r}"] = {"preset": p, **CS, "uno_options": {"TR_radius": r}}
+# 3b. MMA-like move limit 0.01: initial radius only, or capped (radius never grows)
+for p in ["filtersqp", "funnelsqp", "filterslp"]:
+    CONFIGS[f"{p}_cs_tr0.01"] = {"preset": p, **CS, "uno_options": {"TR_radius": 0.01}}
+    CONFIGS[f"{p}_cs_tr0.01fix"] = {
+        "preset": p, **CS, "uno_options": {"TR_radius": 0.01, "TR_increase_factor": 1.0}}
 # 4. Hessian model / memory, interior-point barrier
 CONFIGS["filtersqp_cs_m20"] = {"preset": "filtersqp", **CS, "quasi_newton_memory_size": 20}
 CONFIGS["filtersqp_cs_id"] = {"preset": "filtersqp", **CS, "hessian_model": "identity"}
