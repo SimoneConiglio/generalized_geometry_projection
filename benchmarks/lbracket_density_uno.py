@@ -135,7 +135,8 @@ class LBracketDensity:
         self.HT = self.H.T.tocsr()
 
         self._x = None
-        self.n_fe = 0
+        self.n_fe = 0                                    # primal FE solves
+        self.n_rhs = 0                                   # adjoint/forward back-substitutions
         self.t_fe = 0.0                                  # primal solves + sensitivities
 
     # ----------------------------------------------------------------------- #
@@ -201,8 +202,47 @@ class LBracketDensity:
             J[idx] = -(np.einsum("kic,ki->ck", lam[self.edof], KEu) * dE[None, :])
         J[np.arange(n), np.arange(n)] += q * rho ** (q - 1) * vm / self.sigma_lim
         self._jac = J @ self.H                                        # chain rule filter
+        self.n_rhs += n
         self.t_fe += time.perf_counter() - t0
         return self._jac
+
+    # -- matrix-free products: ONE back-substitution each, whatever n ------- #
+    def _sens_parts(self):
+        rho, q = self._rho, self.q
+        dsdu = (self._s0 @ self.V) @ self.DB / self._vm[:, None]
+        dsdu *= (rho**q / self.sigma_lim)[:, None]                 # d g_e / d u_e
+        explicit = q * rho ** (q - 1) * self._vm / self.sigma_lim  # d g_e / d rho_e
+        dE = self.p * rho ** (self.p - 1) * (1 - self.Emin)
+        KEu = self._ue @ self.KE.T
+        return dsdu, explicit, dE, KEu
+
+    def jacobian_T_vec(self, x, w):
+        """J(x)^T w with one adjoint solve (the gradient of w . g)."""
+        self._solve(x)
+        t0 = time.perf_counter()
+        dsdu, explicit, dE, KEu = self._sens_parts()
+        rhs = np.zeros(self.ndof)
+        np.add.at(rhs, self.edof, w[:, None] * dsdu)
+        lam = np.zeros(self.ndof)
+        lam[self.free] = self._lu.solve(rhs[self.free])
+        a = explicit * w - dE * np.einsum("ki,ki->k", lam[self.edof], KEu)
+        self.n_rhs += 1
+        self.t_fe += time.perf_counter() - t0
+        return self.HT @ a
+
+    def jacobian_vec(self, x, v):
+        """J(x) v with one forward (direct-sensitivity) solve."""
+        self._solve(x)
+        t0 = time.perf_counter()
+        dsdu, explicit, dE, KEu = self._sens_parts()
+        drho = self.H @ v
+        rhs = np.zeros(self.ndof)
+        np.add.at(rhs, self.edof, -(dE * drho)[:, None] * KEu)
+        du = np.zeros(self.ndof)
+        du[self.free] = self._lu.solve(rhs[self.free])
+        self.n_rhs += 1
+        self.t_fe += time.perf_counter() - t0
+        return explicit * drho + np.einsum("ki,ki->k", dsdu, du[self.edof])
 
 
 # --------------------------------------------------------------------------- #
